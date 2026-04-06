@@ -204,7 +204,7 @@ hr.div { border:none; border-top:1px solid #1e1e1e; margin:8px 0 7px; }
       <hr class="div">
       <div class="ctrl"><label>WET / DRY</label>
         <div class="ctrl-row">
-          <input type="range" id="pitch-wetdry" min="0" max="1" step="0.01" value="1" oninput="setPitchWetDry(this.value)">
+          <input type="range" id="pitch-wetdry" min="0" max="1" step="0.01" value="0.5" oninput="setPitchWetDry(this.value)">
           <span class="ctrl-val" id="pitch-wetdry-val">WET 100%</span>
         </div>
       </div>
@@ -379,7 +379,7 @@ async function initAudio() {
     // Init log slider positions
     document.getElementById('test-freq-sl').value = freqLog.toPos(440);
     document.getElementById('delay-time').value = timeLog.toPos(0.5);
-    setPitchSemi(0); setTestGainDb(-12);
+    setPitchSemi(0); setTestGainDb(-12); setPitchWetDry(0.5);
   } catch(e) { st.textContent='error: '+e.message; btn.disabled=false; }
 }
 
@@ -607,8 +607,12 @@ function setPitchWindow(v){if(pitchShift)pitchShift.windowSize=parseFloat(v); do
 function setPitchType(v){document.getElementById('pitch-window').value=v; setPitchWindow(v);}
 function setPitchWetDry(v){
   const wd=parseFloat(v);
-  if(!pitchBypassed){pitchWetG.gain.rampTo(wd,0.05); pitchDryG.gain.rampTo(1-wd,0.05);}
-  document.getElementById('pitch-wetdry-val').textContent=wd>=0.5?`WET ${Math.round(wd*100)}%`:`DRY ${Math.round((1-wd)*100)}%`;
+  // Equal-power crossfade (sin/cos curve) — equal perceived energy at all positions
+  const wetG = Math.sin(wd * Math.PI / 2);
+  const dryG = Math.cos(wd * Math.PI / 2);
+  if(!pitchBypassed){pitchWetG.gain.rampTo(wetG,0.05); pitchDryG.gain.rampTo(dryG,0.05);}
+  const pct=Math.round(wd*100);
+  document.getElementById('pitch-wetdry-val').textContent=wd>=0.5?`WET ${pct}%`:`DRY ${100-pct}%`;
 }
 
 function setDelayTimePos(pos){
