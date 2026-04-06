@@ -1,4 +1,5 @@
 # VS Code SFTP config contains passwords — never commit
+**/.vscode/sftp.json
 .vscode/sftp.json
 
 # Mac junk

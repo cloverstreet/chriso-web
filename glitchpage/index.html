@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>hello worl</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #081818;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  canvas {
+    display: block;
+    position: fixed;
+    top: 0; left: 0;
+  }
+
+  /* ── Lower-third navigation overlay ─────────────────────────── */
+  #nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 33.33vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4vw;
+    pointer-events: none;          /* invisible by default */
+    opacity: 0;
+    transition: opacity 0.5s ease;
+  }
+
+  #nav.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  #nav a {
+    font-family: 'Courier New', monospace;
+    font-size: clamp(14px, 2vw, 22px);
+    font-weight: 400;
+    letter-spacing: 0.12em;
+    color: #444;                   /* dark grey — subtle */
+    text-decoration: none;
+    text-transform: lowercase;
+    transition: color 0.25s ease, text-shadow 0.25s ease;
+    cursor: pointer;
+  }
+
+  #nav a:hover {
+    color: #999;
+    text-shadow: 0 0 12px rgba(180,180,180,0.3);
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="nav"></div>
+
+<script>
+
+// ── Bootstrap nav from PHP endpoint ───────────────────────────────────
+// experiments.php lives here in /glitchpage/ but scans sibling /tests/
+const nav = document.getElementById('nav');
+
+fetch('/glitchpage/experiments.php')
+  .then(r => r.json())
+  .then(dirs => {
+    dirs.forEach(name => {
+      const a = document.createElement('a');
+      a.href    = `/tests/${name}/`;
+      a.textContent = name;
+      nav.appendChild(a);
+    });
+    wireNavAudio();
+  })
+  .catch(() => {
+    ['experiment1'].forEach(name => {
+      const a = document.createElement('a');
+      a.href    = `/tests/${name}/`;
+      a.textContent = name;
+      nav.appendChild(a);
+    });
+    wireNavAudio();
+  });
+
+// ── Show/hide nav based on mouse position ─────────────────────────────
+let navVisible  = false;
+let navTimeout  = null;
+
+document.addEventListener('mousemove', e => {
+  const inLower = e.clientY > window.innerHeight * 0.67;
+  if (inLower && !navVisible) {
+    navVisible = true;
+    nav.classList.add('visible');
+  } else if (!inLower && navVisible) {
+    clearTimeout(navTimeout);
+    navTimeout = setTimeout(() => {
+      navVisible = false;
+      nav.classList.remove('visible');
+    }, 300);
+  }
+});
+
+
+// ── Canvas + glitch ────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+
+const off  = document.createElement('canvas');
+const octx = off.getContext('2d');
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  off.width  = canvas.width;
+  off.height = canvas.height;
+  renderText();
+}
+
+function renderText() {
+  octx.clearRect(0, 0, off.width, off.height);
+  const fs = Math.min(off.width * 0.13, 130);
+  octx.font         = `900 ${fs}px 'Courier New', monospace`;
+  octx.textAlign    = 'center';
+  octx.textBaseline = 'middle';
+  octx.fillStyle    = '#f0f0f0';
+  octx.fillText('ChristopherO!', off.width / 2, off.height / 2);
+}
+
+resize();
+window.addEventListener('resize', resize);
+
+
+// ── Mouse velocity ─────────────────────────────────────────────────────
+let mx = 0, my = 0, lx = 0, ly = 0;
+let energy = 0, peak = 0;
+
+document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
+
+
+// ══════════════════════════════════════════════════════════════════════
+//  AUDIO ENGINE — native Web Audio API (no libraries)
+//
+//  Layer 1 — Noise bed: filtered white noise through BPF → static LPF
+//            → mouse-Y LPF → gain. Mouse-Y LPF opens when mouse is
+//            near top (brighter), closes near bottom (darker).
+//            Curved fade-in (~3.5 s), curved fade-out (~10 s).
+//  Layer 2 — Persistent drone: fundamental + fifth, always on (quiet).
+//            Swells on nav hover. Configurable fundamental via settings.
+//  Layer 3 — Sub-bass sine: deep hum for subwoofers, energy-reactive.
+//  Layer 4 — Granular glitch: short grains from noise buffer,
+//            heavily randomized start points, durations, and timing.
+//            Highly velocity-reactive. Wider response radius.
+//  Layer 5 — Crackle pops: short bursts, velocity-dense.
+//  Nav     — Hover: beating sine pair (fund ± and fifth ±) layered
+//            over the persistent drone. Click: granular whoosh + thud.
+// ══════════════════════════════════════════════════════════════════════
+
+let audioCtx     = null;
+let audioStarted = false;
+
+// Gain nodes
+let masterGain, noiseGain, subGain, granGain, crackleGain;
+let droneGain;                  // persistent drone bus
+
+// Sources
+let noiseSource, subOsc;
+let noiseBPF, noiseLPF, noiseMouseLPF;   // mouse-Y lowpass filter
+let grainBuffer = null;
+
+// Persistent drone oscillators (always on, quiet)
+let droneOscFund = null, droneOscFifth = null;
+let droneGainFund = null, droneGainFifth = null;
+
+let audioEnergy  = 0;
+let mouseActive  = false;
+let noiseTarget  = 0;
+let noiseCurrent = 0;           // raw 0–1 interpolator (linear)
+
+// Configurable drone fundamental (Hz) — exposed to settings UI
+let droneFundamental = 55;
+
+// Nav hover: only the beating pair (transient)
+let hoverBeaters = null, hoverBeatGain = null;
+
+// ── Performance tracking ──────────────────────────────────────────────
+const perfStats = {
+  fps: 0, frameTimes: [], activeNodes: 0,
+  grainCount: 0, canvasOps: 0
+};
+
+function initAudio() {
+  if (audioStarted) return;
+  audioStarted = true;
+
+  audioCtx   = new (window.AudioContext || window.webkitAudioContext)();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0.22;
+  masterGain.connect(audioCtx.destination);
+
+  // ── Noise bed: BPF → static LPF → mouse-Y LPF → gain ──────────
+  noiseGain = audioCtx.createGain();
+  noiseGain.gain.value = 0;
+
+  noiseBPF = audioCtx.createBiquadFilter();
+  noiseBPF.type = 'bandpass';
+  noiseBPF.frequency.value = 2400;
+  noiseBPF.Q.value = 0.4;
+
+  noiseLPF = audioCtx.createBiquadFilter();
+  noiseLPF.type = 'lowpass';
+  noiseLPF.frequency.value = 3800;
+  noiseLPF.Q.value = 0.3;
+
+  // Mouse-Y controlled lowpass — replaces the old HPF
+  // Mouse near top → high cutoff (bright), near bottom → low (dark)
+  noiseMouseLPF = audioCtx.createBiquadFilter();
+  noiseMouseLPF.type = 'lowpass';
+  noiseMouseLPF.frequency.value = 4000;
+  noiseMouseLPF.Q.value = 0.5;
+
+  const bufLen = audioCtx.sampleRate * 2;
+  const buf    = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+  const data   = buf.getChannelData(0);
+  for (let i = 0; i < bufLen; i++) data[i] = Math.random() * 2 - 1;
+
+  noiseSource = audioCtx.createBufferSource();
+  noiseSource.buffer = buf;
+  noiseSource.loop   = true;
+  noiseSource.connect(noiseBPF);
+  noiseBPF.connect(noiseLPF);
+  noiseLPF.connect(noiseMouseLPF);
+  noiseMouseLPF.connect(noiseGain);
+  noiseGain.connect(masterGain);
+  noiseSource.start();
+
+  // ── Persistent drone (fundamental + fifth, always on) ───────────
+  droneGain = audioCtx.createGain();
+  droneGain.gain.value = 0.04;   // very quiet at rest
+  droneGain.connect(masterGain);
+
+  droneOscFund = audioCtx.createOscillator();
+  droneOscFund.type = 'sine';
+  droneOscFund.frequency.value = droneFundamental;
+  droneGainFund = audioCtx.createGain();
+  droneGainFund.gain.value = 0.5;
+  droneOscFund.connect(droneGainFund);
+  droneGainFund.connect(droneGain);
+  droneOscFund.start();
+
+  droneOscFifth = audioCtx.createOscillator();
+  droneOscFifth.type = 'sine';
+  droneOscFifth.frequency.value = droneFundamental * 1.5;
+  droneGainFifth = audioCtx.createGain();
+  droneGainFifth.gain.value = 0.25;
+  droneOscFifth.connect(droneGainFifth);
+  droneGainFifth.connect(droneGain);
+  droneOscFifth.start();
+
+  // ── Sub-bass sine ───────────────────────────────────────────────
+  subGain = audioCtx.createGain();
+  subGain.gain.value = 0;
+
+  subOsc = audioCtx.createOscillator();
+  subOsc.type = 'sine';
+  subOsc.frequency.value = 38;
+  subOsc.connect(subGain);
+  subGain.connect(masterGain);
+  subOsc.start();
+
+  // ── Granular glitch bus ─────────────────────────────────────────
+  granGain = audioCtx.createGain();
+  granGain.gain.value = 0;
+  granGain.connect(masterGain);
+
+  // Longer, more textured grain buffer
+  const grainBufLen = audioCtx.sampleRate * 6;
+  grainBuffer = audioCtx.createBuffer(2, grainBufLen, audioCtx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const gd = grainBuffer.getChannelData(ch);
+    for (let i = 0; i < grainBufLen; i++) {
+      gd[i] = (Math.random() * 2 - 1) * 0.7;
+      // Scattered impulses for texture
+      if (Math.random() < 0.003) gd[i] = (Math.random() < 0.5 ? 1 : -1);
+      // Occasional short silence gaps
+      if (Math.random() < 0.0005) {
+        const gap = Math.min(800, Math.floor(Math.random() * 400));
+        for (let j = 0; j < gap && (i + j) < grainBufLen; j++) gd[i + j] = 0;
+        i += gap;
+      }
+    }
+  }
+
+  // ── Crackle bus ─────────────────────────────────────────────────
+  crackleGain = audioCtx.createGain();
+  crackleGain.gain.value = 0;
+  crackleGain.connect(masterGain);
+
+  scheduleCrackles();
+  scheduleGrains();
+}
+
+// ── Granular engine ───────────────────────────────────────────────────
+// Much wider randomization of start points, durations, inter-grain
+// timing, and playback rates for a more organic granular character.
+function scheduleGrains() {
+  function tick() {
+    if (!audioCtx || !grainBuffer) { setTimeout(tick, 100); return; }
+    const e = audioEnergy;
+
+    // Wider response: lower threshold (was 3), denser at low energy
+    // Random jitter on interval for less mechanical rhythm
+    const baseInterval = Math.max(12, 350 - e * 3.5);
+    const interval = baseInterval * (0.5 + Math.random());  // ±50% jitter
+
+    if (e > 1) {                  // was > 3
+      const now   = audioCtx.currentTime;
+      const count = Math.min(5, 1 + Math.floor(e / 60));   // up to 5
+      perfStats.grainCount += count;
+
+      for (let i = 0; i < count; i++) {
+        // Wider duration range: 3ms to 120ms
+        const dur  = 0.003 + Math.random() * Math.random() * 0.12;
+        // Wider pitch: 0.1x to 5x with bias toward extremes
+        const rate = Math.pow(2, (Math.random() * 2 - 1) * 2.3);
+        const amp  = Math.min(0.35, e / 250) * (0.15 + Math.random() * 0.85);
+
+        // Random start position — wider jumps
+        const offset = Math.random() * (grainBuffer.duration - 0.15);
+
+        const src = audioCtx.createBufferSource();
+        src.buffer = grainBuffer;
+        src.playbackRate.value = rate;
+
+        const filt = audioCtx.createBiquadFilter();
+        const filtTypes = ['bandpass', 'highpass', 'lowpass', 'notch'];
+        filt.type = filtTypes[Math.floor(Math.random() * filtTypes.length)];
+        filt.frequency.value = 200 + Math.random() * 8000;
+        filt.Q.value = 0.5 + Math.random() * 12;
+
+        const g = audioCtx.createGain();
+        // Random per-grain delay for scatter (0 to 30ms)
+        const schedTime = now + i * 0.006 + Math.random() * 0.03;
+        // Variable attack: 1ms to 8ms
+        const attack = 0.001 + Math.random() * 0.007;
+        g.gain.setValueAtTime(0, schedTime);
+        g.gain.linearRampToValueAtTime(amp, schedTime + attack);
+        g.gain.setValueAtTime(amp, schedTime + dur * (0.3 + Math.random() * 0.4));
+        g.gain.exponentialRampToValueAtTime(0.001, schedTime + dur);
+
+        src.connect(filt);
+        filt.connect(g);
+        g.connect(granGain);
+        src.start(schedTime, offset, dur + 0.02);
+
+        // Pitch bend: more frequent, wider range
+        if (e > 60 && Math.random() < 0.4) {
+          src.playbackRate.linearRampToValueAtTime(
+            rate * (0.1 + Math.random() * 5), schedTime + dur * 0.7
+          );
+        }
+      }
+    }
+
+    setTimeout(tick, interval);
+  }
+  tick();
+}
+
+// ── Crackle pops ──────────────────────────────────────────────────────
+function scheduleCrackles() {
+  function tick() {
+    if (!audioCtx) return;
+    const e = audioEnergy;
+    const interval = Math.max(30, 300 - e * 2.5);
+
+    if (e > 3) {                  // was > 8 — wider response
+      const dur = 0.002 + Math.random() * 0.012;
+      const amp = Math.min(0.18, e / 400) * (0.3 + Math.random() * 0.7);
+      const now = audioCtx.currentTime;
+
+      const osc = audioCtx.createOscillator();
+      const g   = audioCtx.createGain();
+      osc.type = Math.random() < 0.5 ? 'square' : 'sawtooth';
+      osc.frequency.value = 150 + Math.random() * 9000;
+      g.gain.setValueAtTime(amp, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+      osc.connect(g);
+      g.connect(crackleGain);
+      osc.start(now);
+      osc.stop(now + dur + 0.01);
+
+      if (Math.random() < 0.12 && e > 30) {
+        const osc2 = audioCtx.createOscillator();
+        const g2   = audioCtx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.value = 30 + Math.random() * 90;
+        const popDur = 0.015 + Math.random() * 0.04;
+        g2.gain.setValueAtTime(amp * 2, now);
+        g2.gain.exponentialRampToValueAtTime(0.001, now + popDur);
+        osc2.connect(g2);
+        g2.connect(crackleGain);
+        osc2.start(now);
+        osc2.stop(now + popDur + 0.01);
+      }
+    }
+
+    setTimeout(tick, interval);
+  }
+  tick();
+}
+
+// ── Nav hover/drone system ────────────────────────────────────────────
+// The persistent drone (fundamental + fifth) is always running quietly.
+// On nav hover:
+//   - Drone volume swells up
+//   - Two beating oscillators start:
+//     Beat A: fundamental ± 1 Hz (mapped to mouse X across link span)
+//     Beat B: fifth ± 1.5 Hz (same mapping)
+
+function getNavXNormalized(mouseEvent) {
+  const links = nav.querySelectorAll('a');
+  if (links.length === 0) return 0.5;
+  const first = links[0].getBoundingClientRect();
+  const last  = links[links.length - 1].getBoundingClientRect();
+  const left  = first.left;
+  const right = last.right;
+  const span  = right - left;
+  if (span <= 0) return 0.5;
+  return Math.max(0, Math.min(1, (mouseEvent.clientX - left) / span));
+}
+
+let lastNavMouseEvent = null;
+
+function startHoverTone(e) {
+  if (!audioCtx) return;
+  if (hoverBeaters) return;
+
+  lastNavMouseEvent = e;
+  const fund  = droneFundamental;
+  const fifth = fund * 1.5;
+  const t     = getNavXNormalized(e);
+  const now   = audioCtx.currentTime;
+
+  // Swell the persistent drone up
+  droneGain.gain.cancelScheduledValues(now);
+  droneGain.gain.setValueAtTime(droneGain.gain.value, now);
+  droneGain.gain.linearRampToValueAtTime(0.22, now + 0.3);
+
+  // Beating pair bus
+  hoverBeatGain = audioCtx.createGain();
+  hoverBeatGain.gain.setValueAtTime(0, now);
+  hoverBeatGain.gain.linearRampToValueAtTime(0.22, now + 0.35);
+  hoverBeatGain.connect(masterGain);
+
+  // Beat A: near the fundamental, ± 1 Hz
+  const oscA = audioCtx.createOscillator();
+  oscA.type = 'sine';
+  oscA.frequency.value = fund + (t * 3 - 1.5) * 1.0; //clo change: wider mapping for more dramatic effect
+  const gA = audioCtx.createGain();
+  gA.gain.value = 0.45;
+  oscA.connect(gA);
+  gA.connect(hoverBeatGain);
+  oscA.start();
+
+  // Beat B: near the fifth, ± 1.5 Hz
+  const oscB = audioCtx.createOscillator();
+  oscB.type = 'sine';
+  oscB.frequency.value = fifth + (t * 2 - 1) * 1.5;
+  const gB = audioCtx.createGain();
+  gB.gain.value = 0.35;
+  oscB.connect(gB);
+  gB.connect(hoverBeatGain);
+  oscB.start();
+
+  hoverBeaters = [
+    { osc: oscA, gain: gA },
+    { osc: oscB, gain: gB }
+  ];
+}
+
+function updateHoverFreqs(e) {
+  if (!hoverBeaters || !audioCtx) return;
+  lastNavMouseEvent = e;
+  const t     = getNavXNormalized(e);
+  const fund  = droneFundamental;
+  const fifth = fund * 1.5;
+  const now   = audioCtx.currentTime;
+
+  // Beat A: fund ± 1 Hz
+  hoverBeaters[0].osc.frequency.setTargetAtTime(
+    fund + (t * 2 - 1) * 1.0, now, 0.03
+  );
+  // Beat B: fifth ± 1.5 Hz
+  hoverBeaters[1].osc.frequency.setTargetAtTime(
+    fifth + (t * 2 - 1) * 1.5, now, 0.03
+  );
+}
+
+function stopHoverTone() {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+
+  // Settle drone back to quiet
+  droneGain.gain.cancelScheduledValues(now);
+  droneGain.gain.setValueAtTime(droneGain.gain.value, now);
+  droneGain.gain.linearRampToValueAtTime(0.04, now + 0.6);
+
+  // Fade out and stop beating pair
+  if (hoverBeaters && hoverBeatGain) {
+    hoverBeatGain.gain.cancelScheduledValues(now);
+    hoverBeatGain.gain.setValueAtTime(hoverBeatGain.gain.value, now);
+    hoverBeatGain.gain.linearRampToValueAtTime(0, now + 0.5);
+    const oscs = hoverBeaters;
+    setTimeout(() => {
+      oscs.forEach(o => { try { o.osc.stop(); } catch(_){} });
+    }, 600);
+  }
+  hoverBeaters = null;
+  hoverBeatGain = null;
+}
+
+// ── Nav click transition ──────────────────────────────────────────────
+function playClickTransition() {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  const dur = 0.5;
+
+  const clickGain = audioCtx.createGain();
+  clickGain.gain.setValueAtTime(0.5, now);
+  clickGain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+  clickGain.connect(audioCtx.destination);
+
+  for (let i = 0; i < 18; i++) {
+    const src  = audioCtx.createBufferSource();
+    src.buffer = grainBuffer;
+    src.playbackRate.value = 3.5 - (i / 18) * 3;
+    const filt = audioCtx.createBiquadFilter();
+    filt.type = 'bandpass';
+    filt.frequency.value = 4000 - (i / 18) * 3500;
+    filt.Q.value = 2 + Math.random() * 4;
+    const g = audioCtx.createGain();
+    const t = now + i * 0.022;
+    g.gain.setValueAtTime(0.3 - i * 0.012, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+    src.connect(filt);
+    filt.connect(g);
+    g.connect(clickGain);
+    src.start(t, Math.random() * 3, 0.06);
+  }
+
+  const thud = audioCtx.createOscillator();
+  thud.type = 'sine';
+  thud.frequency.setValueAtTime(90, now);
+  thud.frequency.exponentialRampToValueAtTime(20, now + dur);
+  const tg = audioCtx.createGain();
+  tg.gain.setValueAtTime(0.5, now);
+  tg.gain.exponentialRampToValueAtTime(0.001, now + dur);
+  thud.connect(tg);
+  tg.connect(clickGain);
+  thud.start(now);
+  thud.stop(now + dur + 0.05);
+
+  for (let i = 0; i < 6; i++) {
+    const o = audioCtx.createOscillator();
+    o.type = 'square';
+    o.frequency.value = 2000 + Math.random() * 6000;
+    const g = audioCtx.createGain();
+    const t = now + Math.random() * 0.08;
+    g.gain.setValueAtTime(0.12, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.015);
+    o.connect(g);
+    g.connect(clickGain);
+    o.start(t);
+    o.stop(t + 0.02);
+  }
+}
+
+// Wire up nav links
+function wireNavAudio() {
+  nav.querySelectorAll('a').forEach(a => {
+    a.addEventListener('mouseenter', startHoverTone);
+    a.addEventListener('mousemove',  updateHoverFreqs);
+    a.addEventListener('mouseleave', stopHoverTone);
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      playClickTransition();
+      const href = a.href;
+      setTimeout(() => { window.location.href = href; }, 400);
+    });
+  });
+}
+
+// ── Audio update — called every visual frame ──────────────────────────
+let idleTime = 0;
+
+function updateAudio(dt, rawSpeed) {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+
+  if (rawSpeed > 1.5) {
+    mouseActive = true;
+    idleTime = 0;
+  } else {
+    idleTime += dt;
+    if (idleTime > 1.0) mouseActive = false;
+  }
+
+  // Faster energy tracking for wider response
+  audioEnergy += (energy - audioEnergy) * 0.18;
+  const e = audioEnergy;
+
+  // ── Noise bed: curved fade-in (3.5s), curved fade-out (10s) ─────
+  // noiseCurrent interpolates linearly 0↔1, then we apply a power
+  // curve so the first ~30% of each fade is already very quiet/loud.
+  noiseTarget = mouseActive ? 1 : 0;
+  const fadeRate = mouseActive ? (dt / 3.5) : (dt / 10);
+  noiseCurrent += (noiseTarget - noiseCurrent) * Math.min(1, fadeRate * 3);
+  // Cubic curve: at 30% through fade-out (noiseCurrent=0.7),
+  // gain = 0.7^3 = 0.34 — already much quieter.
+  // At 30% through fade-in (noiseCurrent=0.3), gain = 0.027 — still very quiet.
+  const noiseCurved = noiseCurrent * noiseCurrent * noiseCurrent;
+  const noiseBedVol = noiseCurved * 0.03;
+  noiseGain.gain.setTargetAtTime(noiseBedVol, now, 0.05);
+
+  // ── Noise LPF: vertical mouse controls cutoff ──────────────────
+  // Mouse at top (Y=0) → higher cutoff (brighter)
+  // Mouse at bottom (Y=max) → lower cutoff (darker, muffled)
+  const mouseYNorm = 1 - Math.max(0, Math.min(1, my / window.innerHeight));
+  const lpfFreq = 600 + mouseYNorm * 5400;   // 600 Hz – 6000 Hz
+  noiseMouseLPF.frequency.setTargetAtTime(lpfFreq, now, 0.08);
+
+  // ── Persistent drone: update frequencies if slider changed ──────
+  droneOscFund.frequency.setTargetAtTime(droneFundamental, now, 0.1);
+  droneOscFifth.frequency.setTargetAtTime(droneFundamental * 1.5, now, 0.1);
+
+  // ── Sub-bass ────────────────────────────────────────────────────
+  const subVol = Math.min(0.4, e / 150) * 0.4 * noiseCurved;
+  subGain.gain.setTargetAtTime(subVol, now, 0.3);
+  subOsc.frequency.setTargetAtTime(38 - e * 0.033, now, 0.2);
+
+  // ── Granular bus ────────────────────────────────────────────────
+  const granVol = Math.min(0.7, e / 100) * noiseCurved;
+  granGain.gain.setTargetAtTime(granVol, now, 0.03);
+
+  // ── Crackle bus ─────────────────────────────────────────────────
+  const crackVol = Math.min(0.6, e / 120) * noiseCurved;
+  crackleGain.gain.setTargetAtTime(crackVol, now, 0.04);
+
+  // ── Master: fade everything to zero after 10s idle ──────────────
+  const fadeMul = Math.max(0, 1 - Math.max(0, idleTime - 1) / 10);
+  masterGain.gain.setTargetAtTime(0.22 * fadeMul, now, 0.1);
+}
+
+// Start audio on first user interaction (browser autoplay policy)
+function tryStartAudio() {
+  initAudio();
+  document.removeEventListener('mousemove', tryStartAudio);
+  document.removeEventListener('mousedown', tryStartAudio);
+  document.removeEventListener('keydown',   tryStartAudio);
+}
+document.addEventListener('mousemove', tryStartAudio);
+document.addEventListener('mousedown', tryStartAudio);
+document.addEventListener('keydown',   tryStartAudio);
+
+
+// ══════════════════════════════════════════════════════════════════════
+//  SETTINGS UI — pulsating icon + popup panel
+// ══════════════════════════════════════════════════════════════════════
+
+function createSettingsUI() {
+  const dot = document.createElement('div');
+  dot.id = 'settings-dot';
+  dot.style.cssText = `
+    position: fixed; bottom: 20px; right: 20px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: rgba(100,200,180,0.35);
+    cursor: pointer; z-index: 1000;
+    animation: settingsPulse 3s ease-in-out infinite;
+    transition: transform 0.2s, background 0.2s;
+  `;
+  dot.addEventListener('mouseenter', () => {
+    dot.style.transform = 'scale(1.5)';
+    dot.style.background = 'rgba(100,200,180,0.6)';
+  });
+  dot.addEventListener('mouseleave', () => {
+    dot.style.transform = 'scale(1)';
+    dot.style.background = 'rgba(100,200,180,0.35)';
+  });
+  document.body.appendChild(dot);
+
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes settingsPulse {
+      0%, 100% { box-shadow: 0 0 4px rgba(100,200,180,0.2); opacity: 0.5; }
+      50%      { box-shadow: 0 0 12px rgba(100,200,180,0.5); opacity: 1.0; }
+    }
+    #settings-panel {
+      scrollbar-width: thin;
+      scrollbar-color: #334 #181c24;
+    }
+    #settings-panel::-webkit-scrollbar { width: 5px; }
+    #settings-panel::-webkit-scrollbar-track { background: #181c24; }
+    #settings-panel::-webkit-scrollbar-thumb { background: #334; border-radius: 3px; }
+  `;
+  document.head.appendChild(style);
+
+  const panel = document.createElement('div');
+  panel.id = 'settings-panel';
+  panel.style.cssText = `
+    position: fixed; bottom: 44px; right: 16px;
+    width: 280px; max-height: 70vh; overflow-y: auto;
+    background: rgba(16,20,28,0.92); border: 1px solid rgba(100,200,180,0.15);
+    border-radius: 8px; padding: 16px; z-index: 999;
+    font-family: 'Courier New', monospace; font-size: 12px; color: #8a9a96;
+    display: none; backdrop-filter: blur(8px);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+  `;
+  document.body.appendChild(panel);
+
+  let panelOpen = false;
+  dot.addEventListener('click', () => {
+    panelOpen = !panelOpen;
+    panel.style.display = panelOpen ? 'block' : 'none';
+  });
+
+  // ── Drone pitch slider ──────────────────────────────────────────
+  const pitchLabel = document.createElement('div');
+  pitchLabel.style.cssText = 'margin-bottom: 4px; color: #6a8a84; text-transform: uppercase; letter-spacing: 0.1em; font-size: 10px;';
+  pitchLabel.textContent = 'drone fundamental';
+  panel.appendChild(pitchLabel);
+
+  const pitchRow = document.createElement('div');
+  pitchRow.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 14px;';
+  const pitchSlider = document.createElement('input');
+  pitchSlider.type = 'range';
+  pitchSlider.min = 20; pitchSlider.max = 120; pitchSlider.value = droneFundamental;
+  pitchSlider.step = 0.5;
+  pitchSlider.style.cssText = 'flex: 1; accent-color: #4a8a7a; cursor: pointer;';
+  const pitchVal = document.createElement('span');
+  pitchVal.style.cssText = 'width: 52px; text-align: right; font-variant-numeric: tabular-nums;';
+  pitchVal.textContent = droneFundamental.toFixed(1) + ' Hz';
+  pitchRow.appendChild(pitchSlider);
+  pitchRow.appendChild(pitchVal);
+  panel.appendChild(pitchRow);
+
+  pitchSlider.addEventListener('input', () => {
+    droneFundamental = parseFloat(pitchSlider.value);
+    pitchVal.textContent = droneFundamental.toFixed(1) + ' Hz';
+    // Persistent drone updates via updateAudio's setTargetAtTime
+    // Live beaters update if hovering
+    if (hoverBeaters && audioCtx && lastNavMouseEvent) {
+      updateHoverFreqs(lastNavMouseEvent);
+    }
+  });
+
+  // ── Interval info ───────────────────────────────────────────────
+  const intLabel = document.createElement('div');
+  intLabel.style.cssText = 'margin-bottom: 6px; color: #6a8a84; text-transform: uppercase; letter-spacing: 0.1em; font-size: 10px;';
+  intLabel.textContent = 'intervals (auto from fundamental)';
+  panel.appendChild(intLabel);
+
+  const intInfo = document.createElement('div');
+  intInfo.id = 'interval-info';
+  intInfo.style.cssText = 'margin-bottom: 14px; line-height: 1.6; font-size: 11px;';
+  panel.appendChild(intInfo);
+
+  function updateIntervalInfo() {
+    const f = droneFundamental;
+    intInfo.innerHTML =
+      `fundamental: <span style="color:#aac">${f.toFixed(1)} Hz</span> (always on)<br>` +
+      `fifth: <span style="color:#aac">${(f * 1.5).toFixed(1)} Hz</span> (always on)<br>` +
+      `beat A: <span style="color:#aac">${(f - 1).toFixed(1)}–${(f + 1).toFixed(1)} Hz</span> (hover ±1)<br>` +
+      `beat B: <span style="color:#aac">${(f * 1.5 - 1.5).toFixed(1)}–${(f * 1.5 + 1.5).toFixed(1)} Hz</span> (hover ±1.5)`;
+  }
+  updateIntervalInfo();
+  pitchSlider.addEventListener('input', updateIntervalInfo);
+
+  const sep = document.createElement('div');
+  sep.style.cssText = 'border-top: 1px solid rgba(100,200,180,0.1); margin: 10px 0;';
+  panel.appendChild(sep);
+
+  // ── Performance stats ───────────────────────────────────────────
+  const perfLabel = document.createElement('div');
+  perfLabel.style.cssText = 'margin-bottom: 6px; color: #6a8a84; text-transform: uppercase; letter-spacing: 0.1em; font-size: 10px;';
+  perfLabel.textContent = 'performance';
+  panel.appendChild(perfLabel);
+
+  const perfDiv = document.createElement('div');
+  perfDiv.id = 'perf-stats';
+  perfDiv.style.cssText = 'line-height: 1.7; font-size: 11px; font-variant-numeric: tabular-nums;';
+  panel.appendChild(perfDiv);
+
+  setInterval(() => {
+    if (!panelOpen) return;
+    const ft = perfStats.frameTimes;
+    const avgFt = ft.length > 0 ? ft.reduce((a, b) => a + b, 0) / ft.length : 0;
+    const maxFt = ft.length > 0 ? Math.max(...ft) : 0;
+    const fps = avgFt > 0 ? (1000 / avgFt).toFixed(1) : '—';
+    const nodes = audioCtx ? '~' + estimateAudioNodes() : '—';
+    const grains = perfStats.grainCount;
+    perfStats.grainCount = 0;
+
+    let memStr = '—';
+    if (performance.memory) {
+      const mb = (performance.memory.usedJSHeapSize / 1048576).toFixed(1);
+      const limit = (performance.memory.jsHeapSizeLimit / 1048576).toFixed(0);
+      memStr = `${mb} / ${limit} MB`;
+    }
+
+    perfDiv.innerHTML =
+      `fps: <span style="color:#aac">${fps}</span> ` +
+      `<span style="color:#556">(${avgFt.toFixed(1)}ms avg, ${maxFt.toFixed(1)}ms peak)</span><br>` +
+      `audio nodes: <span style="color:#aac">${nodes}</span><br>` +
+      `grains/500ms: <span style="color:#aac">${grains}</span><br>` +
+      `energy: <span style="color:#aac">${audioEnergy.toFixed(1)}</span> ` +
+      `peak: <span style="color:#aac">${peak.toFixed(1)}</span><br>` +
+      `shards: <span style="color:#aac">${shards.length}</span> / ${MAX_SHARDS}<br>` +
+      `JS heap: <span style="color:#aac">${memStr}</span><br>` +
+      `noise LPF: <span style="color:#aac">${noiseMouseLPF ? noiseMouseLPF.frequency.value.toFixed(0) + ' Hz' : '—'}</span><br>` +
+      `noise bed: <span style="color:#aac">${(noiseCurrent * 100).toFixed(0)}%</span> → ` +
+      `<span style="color:#aac">${(noiseCurrent * noiseCurrent * noiseCurrent * 100).toFixed(1)}% curved</span><br>` +
+      `<span style="color:#556">canvas: ${canvas.width}×${canvas.height}, ` +
+      `${(canvas.width * canvas.height / 1000000).toFixed(2)}MP</span>`;
+  }, 500);
+}
+
+function estimateAudioNodes() {
+  let n = 0;
+  if (noiseSource) n += 5;     // source + BPF + LPF + mouseLPF + gain
+  if (droneOscFund) n += 5;    // 2 oscs + 2 gains + bus gain
+  if (subOsc) n += 2;
+  n += 2;                       // granGain + crackleGain
+  n += 1;                       // masterGain
+  if (hoverBeaters) n += hoverBeaters.length * 2 + 1;
+  return n;
+}
+
+createSettingsUI();
+
+
+// ── RGB tint helpers ───────────────────────────────────────────────────
+// Three separate canvases: one per channel for true RGB break-apart
+const redC = document.createElement('canvas');
+const grnC = document.createElement('canvas');
+const bluC = document.createElement('canvas');
+const rctx = redC.getContext('2d');
+const gctx = grnC.getContext('2d');
+const bctx = bluC.getContext('2d');
+
+function tint(src, dst, dctx, r, g, b) {
+  dst.width = src.width; dst.height = src.height;
+  dctx.clearRect(0, 0, dst.width, dst.height);
+  dctx.drawImage(src, 0, 0);
+  dctx.globalCompositeOperation = 'source-in';
+  dctx.fillStyle = `rgb(${r},${g},${b})`;
+  dctx.fillRect(0, 0, dst.width, dst.height);
+  dctx.globalCompositeOperation = 'source-over';
+}
+
+
+// ── Shatter particles ──────────────────────────────────────────────────
+const shards = [];
+const MAX_SHARDS = 60;
+
+function spawnShards(e) {
+  const W = off.width, H = off.height;
+  const textH = Math.min(off.height * 0.13, 130) * 1.6;
+  const textY = H / 2 - textH / 2;
+  const count = Math.floor(e / 20);
+
+  for (let i = 0; i < count && shards.length < MAX_SHARDS; i++) {
+    const sw = 10 + Math.random() * 70;
+    const sh = 3  + Math.random() * 35;
+    const sx = Math.random() * (W - sw);
+    const sy = textY + Math.random() * textH;
+    const speed = (e / 300) * (4 + Math.random() * 10);
+    const angle = Math.random() * Math.PI * 2;
+
+    shards.push({
+      sx, sy, sw, sh,
+      x: sx, y: sy, ox: sx, oy: sy,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed * 0.55,
+      life: 1.0,
+      decay: 0.006 + Math.random() * 0.012,
+    });
+  }
+}
+
+function updateShards() {
+  for (let i = shards.length - 1; i >= 0; i--) {
+    const s = shards[i];
+    s.vx += (s.ox - s.x) * 0.01;
+    s.vy += (s.oy - s.y) * 0.01;
+    s.vx *= 0.93; s.vy *= 0.93;
+    s.x += s.vx;  s.y += s.vy;
+    s.life -= s.decay;
+    if (s.life <= 0) shards.splice(i, 1);
+  }
+}
+
+function drawShards() {
+  for (const s of shards) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, s.life) * 0.85;
+    ctx.drawImage(off, s.sx, s.sy, s.sw, s.sh, s.x, s.y, s.sw, s.sh);
+    ctx.restore();
+  }
+}
+
+
+// ── Main loop ──────────────────────────────────────────────────────────
+let frame = 0;
+let lastSpawnEnergy = 0;
+let lastTime = performance.now();
+
+// "Tear event" state — occasionally a big rip tears the whole frame
+let tearActive    = false;
+let tearProgress  = 0;
+let tearY         = 0;
+let tearDir       = 1;
+
+function draw() {
+  requestAnimationFrame(draw);
+  frame++;
+
+  const now = performance.now();
+  const dt  = (now - lastTime) / 1000;
+  // Track frame times for perf stats (keep last 60)
+  perfStats.frameTimes.push(now - lastTime);
+  if (perfStats.frameTimes.length > 60) perfStats.frameTimes.shift();
+  lastTime  = now;
+
+  const W = canvas.width;
+  const H = canvas.height;
+
+  const speed = Math.sqrt((mx - lx) ** 2 + (my - ly) ** 2);
+  lx = mx; ly = my;
+
+  energy += speed * 0.75;
+  energy  = Math.min(energy, 300);
+  peak    = Math.max(peak, energy);
+
+  // Spawn shards at energy thresholds
+  if (energy > 70 && energy > lastSpawnEnergy + 25) {
+    spawnShards(energy);
+    lastSpawnEnergy = energy;
+  }
+  if (energy < 15) lastSpawnEnergy = 0;
+
+  // Occasional spontaneous tear event at high energy
+  if (!tearActive && energy > 120 && Math.random() < 0.015) {
+    tearActive   = true;
+    tearProgress = 0;
+    tearY        = H * (0.3 + Math.random() * 0.4);
+    tearDir      = Math.random() < 0.5 ? 1 : -1;
+  }
+  if (tearActive) {
+    tearProgress += 0.08;
+    if (tearProgress >= 1) tearActive = false;
+  }
+
+  energy *= 0.87;
+  peak   *= 0.972;
+  if (energy < 0.05) energy = 0;
+  if (peak   < 0.05) peak   = 0;
+
+  updateShards();
+
+  // ── Update audio ──────────────────────────────────────────────────
+  updateAudio(dt, speed);
+
+  ctx.fillStyle = '#080808';
+  ctx.fillRect(0, 0, W, H);
+
+  if (peak < 0.5 && shards.length === 0 && !tearActive) {
+    ctx.drawImage(off, 0, 0);
+    return;
+  }
+
+  const e = peak;
+
+  // ── 1. RGB channel break-apart ──────────────────────────────────
+  // Each channel orbits independently — different speeds, different
+  // radii, different ellipse ratios.  At low energy the three nearly
+  // overlap (white text).  At high energy they fly apart.
+  const spread = e * 0.35;                  // base separation radius
+
+  const rAngle = frame * 0.041;            // red orbit — slow
+  const gAngle = frame * 0.029 + 2.09;    // green — offset 120°
+  const bAngle = frame * 0.053 + 4.19;    // blue — fastest, offset 240°
+
+  // Wobble factors — each channel has slight independent jitter
+  const jitter = e > 40 ? (e / 300) * 6 : 0;
+  const rJx = Math.sin(frame * 0.17) * jitter;
+  const rJy = Math.cos(frame * 0.13) * jitter;
+  const gJx = Math.sin(frame * 0.23 + 1) * jitter;
+  const gJy = Math.cos(frame * 0.19 + 2) * jitter;
+  const bJx = Math.sin(frame * 0.31 + 3) * jitter;
+  const bJy = Math.cos(frame * 0.27 + 4) * jitter;
+
+  const rx = Math.cos(rAngle) * spread * 1.0  + rJx;
+  const ry = Math.sin(rAngle) * spread * 0.55 + rJy;
+  const gx = Math.cos(gAngle) * spread * 0.85 + gJx;
+  const gy = Math.sin(gAngle) * spread * 0.70 + gJy;
+  const bx = Math.cos(bAngle) * spread * 1.1  + bJx;
+  const by = Math.sin(bAngle) * spread * 0.50 + bJy;
+
+  tint(off, redC, rctx, 255, 0, 0);
+  tint(off, grnC, gctx, 0, 255, 0);
+  tint(off, bluC, bctx, 0, 0, 255);
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  // At low energy, channels are nearly opaque and overlapping → white
+  // At high energy, they separate and each channel shows distinctly
+  const channelAlpha = 0.7 + 0.3 * Math.min(1, e / 150);
+  ctx.globalAlpha = channelAlpha;
+  ctx.drawImage(redC, rx, ry);
+  ctx.drawImage(grnC, gx, gy);
+  ctx.drawImage(bluC, bx, by);
+  ctx.restore();
+
+  // ── 2. Horizontal slice tearing — much bigger ────────────────────
+  {
+    const slices   = Math.floor(10 + e * 0.25);
+    const sliceH   = H / slices;
+    const maxShift = e * 1.4 + 20;
+    const ns       = Math.floor(frame / 2);
+
+    ctx.save();
+    for (let i = 0; i < slices; i++) {
+      const sy = Math.round(i * sliceH);
+      const sh = Math.round(sliceH) + 1;
+      const r1 = Math.sin(ns * 0.3  + i * 127.1) * 0.5 + 0.5;
+      const r2 = Math.sin(ns * 0.7  + i * 311.7) * 0.5 + 0.5;
+      const r3 = Math.sin(ns * 0.15 + i * 53.3)  * 0.5 + 0.5;
+
+      const prob = Math.min(e / 100, 0.95);
+      if (r1 < prob) {
+        const isMegaTear = r3 < 0.08 && e > 80;
+        const baseShift  = (r2 - 0.5) * maxShift * 2;
+        const shift      = isMegaTear ? baseShift * 3.5 : baseShift;
+        ctx.drawImage(off, 0, sy, W, sh, shift, sy, W, sh);
+      } else {
+        ctx.drawImage(off, 0, sy, W, sh, 0, sy, W, sh);
+      }
+    }
+    ctx.restore();
+  }
+
+  // ── 3. Spontaneous full tear event ───────────────────────────────
+  if (tearActive) {
+    const tearAmt = Math.sin(tearProgress * Math.PI) * W * 0.6 * tearDir;
+    ctx.save();
+    ctx.drawImage(off,
+      0, 0, W, tearY,
+      tearAmt, 0, W, tearY
+    );
+    ctx.restore();
+  }
+
+  // ── 4. Vertical slice corruption ─────────────────────────────────
+  if (e > 25) {
+    const slices   = Math.floor(3 + e * 0.08);
+    const sliceW   = W / slices;
+    const maxShiftV = e * 0.7;
+    const ns       = Math.floor(frame / 4) + 500;
+
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    for (let i = 0; i < slices; i++) {
+      const sx = Math.round(i * sliceW);
+      const sw = Math.round(sliceW) + 1;
+      const r1 = Math.sin(ns * 0.4 + i * 89.3)  * 0.5 + 0.5;
+      const r2 = Math.sin(ns * 0.9 + i * 213.5) * 0.5 + 0.5;
+      const prob = Math.min(e / 140, 0.65);
+      if (r1 < prob) {
+        const shift = (r2 - 0.5) * maxShiftV * 2;
+        ctx.drawImage(off, sx, 0, sw, H, sx, shift, sw, H);
+      }
+    }
+    ctx.restore();
+  }
+
+  // ── 5. Shatter particles ─────────────────────────────────────────
+  drawShards();
+
+  // ── 6. Scan flashes ──────────────────────────────────────────────
+  if (e > 40 && Math.random() < 0.07) {
+    ctx.save();
+    ctx.globalAlpha = 0.08 + Math.random() * 0.14;
+    ctx.fillStyle = `hsl(${Math.random() * 360}, 100%, 75%)`;
+    const fy = Math.random() * H;
+    ctx.fillRect(0, fy, W, 1 + Math.random() * Math.floor(e * 0.09));
+    ctx.restore();
+  }
+
+  // ── 7. Large block corruption ────────────────────────────────────
+  if (e > 50 && Math.random() < 0.07) {
+    const bx = Math.random() * W * 0.6 + W * 0.2;
+    const by = Math.random() * H * 0.5 + H * 0.25;
+    const bw = 40  + Math.random() * 200;
+    const bh = 3   + Math.random() * 30;
+    const tx = bx  + (Math.random() - 0.5) * e * 1.0;
+    const ty = by  + (Math.random() - 0.5) * e * 0.25;
+    ctx.save();
+    ctx.globalAlpha = 0.5 + Math.random() * 0.5;
+    ctx.drawImage(off, bx, by, bw, bh, tx, ty, bw, bh);
+    ctx.restore();
+  }
+}
+
+draw();
+
+</script>
+</body>
+</html>
