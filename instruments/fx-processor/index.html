@@ -39,7 +39,7 @@ body {
   padding:0 4px 8px; width:100%;
 }
 #about-row a {
-  font-size:.65rem; color:#3a3a3a; letter-spacing:.12em;
+  font-size:.65rem; color:#666; letter-spacing:.12em;
   text-decoration:none; border-bottom:1px solid #222;
   padding-bottom:1px; transition:color .2s;
 }
@@ -50,14 +50,14 @@ body {
   display:flex; align-items:center; gap:5px;
   padding:6px 4px 12px; flex-wrap:wrap;
 }
-.bar-label { font-size:.62rem; letter-spacing:.2em; color:#555; margin-right:3px; }
+.bar-label { font-size:.62rem; letter-spacing:.2em; color:#777; margin-right:3px; }
 .global-slot {
   width:24px; height:22px; background:transparent;
-  border:1px solid #252525; color:#3a3a3a;
+  border:1px solid #252525; color:#666;
   font-family:'Courier New',monospace; font-size:.7rem;
   cursor:pointer; border-radius:2px; transition:all .12s;
 }
-.global-slot.saved { border-color:#3a4a3a; color:#5a8; }
+.global-slot.saved { border-color:#4a6a4a; color:#7ba; }
 .global-slot:hover { border-color:#555; color:#999; }
 .global-slot.saved:hover { border-color:#5a5; }
 </style>
@@ -76,7 +76,7 @@ body {
   gap:0; flex-shrink:0;
 }
 .col-label {
-  font-size:.6rem; letter-spacing:.28em; color:#444;
+  font-size:.62rem; letter-spacing:.28em; color:#666;
   text-align:center; padding:0 0 5px; text-transform:uppercase;
 }
 
@@ -100,7 +100,7 @@ body {
   border-bottom:1px solid #1e1e1e;
 }
 .mod-title {
-  font-size:.7rem; letter-spacing:.18em; color:#999;
+  font-size:.72rem; letter-spacing:.16em; color:#bbb;
   text-transform:uppercase; flex-shrink:0;
 }
 /* Bypass button — left of title */
@@ -122,7 +122,7 @@ body {
   text-shadow:none;
 }
 .byp-btn.off {
-  background:rgba(30,30,30,.4); border-color:#2a2a2a;
+  background:rgba(30,30,30,.4); border-color:#555;
   color:#555; text-shadow:none; font-weight:400;
 }
 /* Preset slots row in header */
@@ -131,12 +131,12 @@ body {
 }
 .head-preset-slot {
   width:18px; height:18px; background:transparent;
-  border:1px solid #1e1e1e; color:#2e2e2e;
+  border:1px solid #1e1e1e; color:#555;
   font-family:'Courier New',monospace; font-size:.6rem;
   cursor:pointer; border-radius:2px; transition:all .1s;
   text-align:center; line-height:18px; padding:0;
 }
-.head-preset-slot.saved { border-color:#2e4a2e; color:#4a7; }
+.head-preset-slot.saved { border-color:#3a6a3a; color:#6b9; }
 .head-preset-slot:hover { border-color:#444; color:#888; }
 .head-preset-slot.saved:hover { border-color:#5a5; }
 
@@ -169,7 +169,7 @@ select {
   cursor:pointer; border-radius:2px; margin-bottom:2px;
 }
 hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
-.ch-note { font-size:.63rem; color:#555; margin-top:2px; }
+.ch-note { font-size:.64rem; color:#777; margin-top:2px; }
 .editable-val {
   font-size:.72rem; color:#c8a854; cursor:text;
 }
@@ -195,7 +195,7 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
 .hmeter-peak-r { top:4px; }
 .hmeter-clip { position:absolute; right:0; top:0; width:4px; height:8px; background:#e05050; border-radius:0 2px 2px 0; display:none; }
 .hmeter-clip.show { display:block; }
-.hmeter-db { font-size:.58rem; color:#3a3a3a; margin-top:1px; text-align:right; }
+.hmeter-db { font-size:.58rem; color:#666; margin-top:1px; text-align:right; }
 /* Mini horizontal (for input modules — two rows stacked) */
 .mini-hmeter-wrap { position:relative; width:100%; height:6px; background:#111; border-radius:1px; margin-top:3px; overflow:visible; }
 .mini-hmeter-l, .mini-hmeter-r { position:absolute; left:0; height:3px; border-radius:1px; transition:width .04s; }
@@ -203,10 +203,9 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
 .mini-hmeter-r { top:3px; background:linear-gradient(to right,#2a7a2a,#7ab02a,#c8a854,#e05050); }
 .mini-hmeter-peak-l, .mini-hmeter-peak-r { position:absolute; width:1px; top:0; height:3px; background:#aaa; }
 .mini-hmeter-peak-r { top:3px; }
-.mini-hmeter-db { font-size:.56rem; color:#333; text-align:right; margin-top:1px; }
+.mini-hmeter-db { font-size:.58rem; color:#555; text-align:right; margin-top:1px; }
 
 /* ── Wires between modules ──────────────────────────────────────── */
-.wire-svg { flex-shrink:0; align-self:center; }
 
 /* ── Delay feedback arc ─────────────────────────────────────────── */
 .fb-svg { display:block; width:100%; overflow:visible; margin-bottom:7px; }
@@ -215,14 +214,14 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
 .preset-row { display:flex; gap:3px; margin-top:8px; padding-top:7px; border-top:1px solid #1a1a1a; }
 .preset-slot {
   flex:1; padding:3px 0; background:transparent;
-  border:1px solid #222; color:#3a3a3a;
+  border:1px solid #222; color:#666;
   font-family:'Courier New',monospace; font-size:.62rem;
   cursor:pointer; border-radius:2px; text-align:center; transition:all .1s;
 }
 .preset-slot.saved { border-color:#3a4a3a; color:#5a8; }
 .preset-slot:hover { border-color:#555; color:#999; }
 .preset-slot.saved:hover { border-color:#5a5; }
-.preset-hint { font-size:.56rem; color:#2e2e2e; text-align:center; margin-top:2px; }
+.preset-hint { font-size:.56rem; color:#555; text-align:center; margin-top:2px; }
 
 /* ── Toggle (enable) button ─────────────────────────────────────── */
 .toggle-btn {
@@ -244,12 +243,12 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
   display:flex; align-items:center; gap:8px;
   margin-bottom:10px; flex-wrap:wrap; justify-content:center;
 }
-.ps-label { font-size:.64rem; letter-spacing:.25em; color:#666; }
-.ps-hint  { font-size:.62rem; color:#444; letter-spacing:.1em; }
+.ps-label { font-size:.64rem; letter-spacing:.25em; color:#888; }
+.ps-hint  { font-size:.62rem; color:#666; letter-spacing:.1em; }
 #ps-slots { display:flex; gap:4px; }
 .ps-slot-btn {
   width:22px; height:22px; background:transparent;
-  border:1px solid #222; color:#3a3a3a;
+  border:1px solid #222; color:#666;
   font-family:'Courier New',monospace; font-size:.65rem;
   cursor:pointer; border-radius:3px; transition:all .12s; line-height:1;
 }
@@ -271,8 +270,8 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
   display:flex; flex-direction:column; align-items:center;
   height:100%; gap:2px;
 }
-.vfader-label { font-size:.56rem; color:#555; letter-spacing:.1em; }
-.vfader-val { font-size:.6rem; color:#c8a854; text-align:center; min-width:32px; }
+.vfader-label { font-size:.6rem; color:#888; letter-spacing:.1em; }
+.vfader-val { font-size:.68rem; color:#c8a854; text-align:center; min-width:32px; }
 input.vfader {
   -webkit-appearance:none; writing-mode:vertical-lr; direction:rtl;
   width:14px; flex:1; background:#2a2a2a; outline:none;
@@ -393,16 +392,14 @@ input.vfader::-webkit-slider-thumb {
             <option value="noise">White Noise</option>
           </select>
         </div>
-        <div class="ctrl" id="test-freq-ctrl">
-          <label>FREQUENCY (log)</label>
-          <div class="ctrl-row">
-            <input type="range" id="test-freq-sl" min="0" max="1000" step="1" value="263" oninput="setTestFreqPos(this.value)">
-            <span class="editable-val" id="test-freq-val" data-value="110">110 Hz</span>
+        <div id="test-freq-ctrl" style="margin-bottom:8px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
+            <label style="font-size:.68rem;letter-spacing:.12em;color:#aaa;">FREQ (log)</label>
+            <span class="editable-val" id="test-freq-val" data-value="110" style="margin-left:auto;">110 Hz</span>
+            <span class="editable-val" id="test-semi-val" data-value="-24" style="color:#888;font-size:.66rem;">-24.0st</span>
           </div>
-          <div style="display:flex;gap:5px;margin-top:2px;align-items:center;">
-            <span class="display-val">ST A4:</span>
-            <span class="editable-val" id="test-semi-val" data-value="-24">-24.0</span>
-          </div>
+          <input type="range" id="test-freq-sl" min="0" max="1000" step="1" value="263"
+                 oninput="setTestFreqPos(this.value)" style="width:100%;">
         </div>
         <div class="ctrl">
           <label>GAIN</label>
@@ -446,11 +443,7 @@ input.vfader::-webkit-slider-thumb {
 
     </div><!-- end inputs col-wrap -->
 
-    <!-- wire: inputs → pitch -->
-    <svg class="wire-svg" width="26" height="60" viewBox="0 0 26 60" style="align-self:center;">
-      <path d="M0,30 C8,30 16,32 20,32" stroke="#c8a854" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-      <polygon points="20,29 26,32 20,35" fill="#c8a854"/>
-    </svg>
+    <!-- port connection — wire removed, port nodes coming later -->
 
     <!-- ════════ PITCH SHIFT (double wide) ════════ -->
     <div class="module wide" id="pitch-module">
@@ -466,45 +459,46 @@ input.vfader::-webkit-slider-thumb {
         </div>
         <button class="byp-btn" id="pitch-bypass-btn" onclick="toggleFxBypass('pitch')">ON</button>
       </div>
-      <!-- Row 1: Type selector -->
-      <div class="ctrl" style="margin-bottom:6px;">
-        <label>TYPE</label>
-        <select id="pitch-type" onchange="setPitchType(this.value)">
+      <!-- TYPE -->
+      <div style="margin-bottom:8px;">
+        <label style="font-size:.68rem;letter-spacing:.12em;color:#aaa;display:block;margin-bottom:3px;">TYPE</label>
+        <select id="pitch-type" onchange="setPitchType(this.value)" style="width:100%;">
           <option value="0.05">Phase Vocoder — Fast</option>
           <option value="0.1" selected>Phase Vocoder — Std</option>
           <option value="0.25">Phase Vocoder — Quality</option>
           <option value="0.5">Phase Vocoder — HQ</option>
         </select>
       </div>
-      <!-- Row 2: Semitones label + coarse/fine + value | window label+value -->
-      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
-        <div style="display:flex;align-items:center;gap:5px;">
-          <label style="font-size:.67rem;letter-spacing:.12em;color:#999;">SEMITONES</label>
+      <!-- SEMITONES: label + coarse/fine + value on top, full-width slider below -->
+      <div style="margin-bottom:9px;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
+          <label style="font-size:.68rem;letter-spacing:.12em;color:#aaa;">SEMITONES</label>
           <button id="pitch-fine-btn" onclick="togglePitchFine()" title="Toggle coarse/fine"
-            style="padding:1px 5px;font-size:.58rem;font-family:Courier New,monospace;
-                   background:transparent;border:1px solid #2a2a2a;color:#555;
+            style="padding:1px 6px;font-size:.6rem;font-family:Courier New,monospace;
+                   background:transparent;border:1px solid #383838;color:#888;
                    cursor:pointer;border-radius:2px;letter-spacing:.05em;transition:all .15s;">COARSE</button>
-          <span class="ctrl-val" id="pitch-semi-val" data-value="0" style="min-width:42px;">0</span>
+          <span class="ctrl-val" id="pitch-semi-val" data-value="0" style="margin-left:auto;font-size:.74rem;">0</span>
         </div>
-        <div style="display:flex;align-items:center;gap:5px;">
-          <label style="font-size:.67rem;letter-spacing:.12em;color:#999;">WIN</label>
-          <span class="ctrl-val" id="pitch-window-val" data-value="0.1" style="min-width:36px;">0.10s</span>
-        </div>
+        <input type="range" id="pitch-semi" min="-36" max="36" step="1" value="0"
+               oninput="setPitchSemi(this.value)" style="width:100%;">
       </div>
-      <!-- Row 3: Full-width semitone slider | window slider side by side -->
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-        <input type="range" id="pitch-semi" min="-24" max="24" step="1" value="0"
-               oninput="setPitchSemi(this.value)" style="flex:1;">
+      <!-- WINDOW: label + value on top, slider below -->
+      <div style="margin-bottom:9px;">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
+          <label style="font-size:.68rem;letter-spacing:.12em;color:#aaa;">WINDOW (latency)</label>
+          <span class="ctrl-val" id="pitch-window-val" data-value="0.1" style="font-size:.72rem;">0.10s</span>
+        </div>
         <input type="range" id="pitch-window" min="0.01" max="0.5" step="0.01" value="0.1"
-               oninput="setPitchWindow(this.value)" style="width:64px;flex-shrink:0;">
+               oninput="setPitchWindow(this.value)" style="width:100%;">
       </div>
-      <!-- Row 4: Wet/Dry -->
-      <div class="ctrl" style="margin-bottom:0;">
-        <label>WET / DRY</label>
-        <div class="ctrl-row">
-          <input type="range" id="pitch-wetdry" min="0" max="1" step="0.01" value="0.5" oninput="setPitchWetDry(this.value)">
-          <span class="ctrl-val" id="pitch-wetdry-val">50%</span>
+      <!-- WET/DRY: label + value on top, slider below -->
+      <div style="margin-bottom:0;">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
+          <label style="font-size:.68rem;letter-spacing:.12em;color:#aaa;">WET / DRY</label>
+          <span class="ctrl-val" id="pitch-wetdry-val" style="font-size:.72rem;">50%</span>
         </div>
+        <input type="range" id="pitch-wetdry" min="0" max="1" step="0.01" value="0.5"
+               oninput="setPitchWetDry(this.value)" style="width:100%;">
       </div>
     </div>
 
@@ -528,48 +522,46 @@ input.vfader::-webkit-slider-thumb {
         <button class="byp-btn" id="delay-bypass-btn" onclick="toggleFxBypass('delay')">ON</button>
       </div>
       <!-- Feedback SVG removed — will return as draggable port when ports system is built -->
-      <!-- Time: label+value above, full-width slider below -->
-      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
-        <label style="font-size:.67rem;letter-spacing:.12em;color:#999;">TIME (log)</label>
-        <span class="ctrl-val" id="delay-time-val" data-value="0.5">0.50s</span>
+      <!-- TIME -->
+      <div style="margin-bottom:9px;">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
+          <label style="font-size:.68rem;letter-spacing:.12em;color:#aaa;">TIME (log scale)</label>
+          <span class="ctrl-val" id="delay-time-val" data-value="0.5" style="font-size:.72rem;">0.50s</span>
+        </div>
+        <input type="range" id="delay-time" min="0" max="1000" step="1" value="340"
+               oninput="setDelayTimePos(this.value)" style="width:100%;">
       </div>
-      <input type="range" id="delay-time" min="0" max="1000" step="1" value="340"
-             oninput="setDelayTimePos(this.value)" style="width:100%;margin-bottom:10px;">
-      <div style="display:flex;gap:14px;">
-        <div style="flex:1;min-width:0;">
-          <div class="ctrl">
-            <label>FEEDBACK</label>
-            <div class="ctrl-row">
-              <input type="range" id="delay-fb" min="0" max="1.5" step="0.01" value="0.3" oninput="setFeedback(this.value)">
-              <span class="ctrl-val" id="delay-fb-val">30%</span>
-            </div>
-            <div class="danger-zone" id="fb-danger">⚠ RUNAWAY!</div>
-          </div>
+      <!-- FEEDBACK -->
+      <div style="margin-bottom:9px;">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
+          <label style="font-size:.68rem;letter-spacing:.12em;color:#aaa;">FEEDBACK</label>
+          <span class="ctrl-val" id="delay-fb-val" style="font-size:.72rem;">30%</span>
         </div>
-        <div style="flex:1;min-width:0;">
-          <div class="ctrl">
-            <label>DRY MIX</label>
-            <div class="ctrl-row">
-              <input type="range" id="delay-dry" min="0" max="1" step="0.01" value="1" oninput="setDelayDry(this.value)">
-              <span class="ctrl-val" id="delay-dry-val">100%</span>
-            </div>
-          </div>
-          <div class="ctrl">
-            <label>WET MIX</label>
-            <div class="ctrl-row">
-              <input type="range" id="delay-wet" min="0" max="1" step="0.01" value="0.4" oninput="setDelayWet(this.value)">
-              <span class="ctrl-val" id="delay-wet-val">40%</span>
-            </div>
-          </div>
+        <input type="range" id="delay-fb" min="0" max="1.5" step="0.01" value="0.3"
+               oninput="setFeedback(this.value)" style="width:100%;">
+        <div class="danger-zone" id="fb-danger">⚠ RUNAWAY — reduce feedback!</div>
+      </div>
+      <!-- DRY MIX -->
+      <div style="margin-bottom:9px;">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
+          <label style="font-size:.68rem;letter-spacing:.12em;color:#aaa;">DRY MIX</label>
+          <span class="ctrl-val" id="delay-dry-val" style="font-size:.72rem;">100%</span>
         </div>
+        <input type="range" id="delay-dry" min="0" max="1" step="0.01" value="1"
+               oninput="setDelayDry(this.value)" style="width:100%;">
+      </div>
+      <!-- WET MIX -->
+      <div style="margin-bottom:0;">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
+          <label style="font-size:.68rem;letter-spacing:.12em;color:#aaa;">WET MIX</label>
+          <span class="ctrl-val" id="delay-wet-val" style="font-size:.72rem;">40%</span>
+        </div>
+        <input type="range" id="delay-wet" min="0" max="1" step="0.01" value="0.4"
+               oninput="setDelayWet(this.value)" style="width:100%;">
       </div>
     </div>
 
-    <!-- wire: delay → output -->
-    <svg class="wire-svg" width="26" height="60" viewBox="0 0 26 60" style="align-self:center;">
-      <path d="M0,32 C8,32 16,32 20,32" stroke="#c8a854" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-      <polygon points="20,29 26,32 20,35" fill="#c8a854"/>
-    </svg>
+    <!-- port connection — wire removed, port nodes coming later -->
 
     <!-- ════════ OUTPUTS COLUMN ════════ -->
     <div class="col-wrap">
@@ -640,10 +632,10 @@ function togglePitchFine() {
   const btn = document.getElementById('pitch-fine-btn');
   const sl  = document.getElementById('pitch-semi');
   if (pitchFineMode) {
-    sl.min = '-24'; sl.max = '24'; sl.step = '0.01';
+    sl.min = '-36'; sl.max = '36'; sl.step = '0.01';
     btn.textContent = 'FINE'; btn.style.borderColor = '#5a5'; btn.style.color = '#5a5';
   } else {
-    sl.min = '-24'; sl.max = '24'; sl.step = '1';
+    sl.min = '-36'; sl.max = '36'; sl.step = '1';
     const cur = parseFloat(sl.value);
     sl.value = Math.round(cur);
     btn.textContent = 'COARSE'; btn.style.borderColor = ''; btn.style.color = '';
@@ -972,7 +964,7 @@ function setPitchSemi(v){
   document.getElementById('pitch-semi-val').textContent=disp;
   document.getElementById('pitch-semi-val').dataset.value=st;
 }
-function setPitchHz(hz){const st=hzToSemi(Math.max(1,parseFloat(hz))); document.getElementById('pitch-semi').value=st; setPitchSemi(st);}
+function setPitchHz(hz){const st=Math.max(-36,Math.min(36,hzToSemi(Math.max(1,parseFloat(hz))))); document.getElementById('pitch-semi').value=st; setPitchSemi(st);}
 function setPitchWindow(v){if(pitchShift)pitchShift.windowSize=parseFloat(v); document.getElementById('pitch-window-val').textContent=parseFloat(v).toFixed(2)+'s';}
 function setPitchType(v){document.getElementById('pitch-window').value=v; setPitchWindow(v);}
 function setPitchWetDry(v){
