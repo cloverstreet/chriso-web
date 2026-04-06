@@ -95,24 +95,39 @@ body {
 
 /* Module header: title + bypass inline */
 .mod-head {
-  display:flex; align-items:center;
-  justify-content:space-between;
+  display:flex; align-items:center; gap:6px;
   margin-bottom:9px; padding-bottom:7px;
   border-bottom:1px solid #1e1e1e;
 }
 .mod-title {
-  font-size:.66rem; letter-spacing:.22em; color:#888;
-  text-transform:uppercase;
+  font-size:.7rem; letter-spacing:.18em; color:#999;
+  text-transform:uppercase; flex-shrink:0;
 }
+/* Bypass button — left of title */
 .byp-btn {
-  padding:1px 6px; background:transparent;
-  border:1px solid #2a2a2a; color:#444;
-  font-family:'Courier New',monospace; font-size:.58rem;
-  letter-spacing:.1em; cursor:pointer; border-radius:2px;
-  transition:all .15s; white-space:nowrap;
+  padding:2px 7px; background:transparent;
+  border:1px solid #2a2a2a; color:#555;
+  font-family:'Courier New',monospace; font-size:.65rem;
+  font-weight:400; letter-spacing:.08em; cursor:pointer;
+  border-radius:2px; transition:all .15s; white-space:nowrap;
+  flex-shrink:0;
 }
-.byp-btn.on  { border-color:#c8a854; color:#c8a854; background:rgba(200,168,84,.08); }
-.byp-btn.muted { border-color:#6e2a2a; color:#a55; background:#160808; }
+.byp-btn.bypassed { border-color:#c8a854; color:#c8a854; background:rgba(200,168,84,.08); }
+.byp-btn.muted    { border-color:#6e2a2a; color:#c05050; background:rgba(100,30,30,.15); }
+/* Preset slots row in header */
+.head-presets {
+  display:flex; gap:2px; margin-left:auto; flex-shrink:0;
+}
+.head-preset-slot {
+  width:18px; height:18px; background:transparent;
+  border:1px solid #1e1e1e; color:#2e2e2e;
+  font-family:'Courier New',monospace; font-size:.6rem;
+  cursor:pointer; border-radius:2px; transition:all .1s;
+  text-align:center; line-height:18px; padding:0;
+}
+.head-preset-slot.saved { border-color:#2e4a2e; color:#4a7; }
+.head-preset-slot:hover { border-color:#444; color:#888; }
+.head-preset-slot.saved:hover { border-color:#5a5; }
 
 /* ── Controls ───────────────────────────────────────────────────── */
 .ctrl { margin-bottom:8px; }
@@ -270,8 +285,8 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
       <!-- MIC INPUT module -->
       <div class="module half" id="mic-module">
         <div class="mod-head">
-          <span class="mod-title">MIC INPUT</span>
           <button class="byp-btn" id="input-mute" onclick="toggleMute('input')">LIVE</button>
+          <span class="mod-title">MIC INPUT</span>
         </div>
         <div class="ctrl">
           <label>DEVICE</label>
@@ -303,8 +318,8 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
       <!-- SIGNAL GENERATOR module -->
       <div class="module half" id="siggen-module">
         <div class="mod-head">
-          <span class="mod-title">SIG GEN</span>
           <button class="byp-btn" id="test-enable-btn" onclick="toggleTestTone()">OFF</button>
+          <span class="mod-title">SIG GEN</span>
         </div>
         <div class="ctrl">
           <label>WAVEFORM</label>
@@ -339,29 +354,53 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
           <div class="mini-meter-bar"><div class="mini-meter-fill" id="test-m-r" style="height:0%"></div></div>
         </div>
         <div class="mini-meter-db" id="test-db">—</div>
-        <!-- System audio capture -->
-        <hr class="div">
-        <button class="toggle-btn" id="sys-audio-btn" onclick="toggleSystemAudio()"
-          title="macOS: choose a Chrome Tab for audio" style="font-size:.6rem;letter-spacing:.08em;">
-          CAPTURE TAB AUDIO (?)
+
+      </div>
+
+
+      <!-- TAB/BROWSER CAPTURE module -->
+      <div class="module half" id="capture-module">
+        <div class="mod-head">
+          <button class="byp-btn" id="sys-audio-btn" onclick="toggleSystemAudio()">OFF</button>
+          <span class="mod-title">TAB CAPTURE</span>
+        </div>
+        <div style="font-size:.65rem;color:#555;line-height:1.5;margin-bottom:8px;">
+          Capture audio from a browser tab or system output. On macOS, choose a Chrome Tab for audio.
+        </div>
+        <button class="toggle-btn" id="sys-audio-label-btn" onclick="toggleSystemAudio()"
+          style="font-size:.65rem;letter-spacing:.08em;">
+          CLICK TO SELECT SOURCE
         </button>
+        <div class="mini-meter-wrap" style="margin-top:6px;">
+          <div class="mini-meter-bar"><div class="mini-meter-fill" id="sys-m-l" style="height:0%"></div></div>
+          <div class="mini-meter-bar"><div class="mini-meter-fill" id="sys-m-r" style="height:0%"></div></div>
+        </div>
+        <div class="mini-meter-db" id="sys-db">—</div>
       </div>
 
     </div><!-- end inputs col-wrap -->
 
     <!-- wire: inputs → pitch -->
-    <svg class="wire-svg" width="22" height="60" viewBox="0 0 22 60" style="align-self:center;">
-      <path d="M0,30 C8,30 14,33 22,33" stroke="#c8a854" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <svg class="wire-svg" width="26" height="60" viewBox="0 0 26 60" style="align-self:center;">
+      <path d="M0,30 C8,30 16,32 20,32" stroke="#c8a854" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+      <polygon points="20,29 26,32 20,35" fill="#c8a854"/>
     </svg>
 
     <!-- ════════ PITCH SHIFT (double wide) ════════ -->
     <div class="module wide" id="pitch-module">
       <div class="mod-head">
+        <button class="byp-btn" id="pitch-bypass-btn" onclick="toggleFxBypass('pitch')">ENABLED</button>
         <span class="mod-title">PITCH SHIFT</span>
-        <button class="byp-btn" id="pitch-bypass-btn" onclick="toggleFxBypass('pitch')">BYP</button>
+        <div class="head-presets" id="pitch-head-presets">
+          <button class="head-preset-slot" data-slot="0" data-fx="pitch" onclick="handleHeadPreset(this)">1</button>
+          <button class="head-preset-slot" data-slot="1" data-fx="pitch" onclick="handleHeadPreset(this)">2</button>
+          <button class="head-preset-slot" data-slot="2" data-fx="pitch" onclick="handleHeadPreset(this)">3</button>
+          <button class="head-preset-slot" data-slot="3" data-fx="pitch" onclick="handleHeadPreset(this)">4</button>
+          <button class="head-preset-slot" data-slot="4" data-fx="pitch" onclick="handleHeadPreset(this)">5</button>
+          <button class="head-preset-slot" data-slot="5" data-fx="pitch" onclick="handleHeadPreset(this)">6</button>
+        </div>
       </div>
-      <div style="display:flex;gap:16px;">
-        <!-- Left: controls -->
+      <div style="display:flex;gap:14px;">
         <div style="flex:1;min-width:0;">
           <div class="ctrl">
             <label>TYPE</label>
@@ -371,13 +410,6 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
               <option value="0.25">Phase Vocoder — Quality</option>
               <option value="0.5">Phase Vocoder — HQ</option>
             </select>
-          </div>
-          <div class="ctrl">
-            <label>WINDOW (latency)</label>
-            <div class="ctrl-row">
-              <input type="range" id="pitch-window" min="0.01" max="0.5" step="0.01" value="0.1" oninput="setPitchWindow(this.value)">
-              <span class="ctrl-val" id="pitch-window-val" data-value="0.1">0.10s</span>
-            </div>
           </div>
           <div class="ctrl">
             <label>SEMITONES</label>
@@ -393,9 +425,6 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
               <span class="editable-val" id="pitch-hz-val" data-value="440">440.00 Hz</span>
             </div>
           </div>
-        </div>
-        <!-- Right: wet/dry + presets -->
-        <div style="flex:1;min-width:0;">
           <div class="ctrl">
             <label>WET / DRY</label>
             <div class="ctrl-row">
@@ -403,8 +432,15 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
               <span class="ctrl-val" id="pitch-wetdry-val">50%</span>
             </div>
           </div>
-          <div class="preset-row" id="pitch-presets"></div>
-          <div class="preset-hint">click: load · shift: save</div>
+        </div>
+        <div style="flex:0 0 auto;">
+          <div class="ctrl">
+            <label>WINDOW</label>
+            <div class="ctrl-row" style="flex-direction:column;align-items:flex-end;gap:2px;">
+              <input type="range" id="pitch-window" min="0.01" max="0.5" step="0.01" value="0.1" oninput="setPitchWindow(this.value)" style="writing-mode:vertical-lr;height:80px;width:18px;direction:rtl;">
+              <span class="ctrl-val" id="pitch-window-val" data-value="0.1" style="font-size:.62rem;">0.10s</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -417,29 +453,27 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
     <!-- ════════ DELAY (double wide) ════════ -->
     <div class="module wide" id="delay-module">
       <div class="mod-head">
+        <button class="byp-btn" id="delay-bypass-btn" onclick="toggleFxBypass('delay')">ENABLED</button>
         <span class="mod-title">DELAY</span>
-        <button class="byp-btn" id="delay-bypass-btn" onclick="toggleFxBypass('delay')">BYP</button>
+        <div class="head-presets" id="delay-head-presets">
+          <button class="head-preset-slot" data-slot="0" data-fx="delay" onclick="handleHeadPreset(this)">1</button>
+          <button class="head-preset-slot" data-slot="1" data-fx="delay" onclick="handleHeadPreset(this)">2</button>
+          <button class="head-preset-slot" data-slot="2" data-fx="delay" onclick="handleHeadPreset(this)">3</button>
+          <button class="head-preset-slot" data-slot="3" data-fx="delay" onclick="handleHeadPreset(this)">4</button>
+          <button class="head-preset-slot" data-slot="4" data-fx="delay" onclick="handleHeadPreset(this)">5</button>
+          <button class="head-preset-slot" data-slot="5" data-fx="delay" onclick="handleHeadPreset(this)">6</button>
+        </div>
       </div>
-      <!-- Feedback arc -->
-      <svg class="fb-svg" height="28" viewBox="0 0 298 28">
-        <path d="M272,24 C272,6 150,2 149,2 C148,2 26,6 26,24"
-              stroke="#a854c8" stroke-width="2" fill="none" stroke-linecap="round"/>
-        <line x1="272" y1="24" x2="272" y2="28" stroke="#a854c8" stroke-width="2"/>
-        <line x1="26"  y1="24" x2="26"  y2="28" stroke="#a854c8" stroke-width="2"/>
-        <text x="149" y="14" text-anchor="middle" font-family="Courier New" font-size="8" fill="#a854c8" letter-spacing="3">FEEDBACK</text>
-        <text x="272" y="11" text-anchor="middle" font-family="Courier New" font-size="6" fill="#7a3a9a">OUT</text>
-        <text x="26"  y="11" text-anchor="middle" font-family="Courier New" font-size="6" fill="#7a3a9a">IN</text>
-      </svg>
-      <div style="display:flex;gap:16px;">
-        <!-- Left: time + feedback -->
+      <!-- Feedback SVG removed — will return as draggable port when ports system is built -->
+      <div class="ctrl">
+        <label>TIME (log scale)</label>
+        <div class="ctrl-row">
+          <input type="range" id="delay-time" min="0" max="1000" step="1" value="340" oninput="setDelayTimePos(this.value)">
+          <span class="ctrl-val" id="delay-time-val" data-value="0.5">0.50s</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:14px;">
         <div style="flex:1;min-width:0;">
-          <div class="ctrl">
-            <label>TIME (log)</label>
-            <div class="ctrl-row">
-              <input type="range" id="delay-time" min="0" max="1000" step="1" value="340" oninput="setDelayTimePos(this.value)">
-              <span class="ctrl-val" id="delay-time-val" data-value="0.5">0.50s</span>
-            </div>
-          </div>
           <div class="ctrl">
             <label>FEEDBACK</label>
             <div class="ctrl-row">
@@ -449,7 +483,6 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
             <div class="danger-zone" id="fb-danger">⚠ RUNAWAY!</div>
           </div>
         </div>
-        <!-- Right: dry/wet + presets -->
         <div style="flex:1;min-width:0;">
           <div class="ctrl">
             <label>DRY MIX</label>
@@ -465,15 +498,14 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
               <span class="ctrl-val" id="delay-wet-val">40%</span>
             </div>
           </div>
-          <div class="preset-row" id="delay-presets"></div>
-          <div class="preset-hint">click: load · shift: save</div>
         </div>
       </div>
     </div>
 
     <!-- wire: delay → output -->
-    <svg class="wire-svg" width="22" height="60" viewBox="0 0 22 60" style="align-self:center;">
-      <path d="M0,30 C8,30 14,33 22,33" stroke="#c8a854" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <svg class="wire-svg" width="26" height="60" viewBox="0 0 26 60" style="align-self:center;">
+      <path d="M0,32 C8,32 16,32 20,32" stroke="#c8a854" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+      <polygon points="20,29 26,32 20,35" fill="#c8a854"/>
     </svg>
 
     <!-- ════════ OUTPUTS COLUMN ════════ -->
@@ -483,8 +515,8 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
       <!-- OUTPUT module -->
       <div class="module half" id="output-module">
         <div class="mod-head">
+          <button class="byp-btn" id="output-mute" onclick="toggleMute('output')">LIVE</button>
           <span class="mod-title">OUTPUT</span>
-          <button class="byp-btn muted" id="output-mute" onclick="toggleMute('output')">LIVE</button>
         </div>
         <div class="ctrl">
           <label>DEVICE</label>
@@ -869,16 +901,14 @@ function setDelayWet(v){if(!delayBypassed&&delayWetGain)delayWetGain.gain.rampTo
 
 // ── Preset system ─────────────────────────────────────────────────
 function buildPresetSlots(){
-  ['pitch','delay'].forEach(fx=>{
-    const row=document.getElementById(fx+'-presets'); row.innerHTML='';
-    for(let i=0;i<8;i++){
-      const b=document.createElement('button'); b.className='preset-slot'; b.dataset.slot=i; b.textContent=i+1;
-      b.addEventListener('click',e=>{if(e.shiftKey)saveFxPreset(fx,i);else loadFxPreset(fx,i);});
-      row.appendChild(b);
-    }
-  });
-  // Global slots
+  // Presets now live in module headers — just init UI state
   loadPresetUI();
+}
+function handleHeadPreset(btn) {
+  const slot = parseInt(btn.dataset.slot);
+  const fx   = btn.dataset.fx;
+  if (event.shiftKey) { saveFxPreset(fx, slot); }
+  else                { loadFxPreset(fx, slot); }
 }
 function getFxState(fx){
   if(fx==='pitch') return {window:parseFloat(document.getElementById('pitch-window').value),semi:parseFloat(document.getElementById('pitch-semi').value),wetdry:parseFloat(document.getElementById('pitch-wetdry').value)};
@@ -928,11 +958,15 @@ function handleGlobalPreset(btn){
 }
 function loadPresetUI(){
   ['pitch','delay'].forEach(fx=>{
-    const slots=document.querySelectorAll(`#${fx}-presets .preset-slot`);
+    const slots=document.querySelectorAll(`#${fx}-head-presets .head-preset-slot`);
     slots.forEach((b,i)=>{b.classList.toggle('saved',!!localStorage.getItem(`fx_${fx}_${i}`));});
   });
   document.querySelectorAll('#global-preset-bar .global-slot').forEach(b=>{
     b.classList.toggle('saved',!!localStorage.getItem('fx_global_'+b.dataset.slot));
+  });
+  // Update ps-slot buttons
+  document.querySelectorAll('#ps-slots .ps-slot-btn').forEach((b,i)=>{
+    b.classList.toggle('placed',!!(psData[i] && psData[i].x !== undefined));
   });
 }
 
@@ -1197,48 +1231,63 @@ function psRedraw() {
     ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(psCursor.x, psCursor.y, 60, 0, Math.PI*2); ctx.fill();
   }
 
-  // Draw preset circles
+  // Draw ONLY placed presets
   for (let i = 0; i < PS_SLOTS; i++) {
-    const pos = psGetPos(i, W, H, defaults);
-    if (!pos) continue;
-    const isPlaced   = !!(psData[i] && psData[i].x !== undefined);
+    if (!psData[i] || psData[i].x === undefined) continue; // skip unplaced
+    const pos = { x: psData[i].x * W, y: psData[i].y * H };
     const isSelected = i === psSelected;
-    const isCursorNear = psCursor && Math.sqrt((psCursor.x-pos.x)**2+(psCursor.y-pos.y)**2) < PS_R*2.5;
+    const dist = psCursor ? Math.sqrt((psCursor.x-pos.x)**2+(psCursor.y-pos.y)**2) : Infinity;
+    const isCursorNear = dist < PS_R * 3;
+    const brightness = Math.max(0, 1 - dist / (W * 0.4));
 
-    // Circle fill
-    if (isPlaced) {
-      ctx.fillStyle = isCursorNear ? 'rgba(200,168,84,0.28)' : 'rgba(200,168,84,0.12)';
-    } else {
-      ctx.fillStyle = 'rgba(40,40,40,0.8)';
-    }
+    // Glow halo
+    const grad = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, W * 0.28);
+    grad.addColorStop(0, `rgba(200,168,84,${0.06 + brightness*0.08})`);
+    grad.addColorStop(1, 'rgba(200,168,84,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(pos.x, pos.y, W*0.28, 0, Math.PI*2); ctx.fill();
+
+    // Blob fill
+    ctx.fillStyle = isCursorNear
+      ? `rgba(200,168,84,${0.22 + brightness*0.2})`
+      : `rgba(200,168,84,0.1)`;
     ctx.beginPath(); ctx.arc(pos.x, pos.y, PS_R, 0, Math.PI*2); ctx.fill();
 
-    // Circle border
+    // Blob border
     ctx.lineWidth = isSelected ? 2 : 1;
-    ctx.strokeStyle = isSelected ? '#c8a854' : (isPlaced ? '#6a6a3a' : '#333');
+    ctx.strokeStyle = isSelected ? '#e8c874' : '#6a6a3a';
     ctx.beginPath(); ctx.arc(pos.x, pos.y, PS_R, 0, Math.PI*2); ctx.stroke();
-    if (!isPlaced) {
-      // Dashed for unplaced
-      ctx.setLineDash([3,3]); ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(pos.x, pos.y, PS_R, 0, Math.PI*2); ctx.stroke();
-      ctx.setLineDash([]);
-    }
 
-    // Number label
-    ctx.fillStyle = isPlaced ? (isCursorNear ? '#c8a854' : '#8a7a3a') : '#333';
-    ctx.font = `${isSelected?'bold ':''} 11px "Courier New"`;
+    // Number
+    ctx.fillStyle = isCursorNear ? '#e8c874' : '#9a8a4a';
+    ctx.font = `${isSelected?'bold ':''} 12px "Courier New"`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(i + 1, pos.x, pos.y);
   }
 
-  // Draw cursor
+  // Draw navigator — larger, more distinctive diamond+circle
   if (psCursor) {
     const {x, y} = psCursor;
-    ctx.strokeStyle = 'rgba(100,160,255,0.9)'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(x-10,y); ctx.lineTo(x+10,y); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(x,y-10); ctx.lineTo(x,y+10); ctx.stroke();
-    ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI*2); ctx.stroke();
-    ctx.fillStyle = 'rgba(100,160,255,0.2)'; ctx.fill();
+    const r = 9;
+    // Outer ring
+    ctx.strokeStyle = 'rgba(80,180,255,0.9)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.stroke();
+    // Diamond
+    ctx.beginPath();
+    ctx.moveTo(x, y-r-5); ctx.lineTo(x+r+5, y);
+    ctx.lineTo(x, y+r+5); ctx.lineTo(x-r-5, y);
+    ctx.closePath();
+    ctx.strokeStyle = 'rgba(80,180,255,0.5)'; ctx.lineWidth = 1;
+    ctx.stroke();
+    // Fill inner
+    ctx.fillStyle = 'rgba(80,180,255,0.15)';
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill();
+    // Cross lines (extending)
+    ctx.strokeStyle = 'rgba(80,180,255,0.4)'; ctx.lineWidth = 0.75;
+    ctx.setLineDash([3,4]);
+    ctx.beginPath(); ctx.moveTo(x-30,y); ctx.lineTo(x-r,y); ctx.moveTo(x+r,y); ctx.lineTo(x+30,y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x,y-30); ctx.lineTo(x,y-r); ctx.moveTo(x,y+r); ctx.lineTo(x,y+30); ctx.stroke();
+    ctx.setLineDash([]);
   }
 }
 
