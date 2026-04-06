@@ -261,6 +261,41 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
   cursor:crosshair; display:block;
   width:min(40vh,72vw); height:min(40vh,72vw);
 }
+
+/* ── Vertical fader + gain bar (for input modules) ─────────────── */
+.vfader-wrap {
+  display:flex; gap:4px; align-items:flex-end;
+  height:70px; flex-shrink:0;
+}
+.vfader-track {
+  display:flex; flex-direction:column; align-items:center;
+  height:100%; gap:2px;
+}
+.vfader-label { font-size:.56rem; color:#555; letter-spacing:.1em; }
+.vfader-val { font-size:.6rem; color:#c8a854; text-align:center; min-width:32px; }
+input.vfader {
+  -webkit-appearance:none; writing-mode:vertical-lr; direction:rtl;
+  width:14px; flex:1; background:#2a2a2a; outline:none;
+  border-radius:2px; cursor:pointer;
+}
+input.vfader::-webkit-slider-thumb {
+  -webkit-appearance:none; width:22px; height:8px;
+  background:#c8a854; border-radius:2px; cursor:pointer;
+}
+/* Vertical gain bar (mirror of horizontal meter, but vertical) */
+.vgainbar {
+  width:5px; height:100%; background:#111;
+  border-radius:2px; overflow:hidden;
+  display:flex; flex-direction:column; justify-content:flex-end;
+}
+.vgainbar-fill {
+  width:100%; background:linear-gradient(to top,#2a7a2a,#7ab02a,#c8a854);
+  transition:height .06s; border-radius:2px 2px 0 0;
+}
+.vgainbar-peak {
+  position:relative; width:5px; background:transparent;
+}
+
 </style>
 </head>
 <body>
@@ -306,8 +341,8 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
       <!-- MIC INPUT module -->
       <div class="module half" id="mic-module">
         <div class="mod-head">
-          <button class="byp-btn" id="input-mute" onclick="toggleMute('input')">LIVE</button>
           <span class="mod-title">MIC INPUT</span>
+          <button class="byp-btn" id="input-mute" onclick="toggleMute('input')">ON</button>
         </div>
         <div class="ctrl">
           <label>DEVICE</label>
@@ -322,11 +357,15 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
           </select>
           <div class="ch-note" id="ch-note"></div>
         </div>
-        <div class="ctrl">
-          <label>GAIN</label>
-          <div class="ctrl-row">
-            <input type="range" id="input-gain-db" min="-60" max="12" step="0.5" value="0" oninput="setInputGainDb(this.value)">
-            <span class="ctrl-val" id="input-gain-val" data-value="0">0.0 dB</span>
+        <!-- Vertical fader + meter side by side -->
+        <div style="display:flex;gap:6px;align-items:flex-end;margin-bottom:6px;">
+          <div class="vfader-track">
+            <span class="vfader-label">GAIN</span>
+            <input class="vfader" type="range" id="input-gain-db" min="-60" max="12" step="0.5" value="0" oninput="setInputGainDb(this.value)">
+            <span class="vfader-val" id="input-gain-val" data-value="0">0dB</span>
+          </div>
+          <div class="vgainbar" id="mic-vbar">
+            <div class="vgainbar-fill" id="mic-vbar-fill" style="height:0%"></div>
           </div>
         </div>
         <div class="mini-hmeter-wrap" id="mic-meter">
@@ -341,8 +380,8 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
       <!-- SIGNAL GENERATOR module -->
       <div class="module half" id="siggen-module">
         <div class="mod-head">
-          <button class="byp-btn" id="test-enable-btn" onclick="toggleTestTone()">OFF</button>
           <span class="mod-title">SIG GEN</span>
+          <button class="byp-btn off" id="test-enable-btn" onclick="toggleTestTone()">OFF</button>
         </div>
         <div class="ctrl">
           <label>WAVEFORM</label>
@@ -386,8 +425,8 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
       <!-- TAB/BROWSER CAPTURE module -->
       <div class="module half" id="capture-module">
         <div class="mod-head">
-          <button class="byp-btn" id="sys-audio-btn" onclick="toggleSystemAudio()">OFF</button>
           <span class="mod-title">TAB CAPTURE</span>
+          <button class="byp-btn off" id="sys-audio-btn" onclick="toggleSystemAudio()">OFF</button>
         </div>
         <div style="font-size:.65rem;color:#555;line-height:1.5;margin-bottom:8px;">
           Capture audio from a browser tab or system output. On macOS, choose a Chrome Tab for audio.
@@ -416,7 +455,6 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
     <!-- ════════ PITCH SHIFT (double wide) ════════ -->
     <div class="module wide" id="pitch-module">
       <div class="mod-head">
-        <button class="byp-btn" id="pitch-bypass-btn" onclick="toggleFxBypass('pitch')">ENABLED</button>
         <span class="mod-title">PITCH SHIFT</span>
         <div class="head-presets" id="pitch-head-presets">
           <button class="head-preset-slot" data-slot="0" data-fx="pitch" onclick="handleHeadPreset(this)">1</button>
@@ -426,48 +464,46 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
           <button class="head-preset-slot" data-slot="4" data-fx="pitch" onclick="handleHeadPreset(this)">5</button>
           <button class="head-preset-slot" data-slot="5" data-fx="pitch" onclick="handleHeadPreset(this)">6</button>
         </div>
+        <button class="byp-btn" id="pitch-bypass-btn" onclick="toggleFxBypass('pitch')">ON</button>
       </div>
-      <div style="display:flex;gap:14px;">
-        <div style="flex:1;min-width:0;">
-          <div class="ctrl">
-            <label>TYPE</label>
-            <select id="pitch-type" onchange="setPitchType(this.value)">
-              <option value="0.05">Phase Vocoder — Fast</option>
-              <option value="0.1" selected>Phase Vocoder — Std</option>
-              <option value="0.25">Phase Vocoder — Quality</option>
-              <option value="0.5">Phase Vocoder — HQ</option>
-            </select>
-          </div>
-          <div class="ctrl">
-            <label>SEMITONES</label>
-            <div class="ctrl-row">
-              <input type="range" id="pitch-semi" min="-24" max="24" step="0.1" value="0" oninput="setPitchSemi(this.value)">
-              <span class="ctrl-val" id="pitch-semi-val" data-value="0">0.0</span>
-            </div>
-          </div>
-          <div class="ctrl">
-            <label>HZ (ref A4)</label>
-            <div style="display:flex;gap:5px;align-items:center;margin-top:2px;">
-              <span class="display-val">440 → <span class="display-approx" id="pitch-approx"></span></span>
-              <span class="editable-val" id="pitch-hz-val" data-value="440">440.00 Hz</span>
-            </div>
-          </div>
-          <div class="ctrl">
-            <label>WET / DRY</label>
-            <div class="ctrl-row">
-              <input type="range" id="pitch-wetdry" min="0" max="1" step="0.01" value="0.5" oninput="setPitchWetDry(this.value)">
-              <span class="ctrl-val" id="pitch-wetdry-val">50%</span>
-            </div>
-          </div>
+      <!-- Row 1: Type selector -->
+      <div class="ctrl" style="margin-bottom:6px;">
+        <label>TYPE</label>
+        <select id="pitch-type" onchange="setPitchType(this.value)">
+          <option value="0.05">Phase Vocoder — Fast</option>
+          <option value="0.1" selected>Phase Vocoder — Std</option>
+          <option value="0.25">Phase Vocoder — Quality</option>
+          <option value="0.5">Phase Vocoder — HQ</option>
+        </select>
+      </div>
+      <!-- Row 2: Semitones label + coarse/fine + value | window label+value -->
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
+        <div style="display:flex;align-items:center;gap:5px;">
+          <label style="font-size:.67rem;letter-spacing:.12em;color:#999;">SEMITONES</label>
+          <button id="pitch-fine-btn" onclick="togglePitchFine()" title="Toggle coarse/fine"
+            style="padding:1px 5px;font-size:.58rem;font-family:Courier New,monospace;
+                   background:transparent;border:1px solid #2a2a2a;color:#555;
+                   cursor:pointer;border-radius:2px;letter-spacing:.05em;transition:all .15s;">COARSE</button>
+          <span class="ctrl-val" id="pitch-semi-val" data-value="0" style="min-width:42px;">0</span>
         </div>
-        <div style="flex:0 0 auto;">
-          <div class="ctrl">
-            <label>WINDOW</label>
-            <div class="ctrl-row" style="flex-direction:column;align-items:flex-end;gap:2px;">
-              <input type="range" id="pitch-window" min="0.01" max="0.5" step="0.01" value="0.1" oninput="setPitchWindow(this.value)" style="writing-mode:vertical-lr;height:80px;width:18px;direction:rtl;">
-              <span class="ctrl-val" id="pitch-window-val" data-value="0.1" style="font-size:.62rem;">0.10s</span>
-            </div>
-          </div>
+        <div style="display:flex;align-items:center;gap:5px;">
+          <label style="font-size:.67rem;letter-spacing:.12em;color:#999;">WIN</label>
+          <span class="ctrl-val" id="pitch-window-val" data-value="0.1" style="min-width:36px;">0.10s</span>
+        </div>
+      </div>
+      <!-- Row 3: Full-width semitone slider | window slider side by side -->
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <input type="range" id="pitch-semi" min="-24" max="24" step="1" value="0"
+               oninput="setPitchSemi(this.value)" style="flex:1;">
+        <input type="range" id="pitch-window" min="0.01" max="0.5" step="0.01" value="0.1"
+               oninput="setPitchWindow(this.value)" style="width:64px;flex-shrink:0;">
+      </div>
+      <!-- Row 4: Wet/Dry -->
+      <div class="ctrl" style="margin-bottom:0;">
+        <label>WET / DRY</label>
+        <div class="ctrl-row">
+          <input type="range" id="pitch-wetdry" min="0" max="1" step="0.01" value="0.5" oninput="setPitchWetDry(this.value)">
+          <span class="ctrl-val" id="pitch-wetdry-val">50%</span>
         </div>
       </div>
     </div>
@@ -480,7 +516,6 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
     <!-- ════════ DELAY (double wide) ════════ -->
     <div class="module wide" id="delay-module">
       <div class="mod-head">
-        <button class="byp-btn" id="delay-bypass-btn" onclick="toggleFxBypass('delay')">ENABLED</button>
         <span class="mod-title">DELAY</span>
         <div class="head-presets" id="delay-head-presets">
           <button class="head-preset-slot" data-slot="0" data-fx="delay" onclick="handleHeadPreset(this)">1</button>
@@ -490,15 +525,16 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
           <button class="head-preset-slot" data-slot="4" data-fx="delay" onclick="handleHeadPreset(this)">5</button>
           <button class="head-preset-slot" data-slot="5" data-fx="delay" onclick="handleHeadPreset(this)">6</button>
         </div>
+        <button class="byp-btn" id="delay-bypass-btn" onclick="toggleFxBypass('delay')">ON</button>
       </div>
       <!-- Feedback SVG removed — will return as draggable port when ports system is built -->
-      <div class="ctrl">
-        <label>TIME (log scale)</label>
-        <div class="ctrl-row">
-          <input type="range" id="delay-time" min="0" max="1000" step="1" value="340" oninput="setDelayTimePos(this.value)">
-          <span class="ctrl-val" id="delay-time-val" data-value="0.5">0.50s</span>
-        </div>
+      <!-- Time: label+value above, full-width slider below -->
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
+        <label style="font-size:.67rem;letter-spacing:.12em;color:#999;">TIME (log)</label>
+        <span class="ctrl-val" id="delay-time-val" data-value="0.5">0.50s</span>
       </div>
+      <input type="range" id="delay-time" min="0" max="1000" step="1" value="340"
+             oninput="setDelayTimePos(this.value)" style="width:100%;margin-bottom:10px;">
       <div style="display:flex;gap:14px;">
         <div style="flex:1;min-width:0;">
           <div class="ctrl">
@@ -542,8 +578,8 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
       <!-- OUTPUT module -->
       <div class="module half" id="output-module">
         <div class="mod-head">
-          <button class="byp-btn" id="output-mute" onclick="toggleMute('output')">LIVE</button>
           <span class="mod-title">OUTPUT</span>
+          <button class="byp-btn" id="output-mute" onclick="toggleMute('output')">ON</button>
         </div>
         <div class="ctrl">
           <label>DEVICE</label>
@@ -551,12 +587,15 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
             <option value="">Default (System)</option>
           </select>
         </div>
-        <div class="ctrl">
-          <label>GAIN</label>
-          <div class="ctrl-row">
-            <input type="range" id="output-gain-db" min="-60" max="12" step="0.5" value="0" oninput="setOutputGainDb(this.value)">
-            <span class="ctrl-val" id="output-gain-val" data-value="0">0.0 dB</span>
+        <div style="display:flex;gap:6px;align-items:flex-end;margin-bottom:6px;">
+          <div class="vfader-track">
+            <span class="vfader-label">GAIN</span>
+            <input class="vfader" type="range" id="output-gain-db" min="-60" max="12" step="0.5" value="0" oninput="setOutputGainDb(this.value)">
+            <span class="vfader-val" id="output-gain-val" data-value="0">0dB</span>
           </div>
+          <div class="vgainbar" id="out-vbar"><div class="vgainbar-fill" id="out-vbar-fill" style="height:0%"></div></div>
+        </div>
+        
         </div>
         <div class="hmeter-wrap" id="out-meter">
           <div class="hmeter-l" id="out-m-l" style="width:0%"></div>
@@ -594,6 +633,24 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
 </div><!-- end #board -->
 
 <script>
+// ── Pitch coarse/fine toggle ──────────────────────────────────────
+let pitchFineMode = false;
+function togglePitchFine() {
+  pitchFineMode = !pitchFineMode;
+  const btn = document.getElementById('pitch-fine-btn');
+  const sl  = document.getElementById('pitch-semi');
+  if (pitchFineMode) {
+    sl.min = '-24'; sl.max = '24'; sl.step = '0.01';
+    btn.textContent = 'FINE'; btn.style.borderColor = '#5a5'; btn.style.color = '#5a5';
+  } else {
+    sl.min = '-24'; sl.max = '24'; sl.step = '1';
+    const cur = parseFloat(sl.value);
+    sl.value = Math.round(cur);
+    btn.textContent = 'COARSE'; btn.style.borderColor = ''; btn.style.color = '';
+    setPitchSemi(sl.value);
+  }
+}
+
 
 // ── Helpers ─────────────────────────────────────────────────────
 const dbToGain = db => db <= -60 ? 0 : Math.pow(10, db / 20);
@@ -764,10 +821,10 @@ async function toggleSystemAudio(){
     systemStream.getTracks().forEach(t=>t.stop());
     systemStream=null; systemSource=null;
     sysNativeGain.gain.setTargetAtTime(0,rawCtx.currentTime,0.02);
-    btn.textContent='CAPTURE TAB AUDIO (?)'; btn.classList.remove('on');
+    btn.textContent='OFF'; btn.classList.remove('on');
     return;
   }
-  btn.textContent='... requesting ...'; btn.disabled=true;
+  btn.textContent='...'; btn.disabled=true;
   try {
     const ds=await navigator.mediaDevices.getDisplayMedia({audio:true, video:{width:1,height:1,frameRate:1}});
     ds.getVideoTracks().forEach(t=>t.stop()); // discard video
@@ -779,15 +836,15 @@ async function toggleSystemAudio(){
     sysNativeGain.gain.setTargetAtTime(1,rawCtx.currentTime,0.02);
     // Bridge native→Tone: connect to preFxGain's input node
     try { sysNativeGain.connect(preFxGain.input); } catch(e) { console.warn('sys audio bridge:',e); }
-    btn.textContent='SYS AUDIO ✓ (capturing)'; btn.classList.add('on'); btn.disabled=false;
+    btn.textContent='ON'; btn.classList.add('on'); btn.disabled=false;
     aTracks[0].addEventListener('ended',()=>{
       systemStream=null; systemSource=null;
       sysNativeGain.gain.setTargetAtTime(0,rawCtx.currentTime,0.02);
-      btn.textContent='CAPTURE TAB AUDIO (?)'; btn.classList.remove('on');
+      btn.textContent='OFF'; btn.classList.remove('on');
     });
   } catch(e){
-    btn.textContent='CANCELLED / DENIED'; btn.disabled=false;
-    setTimeout(()=>{btn.textContent='CAPTURE TAB AUDIO (?)';},2500);
+    btn.textContent='OFF'; btn.disabled=false;
+    setTimeout(()=>{btn.textContent='OFF';},2500);
   }
 }
 
@@ -801,7 +858,7 @@ function toggleTestTone(){
   testEnabled=!testEnabled;
   if(testMasterGainTone)testMasterGainTone.gain.rampTo(testEnabled?dbToGain(parseFloat(document.getElementById('test-gain-sl').value)):0,0.05);
   const btn=document.getElementById('test-enable-btn'); const tb=document.getElementById('test-enable-btn');
-  tb.textContent=testEnabled?'ENABLED':'OFF';
+  tb.textContent=testEnabled?'ON':'OFF';
   tb.classList.toggle('off',!testEnabled);
 }
 function setTestWave(wave){
@@ -830,8 +887,10 @@ function setTestFreqSemi(st){setTestFreqHz(semiToHz(parseFloat(st)));}
 function setTestGainDb(db){
   const v=parseFloat(db);
   if(testEnabled && testMasterGainTone) testMasterGainTone.gain.rampTo(dbToGain(v),0.05);
-  document.getElementById('test-gain-val').textContent=v.toFixed(1)+' dB';
+  const tpct=Math.max(0,Math.min(100,(v+60)/72*100));
+  document.getElementById('test-gain-val').textContent=Math.round(v)+'dB';
   document.getElementById('test-gain-val').dataset.value=v;
+  const tvb=document.getElementById('test-vbar-fill'); if(tvb)tvb.style.height=tpct+'%';
 }
 
 // ── Analyser RMS helper ──────────────────────────────────────────────
@@ -877,8 +936,8 @@ function animateMeters(){
 }
 
 function toggleMute(which){
-  if(which==='input'){inputMuted=!inputMuted; micGainNode.gain.rampTo(inputMuted?0:1,0.05); const b=document.getElementById('input-mute'); b.textContent=inputMuted?'MUTED':'LIVE'; b.classList.toggle('muted',inputMuted); b.classList.toggle('off',false);}
-  else{outputMuted=!outputMuted; outputMuteNode.gain.rampTo(outputMuted?0:1,0.05); const b=document.getElementById('output-mute'); b.textContent=outputMuted?'MUTED':'LIVE'; b.classList.toggle('muted',outputMuted);}
+  if(which==='input'){inputMuted=!inputMuted; micGainNode.gain.rampTo(inputMuted?0:1,0.05); const b=document.getElementById('input-mute'); b.textContent=inputMuted?'OFF':'ON'; b.classList.toggle('muted',inputMuted);}
+  else{outputMuted=!outputMuted; outputMuteNode.gain.rampTo(outputMuted?0:1,0.05); const b=document.getElementById('output-mute'); b.textContent=outputMuted?'OFF':'ON'; b.classList.toggle('muted',outputMuted);}
 }
 
 // ── Per-FX bypass ─────────────────────────────────────────────────
@@ -889,28 +948,29 @@ function toggleFxBypass(fx){
     if(pitchBypassed){pitchDryG.gain.rampTo(1,r);pitchWetG.gain.rampTo(0,r);}
     else{const wd=parseFloat(document.getElementById('pitch-wetdry').value); pitchWetG.gain.rampTo(wd,r); pitchDryG.gain.rampTo(1-wd,r);}
     const pb=document.getElementById('pitch-bypass-btn');
-    pb.textContent=pitchBypassed?'BYPASSED':'ENABLED';
+    pb.textContent=pitchBypassed?'OFF':'ON';
     pb.classList.toggle('bypassed',pitchBypassed);
   } else {
     delayBypassed=!delayBypassed;
     if(delayBypassed){delayDryGain.gain.rampTo(1,r);delayWetGain.gain.rampTo(0,r);}
     else{delayDryGain.gain.rampTo(parseFloat(document.getElementById('delay-dry').value),r); delayWetGain.gain.rampTo(parseFloat(document.getElementById('delay-wet').value),r);}
     const db=document.getElementById('delay-bypass-btn');
-    db.textContent=delayBypassed?'BYPASSED':'ENABLED';
+    db.textContent=delayBypassed?'OFF':'ON';
     db.classList.toggle('bypassed',delayBypassed);
   }
 }
 
 // ── Parameter setters ─────────────────────────────────────────────
-function setInputGainDb(db){if(micGainNode)micGainNode.gain.rampTo(dbToGain(parseFloat(db)),0.05); const el=document.getElementById('input-gain-val'); el.textContent=parseFloat(db).toFixed(1)+' dB'; el.dataset.value=db;}
-function setOutputGainDb(db){if(outputGainNode)outputGainNode.gain.rampTo(dbToGain(parseFloat(db)),0.05); const el=document.getElementById('output-gain-val'); el.textContent=parseFloat(db).toFixed(1)+' dB'; el.dataset.value=db;}
+function setInputGainDb(db){if(micGainNode)micGainNode.gain.rampTo(dbToGain(parseFloat(db)),0.05); const v=parseFloat(db); const pct=Math.max(0,Math.min(100,(v+60)/72*100)); const el=document.getElementById('input-gain-val'); el.textContent=Math.round(v)+'dB'; el.dataset.value=v; const vb=document.getElementById('mic-vbar-fill'); if(vb)vb.style.height=pct+'%';}
+function setOutputGainDb(db){if(outputGainNode)outputGainNode.gain.rampTo(dbToGain(parseFloat(db)),0.05); const v=parseFloat(db); const pct=Math.max(0,Math.min(100,(v+60)/72*100)); const el=document.getElementById('output-gain-val'); el.textContent=Math.round(v)+'dB'; el.dataset.value=v; const vb=document.getElementById('out-vbar-fill'); if(vb)vb.style.height=pct+'%';}
 
 function setPitchSemi(v){
   const st=parseFloat(v); if(pitchShift)pitchShift.pitch=st;
-  document.getElementById('pitch-semi-val').textContent=(st>=0?'+':'')+st.toFixed(1); document.getElementById('pitch-semi-val').dataset.value=st;
-  const hz=semiToHz(st); const exact=Math.abs(st-Math.round(st))<0.05;
-  document.getElementById('pitch-approx').textContent=exact?'':' ≈';
-  const hel=document.getElementById('pitch-hz-val'); hel.textContent=hz.toFixed(2)+' Hz'; hel.dataset.value=hz;
+  const disp = pitchFineMode
+    ? (st>=0?'+':'')+st.toFixed(2)   // fine: 2dp = cents display
+    : (st>=0?'+':'')+Math.round(st); // coarse: integer semitones
+  document.getElementById('pitch-semi-val').textContent=disp;
+  document.getElementById('pitch-semi-val').dataset.value=st;
 }
 function setPitchHz(hz){const st=hzToSemi(Math.max(1,parseFloat(hz))); document.getElementById('pitch-semi').value=st; setPitchSemi(st);}
 function setPitchWindow(v){if(pitchShift)pitchShift.windowSize=parseFloat(v); document.getElementById('pitch-window-val').textContent=parseFloat(v).toFixed(2)+'s';}
@@ -1067,7 +1127,6 @@ function setupEditables(){
   makeEditable(document.getElementById('output-gain-val'),{min:-60,max:12,slider:document.getElementById('output-gain-db'),format:v=>v.toFixed(1)+' dB',parse:s=>parseFloat(s),onSet:setOutputGainDb});
   makeEditable(document.getElementById('delay-time-val'),{min:0.001,max:60,format:v=>v>=1?v.toFixed(2)+'s':v.toFixed(3)+'s',parse:s=>parseFloat(s.replace('s','')),onSet:setDelayTimeSec});
   makeEditable(document.getElementById('pitch-semi-val'),{min:-24,max:24,slider:document.getElementById('pitch-semi'),format:v=>(v>=0?'+':'')+v.toFixed(1),parse:s=>parseFloat(s),onSet:setPitchSemi});
-  makeEditable(document.getElementById('pitch-hz-val'),{min:1,max:20000,format:v=>v.toFixed(2)+' Hz',parse:s=>parseFloat(s.replace(' Hz','')),onSet:setPitchHz});
   makeEditable(document.getElementById('test-freq-val'),{min:20,max:20000,format:v=>Math.round(v)+' Hz',parse:s=>parseFloat(s.replace(' Hz','')),onSet:setTestFreqHz});
   makeEditable(document.getElementById('test-semi-val'),{min:-48,max:48,format:v=>v.toFixed(1),parse:s=>parseFloat(s.replace(/[≈\s]/g,'')),onSet:setTestFreqSemi});
 }
