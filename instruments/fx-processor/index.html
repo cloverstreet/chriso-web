@@ -357,7 +357,7 @@ input.vfader::-webkit-slider-thumb {
           <div class="ch-note" id="ch-note"></div>
         </div>
         <!-- Vertical fader + meter side by side -->
-        <div style="display:flex;gap:6px;align-items:flex-end;margin-bottom:6px;">
+        <div style="display:flex;gap:6px;align-items:flex-end;height:80px;margin-bottom:6px;">
           <div class="vfader-track">
             <span class="vfader-label">GAIN</span>
             <input class="vfader" type="range" id="input-gain-db" min="-60" max="12" step="0.5" value="0" oninput="setInputGainDb(this.value)">
@@ -396,17 +396,18 @@ input.vfader::-webkit-slider-thumb {
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
             <label style="font-size:.68rem;letter-spacing:.12em;color:#aaa;">FREQ (log)</label>
             <span class="editable-val" id="test-freq-val" data-value="110" style="margin-left:auto;">110 Hz</span>
-            <span class="editable-val" id="test-semi-val" data-value="-24" style="color:#888;font-size:.66rem;">-24.0st</span>
+            <span style="color:#888;font-size:.66rem;font-style:italic;" id="test-note-val">~A2</span>
           </div>
           <input type="range" id="test-freq-sl" min="0" max="1000" step="1" value="263"
                  oninput="setTestFreqPos(this.value)" style="width:100%;">
         </div>
-        <div class="ctrl">
-          <label>GAIN</label>
-          <div class="ctrl-row">
-            <input type="range" id="test-gain-sl" min="-60" max="0" step="0.5" value="-12" oninput="setTestGainDb(this.value)">
-            <span class="ctrl-val" id="test-gain-val" data-value="-12">-12.0 dB</span>
+        <div style="display:flex;gap:6px;align-items:flex-end;height:80px;margin-bottom:6px;">
+          <div class="vfader-track">
+            <span class="vfader-label">GAIN</span>
+            <input class="vfader" type="range" id="test-gain-sl" min="-60" max="0" step="0.5" value="-12" oninput="setTestGainDb(this.value)">
+            <span class="vfader-val" id="test-gain-val" data-value="-12">-12dB</span>
           </div>
+          <div class="vgainbar" id="test-vbar"><div class="vgainbar-fill" id="test-vbar-fill" style="height:0%"></div></div>
         </div>
         <div class="mini-hmeter-wrap" id="test-meter">
           <div class="mini-hmeter-l" id="test-m-l" style="width:0%"></div>
@@ -579,7 +580,7 @@ input.vfader::-webkit-slider-thumb {
             <option value="">Default (System)</option>
           </select>
         </div>
-        <div style="display:flex;gap:6px;align-items:flex-end;margin-bottom:6px;">
+        <div style="display:flex;gap:6px;align-items:flex-end;height:80px;margin-bottom:6px;">
           <div class="vfader-track">
             <span class="vfader-label">GAIN</span>
             <input class="vfader" type="range" id="output-gain-db" min="-60" max="12" step="0.5" value="0" oninput="setOutputGainDb(this.value)">
@@ -625,6 +626,18 @@ input.vfader::-webkit-slider-thumb {
 </div><!-- end #board -->
 
 <script>
+// ── Note name from Hz ─────────────────────────────────────────────
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+function hzToNoteName(hz) {
+  if (hz < 8) return '—';
+  const midi  = 12 * Math.log2(hz / 440) + 69;
+  const note  = NOTE_NAMES[Math.round(midi) % 12];
+  const oct   = Math.floor(Math.round(midi) / 12) - 1;
+  const cents = Math.round((midi - Math.round(midi)) * 100);
+  const cStr  = cents === 0 ? '' : (cents > 0 ? ` +${cents}¢` : ` ${cents}¢`);
+  return `~${note}${oct}${cStr}`;
+}
+
 // ── Pitch coarse/fine toggle ──────────────────────────────────────
 let pitchFineMode = false;
 function togglePitchFine() {
@@ -868,8 +881,7 @@ function setTestFreqPos(pos){
   const st=hzToSemi(hz); const exact=Math.abs(st-Math.round(st))<0.05;
   document.getElementById('test-freq-val').textContent=Math.round(hz)+' Hz';
   document.getElementById('test-freq-val').dataset.value=hz;
-  document.getElementById('test-semi-val').textContent=(exact?'':'≈')+st.toFixed(1);
-  document.getElementById('test-semi-val').dataset.value=st;
+  const noteEl=document.getElementById('test-note-val'); if(noteEl) noteEl.textContent=hzToNoteName(hz);
 }
 function setTestFreqHz(hz){
   document.getElementById('test-freq-sl').value=freqLog.toPos(hz);
@@ -1120,7 +1132,6 @@ function setupEditables(){
   makeEditable(document.getElementById('delay-time-val'),{min:0.001,max:60,format:v=>v>=1?v.toFixed(2)+'s':v.toFixed(3)+'s',parse:s=>parseFloat(s.replace('s','')),onSet:setDelayTimeSec});
   makeEditable(document.getElementById('pitch-semi-val'),{min:-24,max:24,slider:document.getElementById('pitch-semi'),format:v=>(v>=0?'+':'')+v.toFixed(1),parse:s=>parseFloat(s),onSet:setPitchSemi});
   makeEditable(document.getElementById('test-freq-val'),{min:20,max:20000,format:v=>Math.round(v)+' Hz',parse:s=>parseFloat(s.replace(' Hz','')),onSet:setTestFreqHz});
-  makeEditable(document.getElementById('test-semi-val'),{min:-48,max:48,format:v=>v.toFixed(1),parse:s=>parseFloat(s.replace(/[≈\s]/g,'')),onSet:setTestFreqSemi});
 }
 
 // ═══════════════════════════════════════════════════════════════════════
