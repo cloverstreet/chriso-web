@@ -3,28 +3,725 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>fx-processor</title>
+<title>FX Processor — chriso.org</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    background: #0a0a0a;
-    color: #e0e0e0;
-    font-family: 'Courier New', monospace;
-    width: 100vw;
-    height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  h1 {
-    font-size: clamp(20px, 4vw, 48px);
-    font-weight: 400;
-    letter-spacing: 0.2em;
-    opacity: 0.6;
-  }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0d0d0d; font-family:'Courier New',monospace; color:#ccc; min-height:100vh; display:flex; flex-direction:column; align-items:center; padding:20px; overflow-x:auto; }
+#start-screen { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px; height:80vh; }
+#start-screen h1 { font-size:1.1rem; font-weight:400; letter-spacing:.3em; color:#666; }
+#start-btn { padding:14px 40px; background:transparent; border:1px solid #c8a854; color:#c8a854; font-family:'Courier New',monospace; font-size:.85rem; letter-spacing:.2em; cursor:pointer; transition:all .2s; }
+#start-btn:hover { background:#c8a854; color:#000; }
+#start-btn:disabled { opacity:.4; cursor:default; }
+#start-status { font-size:.72rem; color:#555; letter-spacing:.15em; }
+#board { display:none; flex-direction:column; width:100%; }
+#global-preset-bar { display:flex; align-items:center; gap:6px; padding:8px 10px 16px; flex-wrap:wrap; }
+#global-preset-bar .bar-label { font-size:.58rem; color:#555; letter-spacing:.15em; margin-right:4px; }
+#chain { display:flex; flex-direction:row; align-items:flex-start; overflow-x:auto; padding:0 10px 20px; gap:0; }
+</style>
+<style>
+.input-col { display:flex; flex-direction:column; align-items:center; flex-shrink:0; }
+.merge-svg { display:block; overflow:visible; }
+.unit { background:#161616; border:1px solid #2d2d2d; border-radius:6px; padding:12px 13px 14px; min-width:170px; position:relative; }
+.unit-title { font-size:.62rem; letter-spacing:.25em; color:#777; text-align:center; margin-bottom:10px; padding-bottom:7px; border-bottom:1px solid #252525; }
+.bypass-btn { position:absolute; top:10px; right:10px; padding:2px 7px; background:transparent; border:1px solid #333; color:#555; font-family:'Courier New',monospace; font-size:.55rem; letter-spacing:.1em; cursor:pointer; border-radius:2px; transition:all .15s; }
+.bypass-btn.active { border-color:#c8a854; color:#c8a854; background:rgba(200,168,84,.08); }
+.ctrl { margin-bottom:9px; }
+.ctrl label { display:block; font-size:.6rem; letter-spacing:.13em; color:#888; margin-bottom:3px; }
+.ctrl-row { display:flex; align-items:center; gap:5px; }
+.ctrl-val { font-size:.65rem; color:#c8a854; white-space:nowrap; min-width:54px; text-align:right; cursor:text; }
+.ctrl-val:hover { text-decoration:underline dotted #555; }
+.ctrl-val.danger { color:#e05050; }
+.ctrl-val input { width:100%; background:#111; border:1px solid #c8a854; color:#c8a854; font-family:'Courier New',monospace; font-size:.65rem; padding:1px 3px; outline:none; }
+input[type="range"] { -webkit-appearance:none; flex:1; height:3px; background:#333; outline:none; border-radius:2px; cursor:pointer; }
+input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:12px; height:12px; background:#c8a854; border-radius:50%; cursor:pointer; }
+input[type="range"].danger-range::-webkit-slider-thumb { background:#e05050; }
+select { width:100%; background:#1e1e1e; border:1px solid #383838; color:#bbb; font-family:'Courier New',monospace; font-size:.65rem; padding:4px 5px; outline:none; cursor:pointer; margin-bottom:2px; border-radius:2px; }
+.toggle-btn { width:100%; padding:4px 0; background:transparent; border:1px solid #444; color:#666; font-family:'Courier New',monospace; font-size:.6rem; letter-spacing:.15em; cursor:pointer; border-radius:3px; margin-bottom:7px; transition:all .15s; }
+.toggle-btn.on { border-color:#5a5; color:#5a5; background:rgba(90,170,90,.06); }
+.mute-btn { width:100%; margin-top:7px; padding:4px 0; background:transparent; border:1px solid #2a6e2a; color:#5a5; font-family:'Courier New',monospace; font-size:.6rem; letter-spacing:.2em; cursor:pointer; border-radius:3px; transition:all .15s; }
+.mute-btn.muted { border-color:#6e2a2a; color:#a55; background:#1a0a0a; }
+hr.div { border:none; border-top:1px solid #1e1e1e; margin:8px 0 7px; }
+.ch-note { font-size:.58rem; color:#555; letter-spacing:.06em; margin-top:2px; }
+</style>
+<style>
+.meter-wrap { display:flex; gap:3px; height:48px; align-items:flex-end; margin-top:3px; }
+.meter-bar { flex:1; background:#1a1a1a; border-radius:2px; overflow:hidden; height:100%; display:flex; flex-direction:column; justify-content:flex-end; }
+.meter-fill { width:100%; background:linear-gradient(to top,#2a7a2a,#8aba3a,#c8a854); transition:height .04s; }
+.meter-db { font-size:.58rem; color:#555; text-align:center; margin-top:2px; }
+.wire-svg { flex-shrink:0; align-self:center; overflow:visible; }
+#delay-unit { min-width:195px; }
+.fb-svg { display:block; width:100%; overflow:visible; margin-bottom:7px; }
+.danger-zone { display:none; font-size:.57rem; color:#e05050; margin-top:2px; animation:blink 1s step-end infinite; }
+.danger-zone.show { display:block; }
+@keyframes blink { 50%{opacity:0;} }
+.display-row { display:flex; align-items:center; gap:5px; margin-top:2px; }
+.display-val { font-size:.64rem; color:#99a; }
+.display-approx { color:#557; }
+.editable-val { font-size:.64rem; color:#c8a854; cursor:text; }
+.editable-val:hover { text-decoration:underline dotted #555; }
+.editable-val input { background:#111; border:1px solid #c8a854; color:#c8a854; font-family:'Courier New',monospace; font-size:.64rem; padding:1px 3px; outline:none; width:85px; }
+/* Preset slots */
+.preset-row { display:flex; gap:3px; margin-top:9px; padding-top:8px; border-top:1px solid #1e1e1e; }
+.preset-slot { flex:1; padding:3px 0; background:transparent; border:1px solid #2a2a2a; color:#444; font-family:'Courier New',monospace; font-size:.58rem; cursor:pointer; border-radius:2px; transition:all .1s; text-align:center; }
+.preset-slot.saved { border-color:#3a4a3a; color:#6a8; }
+.preset-slot:hover { border-color:#555; color:#888; }
+.preset-slot.saved:hover { border-color:#5a5; color:#8ba; }
+.preset-hint { font-size:.55rem; color:#3a3a3a; text-align:center; margin-top:3px; letter-spacing:.05em; }
+.global-slot { padding:4px 8px; background:transparent; border:1px solid #2a2a2a; color:#444; font-family:'Courier New',monospace; font-size:.65rem; cursor:pointer; border-radius:3px; transition:all .1s; }
+.global-slot.saved { border-color:#3a4a4a; color:#6aa; }
+.global-slot:hover { border-color:#555; color:#888; }
 </style>
 </head>
 <body>
-  <h1>fx-processor — coming soon</h1>
+
+<div id="start-screen">
+  <h1>FX PROCESSOR</h1>
+  <button id="start-btn" onclick="initAudio()">INITIALISE AUDIO</button>
+  <div id="start-status">click to request microphone / device access</div>
+</div>
+
+<div id="board">
+  <!-- Global presets -->
+  <div id="global-preset-bar">
+    <span class="bar-label">GLOBAL PRESETS</span>
+    <button class="global-slot" data-slot="0" onclick="handleGlobalPreset(this)">1</button>
+    <button class="global-slot" data-slot="1" onclick="handleGlobalPreset(this)">2</button>
+    <button class="global-slot" data-slot="2" onclick="handleGlobalPreset(this)">3</button>
+    <button class="global-slot" data-slot="3" onclick="handleGlobalPreset(this)">4</button>
+    <button class="global-slot" data-slot="4" onclick="handleGlobalPreset(this)">5</button>
+    <button class="global-slot" data-slot="5" onclick="handleGlobalPreset(this)">6</button>
+    <button class="global-slot" data-slot="6" onclick="handleGlobalPreset(this)">7</button>
+    <button class="global-slot" data-slot="7" onclick="handleGlobalPreset(this)">8</button>
+    <span class="bar-label" style="margin-left:8px">shift+click: save</span>
+  </div>
+
+  <div id="chain">
+    <!-- ── INPUT COLUMN ─────────────────────────────────── -->
+    <div class="input-col">
+      <div class="unit">
+        <div class="unit-title">MIC INPUT</div>
+        <div class="ctrl"><label>DEVICE</label>
+          <select id="input-device" onchange="changeInputDevice()">
+            <option value="">Default (System)</option>
+          </select>
+        </div>
+        <div class="ctrl"><label>CHANNEL</label>
+          <select id="input-channel" onchange="changeInputChannel()">
+            <option value="mix">— init first —</option>
+          </select>
+          <div class="ch-note" id="ch-note"></div>
+        </div>
+        <hr class="div">
+        <div class="ctrl"><label>GAIN</label>
+          <div class="ctrl-row">
+            <input type="range" id="input-gain-db" min="-60" max="12" step="0.5" value="0" oninput="setInputGainDb(this.value)">
+            <span class="ctrl-val" id="input-gain-val" data-value="0">0.0 dB</span>
+          </div>
+        </div>
+        <div class="ctrl"><label>LEVEL</label>
+          <div class="meter-wrap">
+            <div class="meter-bar"><div class="meter-fill" id="in-m-l" style="height:0%"></div></div>
+            <div class="meter-bar"><div class="meter-fill" id="in-m-r" style="height:0%"></div></div>
+          </div>
+          <div class="meter-db" id="in-db">—</div>
+        </div>
+        <button class="mute-btn" id="input-mute" onclick="toggleMute('input')">LIVE</button>
+      </div>
+      <svg class="merge-svg" width="170" height="20" viewBox="0 0 170 20">
+        <line x1="85" y1="0" x2="85" y2="20" stroke="#252525" stroke-width="1"/>
+        <text x="85" y="14" text-anchor="middle" font-family="Courier New" font-size="7" fill="#3a3a3a" letter-spacing="2">+ SUM</text>
+      </svg>
+
+      <!-- TEST TONE -->
+      <div class="unit">
+        <div class="unit-title">TEST TONE</div>
+        <button class="toggle-btn" id="test-toggle" onclick="toggleTestTone()">DISABLED</button>
+        <div class="ctrl"><label>WAVEFORM</label>
+          <select id="test-wave" onchange="setTestWave(this.value)">
+            <option value="sine">Sine</option>
+            <option value="square">Square</option>
+            <option value="sawtooth">Sawtooth</option>
+            <option value="triangle">Triangle</option>
+            <option value="noise">White Noise</option>
+          </select>
+        </div>
+        <div class="ctrl" id="test-freq-ctrl"><label>FREQUENCY (log)</label>
+          <div class="ctrl-row">
+            <input type="range" id="test-freq-sl" min="0" max="1000" step="1" value="500" oninput="setTestFreqPos(this.value)">
+            <span class="editable-val" id="test-freq-val" data-value="440">440 Hz</span>
+          </div>
+          <div class="display-row">
+            <span class="display-val">ST FROM A4:</span>
+            <span class="editable-val" id="test-semi-val" data-value="0">0.0</span>
+          </div>
+        </div>
+        <div class="ctrl"><label>GAIN</label>
+          <div class="ctrl-row">
+            <input type="range" id="test-gain-sl" min="-60" max="0" step="0.5" value="-12" oninput="setTestGainDb(this.value)">
+            <span class="ctrl-val" id="test-gain-val" data-value="-12">-12.0 dB</span>
+          </div>
+        </div>
+      </div>
+    </div><!-- end input-col -->
+
+    <!-- wire: col → pitch -->
+    <svg class="wire-svg" width="34" height="115" viewBox="0 0 34 115">
+      <path d="M0,57 C12,57 22,65 34,65" stroke="#c8a854" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    </svg>
+
+    <!-- ── PITCH SHIFT ──────────────────────────────────── -->
+    <div class="unit">
+      <div class="unit-title">PITCH SHIFT</div>
+      <button class="bypass-btn" id="pitch-bypass-btn" onclick="toggleFxBypass('pitch')">BYP</button>
+      <div class="ctrl"><label>TYPE</label>
+        <select id="pitch-type" onchange="setPitchType(this.value)">
+          <option value="0.05">Phase Vocoder — Fast</option>
+          <option value="0.1" selected>Phase Vocoder — Std</option>
+          <option value="0.25">Phase Vocoder — Quality</option>
+          <option value="0.5">Phase Vocoder — HQ</option>
+        </select>
+      </div>
+      <div class="ctrl"><label>WINDOW (latency)</label>
+        <div class="ctrl-row">
+          <input type="range" id="pitch-window" min="0.01" max="0.5" step="0.01" value="0.1" oninput="setPitchWindow(this.value)">
+          <span class="ctrl-val" id="pitch-window-val" data-value="0.1">0.10s</span>
+        </div>
+      </div>
+      <div class="ctrl"><label>SEMITONES</label>
+        <div class="ctrl-row">
+          <input type="range" id="pitch-semi" min="-24" max="24" step="0.1" value="0" oninput="setPitchSemi(this.value)">
+          <span class="ctrl-val" id="pitch-semi-val" data-value="0">0.0</span>
+        </div>
+      </div>
+      <div class="ctrl"><label>HZ (ref A4)</label>
+        <div class="display-row">
+          <span class="display-val">440 → <span class="display-approx" id="pitch-approx"></span></span>
+          <span class="editable-val" id="pitch-hz-val" data-value="440">440.00 Hz</span>
+        </div>
+      </div>
+      <hr class="div">
+      <div class="ctrl"><label>WET / DRY</label>
+        <div class="ctrl-row">
+          <input type="range" id="pitch-wetdry" min="0" max="1" step="0.01" value="1" oninput="setPitchWetDry(this.value)">
+          <span class="ctrl-val" id="pitch-wetdry-val">WET 100%</span>
+        </div>
+      </div>
+      <div class="preset-row" id="pitch-presets"></div>
+      <div class="preset-hint">click: load · shift+click: save</div>
+    </div>
+
+    <!-- wire: pitch → delay -->
+    <svg class="wire-svg" width="34" height="115" viewBox="0 0 34 115">
+      <path d="M0,65 C12,65 22,57 34,57" stroke="#c8a854" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    </svg>
+
+    <!-- ── DELAY ─────────────────────────────────────────── -->
+    <div class="unit" id="delay-unit">
+      <div class="unit-title">DELAY</div>
+      <button class="bypass-btn" id="delay-bypass-btn" onclick="toggleFxBypass('delay')">BYP</button>
+      <svg class="fb-svg" height="30" viewBox="0 0 195 30">
+        <path d="M161,26 C161,8 100,2 97,2 C94,2 34,8 34,26" stroke="#a854c8" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <circle cx="161" cy="26" r="3" fill="#a854c8"/><circle cx="34" cy="26" r="3" fill="#a854c8"/>
+        <text x="97" y="13" text-anchor="middle" font-family="Courier New" font-size="7" fill="#a854c8" letter-spacing="2">FEEDBACK</text>
+      </svg>
+      <div class="ctrl"><label>TIME (log scale)</label>
+        <div class="ctrl-row">
+          <input type="range" id="delay-time" min="0" max="1000" step="1" value="340" oninput="setDelayTimePos(this.value)">
+          <span class="ctrl-val" id="delay-time-val" data-value="0.5">0.50s</span>
+        </div>
+      </div>
+      <div class="ctrl"><label>FEEDBACK</label>
+        <div class="ctrl-row">
+          <input type="range" id="delay-fb" min="0" max="1.5" step="0.01" value="0.3" oninput="setFeedback(this.value)">
+          <span class="ctrl-val" id="delay-fb-val">30%</span>
+        </div>
+        <div class="danger-zone" id="fb-danger">⚠ RUNAWAY — reduce feedback!</div>
+      </div>
+      <div class="ctrl"><label>DRY MIX</label>
+        <div class="ctrl-row">
+          <input type="range" id="delay-dry" min="0" max="1" step="0.01" value="1" oninput="setDelayDry(this.value)">
+          <span class="ctrl-val" id="delay-dry-val">100%</span>
+        </div>
+      </div>
+      <div class="ctrl"><label>WET MIX</label>
+        <div class="ctrl-row">
+          <input type="range" id="delay-wet" min="0" max="1" step="0.01" value="0.4" oninput="setDelayWet(this.value)">
+          <span class="ctrl-val" id="delay-wet-val">40%</span>
+        </div>
+      </div>
+      <div class="preset-row" id="delay-presets"></div>
+      <div class="preset-hint">click: load · shift+click: save</div>
+    </div>
+
+    <!-- wire: delay → output -->
+    <svg class="wire-svg" width="34" height="115" viewBox="0 0 34 115">
+      <path d="M0,57 C12,57 22,63 34,63" stroke="#c8a854" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    </svg>
+
+    <!-- ── OUTPUT ──────────────────────────────────────────── -->
+    <div class="unit">
+      <div class="unit-title">OUTPUT</div>
+      <div class="ctrl"><label>DEVICE</label>
+        <select id="output-device" onchange="changeOutputDevice()">
+          <option value="">Default (System)</option>
+        </select>
+      </div>
+      <hr class="div">
+      <div class="ctrl"><label>GAIN</label>
+        <div class="ctrl-row">
+          <input type="range" id="output-gain-db" min="-60" max="12" step="0.5" value="0" oninput="setOutputGainDb(this.value)">
+          <span class="ctrl-val" id="output-gain-val" data-value="0">0.0 dB</span>
+        </div>
+      </div>
+      <div class="ctrl"><label>LEVEL</label>
+        <div class="meter-wrap">
+          <div class="meter-bar"><div class="meter-fill" id="out-m-l" style="height:0%"></div></div>
+          <div class="meter-bar"><div class="meter-fill" id="out-m-r" style="height:0%"></div></div>
+        </div>
+        <div class="meter-db" id="out-db">—</div>
+      </div>
+      <button class="mute-btn" id="output-mute" onclick="toggleMute('output')">LIVE</button>
+    </div>
+
+  </div><!-- end #chain -->
+</div><!-- end #board -->
+
+<script>
+// ── Helpers ─────────────────────────────────────────────────────
+const dbToGain = db => db <= -60 ? 0 : Math.pow(10, db / 20);
+const gainToDb = g  => g < 0.0001 ? -Infinity : 20 * Math.log10(g);
+const fmtDb    = db => isFinite(db) ? db.toFixed(1) + ' dB' : '< −60';
+const hzToSemi = hz => 12 * Math.log2(Math.max(hz, 1) / 440);
+const semiToHz = st => 440 * Math.pow(2, st / 12);
+const SILENCE  = 0.001;
+
+// Logarithmic slider utilities
+const freqLog = { // 20Hz → 20kHz
+  toVal: p => 20 * Math.pow(1000, p / 1000),
+  toPos: v => Math.round(1000 * Math.log(Math.max(v,20) / 20) / Math.log(1000))
+};
+const timeLog = { // 0.01s → 60s
+  toVal: p => 0.01 * Math.pow(6000, p / 1000),
+  toPos: v => Math.round(1000 * Math.log(Math.max(v,0.01) / 0.01) / Math.log(6000))
+};
+
+// ── State ────────────────────────────────────────────────────────
+let rawCtx;
+let currentStream=null, streamSource=null, chanSplit=null, chanMerge=null;
+let sumGain, inputGainNode, inputMuteNode, inputMeter;
+let pitchShift, pitchDryG, pitchWetG;
+let delayNode, feedbackGain, delayDryGain, delayWetGain;
+let outputGainNode, outputMuteNode, outputMeter;
+let testOscNode=null, noiseSource=null, testOscGain, testNoiseGain, testMasterGain;
+let noiseBuffer=null;
+let testEnabled=false, currentTestWave='sine';
+let currentDeviceId='', currentChannel='mix', numChannels=1;
+let inputMuted=false, outputMuted=false;
+let pitchBypassed=false, delayBypassed=false;
+
+// ── Init ─────────────────────────────────────────────────────────
+async function initAudio() {
+  const btn=document.getElementById('start-btn'), st=document.getElementById('start-status');
+  btn.disabled=true; st.textContent='requesting device access...';
+  try {
+    await Tone.start();
+    rawCtx = Tone.context.rawContext;
+
+    sumGain        = new Tone.Gain(1);
+    inputGainNode  = new Tone.Gain(1);
+    inputMuteNode  = new Tone.Gain(1);
+    inputMeter     = new Tone.Meter({ normalRange:true, smoothing:0.85 });
+    pitchShift     = new Tone.PitchShift({ pitch:0, windowSize:0.1 });
+    pitchDryG      = new Tone.Gain(0);  // 0 = wet
+    pitchWetG      = new Tone.Gain(1);  // 1 = wet
+    delayNode      = new Tone.Delay({ delayTime:0.5, maxDelay:62 });
+    feedbackGain   = new Tone.Gain(0.3);
+    delayDryGain   = new Tone.Gain(1);
+    delayWetGain   = new Tone.Gain(0.4);
+    outputGainNode = new Tone.Gain(1);
+    outputMuteNode = new Tone.Gain(1);
+    outputMeter    = new Tone.Meter({ normalRange:true, smoothing:0.85 });
+
+    // Native test tone
+    testOscGain=rawCtx.createGain(); testNoiseGain=rawCtx.createGain();
+    testMasterGain=rawCtx.createGain(); testMasterGain.gain.value=0;
+    testOscGain.gain.value=1; testNoiseGain.gain.value=0;
+    testOscNode=rawCtx.createOscillator(); testOscNode.type='sine'; testOscNode.frequency.value=440; testOscNode.start();
+    testOscNode.connect(testOscGain); testOscGain.connect(testMasterGain);
+    noiseBuffer=createNoiseBuffer(); noiseSource=rawCtx.createBufferSource();
+    noiseSource.buffer=noiseBuffer; noiseSource.loop=true; noiseSource.start();
+    noiseSource.connect(testNoiseGain); testNoiseGain.connect(testMasterGain);
+    testMasterGain.connect(sumGain.input);
+
+    // Graph
+    sumGain.connect(inputGainNode); inputGainNode.connect(inputMeter); inputGainNode.connect(inputMuteNode);
+    inputMuteNode.connect(pitchDryG); inputMuteNode.connect(pitchShift); pitchShift.connect(pitchWetG);
+    pitchDryG.connect(delayDryGain); pitchDryG.connect(delayNode);
+    pitchWetG.connect(delayDryGain); pitchWetG.connect(delayNode);
+    delayNode.connect(feedbackGain); feedbackGain.connect(delayNode);
+    delayNode.connect(delayWetGain);
+    delayDryGain.connect(outputGainNode); delayWetGain.connect(outputGainNode);
+    outputGainNode.connect(outputMeter); outputGainNode.connect(outputMuteNode); outputMuteNode.toDestination();
+
+    await connectSource('', 'mix');
+    await enumerateDevices();
+    buildPresetSlots();
+    loadPresetUI();
+    setupEditables();
+    setupDblClick();
+    showBoard();
+    animateMeters();
+    // Init log slider positions
+    document.getElementById('test-freq-sl').value = freqLog.toPos(440);
+    document.getElementById('delay-time').value = timeLog.toPos(0.5);
+    setPitchSemi(0); setTestGainDb(-12);
+  } catch(e) { st.textContent='error: '+e.message; btn.disabled=false; }
+}
+
+function createNoiseBuffer() {
+  const len=rawCtx.sampleRate*2, buf=rawCtx.createBuffer(1,len,rawCtx.sampleRate), d=buf.getChannelData(0);
+  for(let i=0;i<len;i++) d[i]=Math.random()*2-1; return buf;
+}
+
+// ── Device enumeration ───────────────────────────────────────────
+async function enumerateDevices() {
+  const devs=await navigator.mediaDevices.enumerateDevices();
+  const inSel=document.getElementById('input-device'), outSel=document.getElementById('output-device');
+  inSel.innerHTML=''; outSel.innerHTML='';
+  const fmtLabel = (d,i,kind) => {
+    if (d.deviceId==='default'||d.deviceId==='') {
+      const clean=d.label.replace(/^Default\s*[-–]\s*/i,'').trim();
+      return clean ? `Default (System) — ${clean}` : 'Default (System)';
+    }
+    return d.label || `${kind} ${i+1}`;
+  };
+  devs.filter(d=>d.kind==='audioinput').forEach((d,i)=>{
+    const o=document.createElement('option');
+    o.value=d.deviceId==='default'?'':d.deviceId;
+    o.textContent=fmtLabel(d,i,'Input');
+    if(d.deviceId===currentDeviceId||(currentDeviceId===''&&(d.deviceId==='default'||d.deviceId===''))) o.selected=true;
+    inSel.appendChild(o);
+  });
+  devs.filter(d=>d.kind==='audiooutput').forEach((d,i)=>{
+    const o=document.createElement('option'); o.value=d.deviceId==='default'?'':d.deviceId;
+    o.textContent=fmtLabel(d,i,'Output'); outSel.appendChild(o);
+  });
+}
+
+// ── Connect source (with channel probing) ────────────────────────
+async function connectSource(deviceId, channel) {
+  if(streamSource) { try{streamSource.disconnect();}catch(e){} }
+  if(chanSplit)    { try{chanSplit.disconnect();}   catch(e){} }
+  if(chanMerge)    { try{chanMerge.disconnect();}   catch(e){} }
+  if(currentStream) currentStream.getTracks().forEach(t=>t.stop());
+
+  // Probe capabilities first
+  let maxCh=2;
+  try {
+    const probe=await navigator.mediaDevices.getUserMedia({audio:{deviceId:deviceId?{exact:deviceId}:undefined}});
+    const caps=probe.getAudioTracks()[0].getCapabilities?.();
+    maxCh=caps?.channelCount?.max??2;
+    probe.getTracks().forEach(t=>t.stop());
+  } catch(e){}
+
+  // Try to get all channels
+  let stream;
+  try {
+    stream=await navigator.mediaDevices.getUserMedia({audio:{
+      deviceId:deviceId?{exact:deviceId}:undefined,
+      channelCount:{exact:maxCh},
+      echoCancellation:false, autoGainControl:false, noiseSuppression:false
+    }});
+  } catch(e) {
+    try {
+      stream=await navigator.mediaDevices.getUserMedia({audio:{
+        deviceId:deviceId?{exact:deviceId}:undefined,
+        channelCount:{ideal:maxCh},
+        echoCancellation:false, autoGainControl:false, noiseSuppression:false
+      }});
+    } catch(e2) {
+      stream=await navigator.mediaDevices.getUserMedia({audio:deviceId?{deviceId:{exact:deviceId}}:true});
+    }
+  }
+  currentStream=stream; currentDeviceId=deviceId;
+  numChannels=stream.getAudioTracks()[0].getSettings().channelCount||1;
+  streamSource=rawCtx.createMediaStreamSource(stream);
+
+  const chanSel=document.getElementById('input-channel');
+  chanSel.innerHTML=`<option value="mix">Sum (all ${numChannels} ch)</option>`;
+  for(let i=0;i<numChannels;i++){
+    const o=document.createElement('option'); o.value=i; o.textContent=`Ch ${i+1}`; chanSel.appendChild(o);
+  }
+  chanSel.value=(channel==='mix'||parseInt(channel)<numChannels)?channel:'mix';
+  currentChannel=chanSel.value;
+
+  // Channel note — explain browser limitation if relevant
+  const note=document.getElementById('ch-note');
+  if(numChannels<=2&&maxCh>2) note.textContent=`ℹ ${maxCh}ch device — browser limited to ${numChannels}ch. Route via TotalMix.`;
+  else if(numChannels>2) note.textContent=`✓ ${numChannels} channels available`;
+  else note.textContent='';
+
+  chanSplit=rawCtx.createChannelSplitter(Math.max(numChannels,2));
+  streamSource.connect(chanSplit); routeChannel(chanSel.value);
+}
+
+function routeChannel(ch) {
+  if(chanMerge){try{chanMerge.disconnect();}catch(e){}}
+  chanMerge=rawCtx.createChannelMerger(1);
+  if(ch==='mix'){for(let i=0;i<numChannels;i++){try{chanSplit.connect(chanMerge,i,0);}catch(e){}}}
+  else { chanSplit.connect(chanMerge,parseInt(ch),0); }
+  chanMerge.connect(sumGain.input); currentChannel=ch;
+}
+async function changeInputDevice(){await connectSource(document.getElementById('input-device').value,'mix');}
+function changeInputChannel(){routeChannel(document.getElementById('input-channel').value);}
+async function changeOutputDevice(){
+  const id=document.getElementById('output-device').value;
+  if(rawCtx.setSinkId){try{await rawCtx.setSinkId(id);}catch(e){console.warn(e);}}
+}
+
+// ── Test tone ────────────────────────────────────────────────────
+function toggleTestTone(){
+  testEnabled=!testEnabled;
+  testMasterGain.gain.setTargetAtTime(testEnabled?dbToGain(parseFloat(document.getElementById('test-gain-sl').value)):0,rawCtx.currentTime,0.02);
+  const btn=document.getElementById('test-toggle'); btn.textContent=testEnabled?'ENABLED':'DISABLED'; btn.classList.toggle('on',testEnabled);
+}
+function setTestWave(wave){
+  currentTestWave=wave;
+  const isNoise=wave==='noise';
+  testOscGain.gain.setTargetAtTime(isNoise?0:1,rawCtx.currentTime,0.01);
+  testNoiseGain.gain.setTargetAtTime(isNoise?1:0,rawCtx.currentTime,0.01);
+  if(!isNoise) testOscNode.type=wave;
+  const ctrl=document.getElementById('test-freq-ctrl');
+  ctrl.style.opacity=isNoise?'0.3':'1'; ctrl.style.pointerEvents=isNoise?'none':'';
+}
+function setTestFreqPos(pos){
+  const hz=freqLog.toVal(parseFloat(pos));
+  if(testOscNode) testOscNode.frequency.setTargetAtTime(hz,rawCtx.currentTime,0.01);
+  const st=hzToSemi(hz); const exact=Math.abs(st-Math.round(st))<0.05;
+  document.getElementById('test-freq-val').textContent=Math.round(hz)+' Hz';
+  document.getElementById('test-freq-val').dataset.value=hz;
+  document.getElementById('test-semi-val').textContent=(exact?'':'≈')+st.toFixed(1);
+  document.getElementById('test-semi-val').dataset.value=st;
+}
+function setTestFreqHz(hz){
+  document.getElementById('test-freq-sl').value=freqLog.toPos(hz);
+  setTestFreqPos(freqLog.toPos(hz));
+}
+function setTestFreqSemi(st){setTestFreqHz(semiToHz(parseFloat(st)));}
+function setTestGainDb(db){
+  const v=parseFloat(db);
+  if(testEnabled) testMasterGain.gain.setTargetAtTime(dbToGain(v),rawCtx.currentTime,0.02);
+  document.getElementById('test-gain-val').textContent=v.toFixed(1)+' dB';
+  document.getElementById('test-gain-val').dataset.value=v;
+}
+
+// ── UI ────────────────────────────────────────────────────────────
+function showBoard(){document.getElementById('start-screen').style.display='none'; document.getElementById('board').style.display='flex';}
+
+function animateMeters(){
+  const iL=Math.max(0,inputMeter.getValue()||0), oL=Math.max(0,outputMeter.getValue()||0);
+  const pct=l=>{if(l<SILENCE)return 0;const db=gainToDb(l);return Math.max(0,Math.min(100,(db+60)/60*100));};
+  const j=p=>p>1?(Math.random()-.5)*4:0; const ip=pct(iL),op=pct(oL);
+  document.getElementById('in-m-l').style.height=Math.max(0,ip+j(ip))+'%';
+  document.getElementById('in-m-r').style.height=Math.max(0,ip+j(ip))+'%';
+  document.getElementById('out-m-l').style.height=Math.max(0,op+j(op))+'%';
+  document.getElementById('out-m-r').style.height=Math.max(0,op+j(op))+'%';
+  document.getElementById('in-db').textContent=iL<SILENCE?'—':fmtDb(gainToDb(iL));
+  document.getElementById('out-db').textContent=oL<SILENCE?'—':fmtDb(gainToDb(oL));
+  requestAnimationFrame(animateMeters);
+}
+
+function toggleMute(which){
+  if(which==='input'){inputMuted=!inputMuted; inputMuteNode.gain.rampTo(inputMuted?0:1,0.05); const b=document.getElementById('input-mute'); b.textContent=inputMuted?'MUTED':'LIVE'; b.classList.toggle('muted',inputMuted);}
+  else{outputMuted=!outputMuted; outputMuteNode.gain.rampTo(outputMuted?0:1,0.05); const b=document.getElementById('output-mute'); b.textContent=outputMuted?'MUTED':'LIVE'; b.classList.toggle('muted',outputMuted);}
+}
+
+// ── Per-FX bypass ─────────────────────────────────────────────────
+function toggleFxBypass(fx){
+  const r=0.04;
+  if(fx==='pitch'){
+    pitchBypassed=!pitchBypassed;
+    if(pitchBypassed){pitchDryG.gain.rampTo(1,r);pitchWetG.gain.rampTo(0,r);}
+    else{const wd=parseFloat(document.getElementById('pitch-wetdry').value); pitchWetG.gain.rampTo(wd,r); pitchDryG.gain.rampTo(1-wd,r);}
+    document.getElementById('pitch-bypass-btn').classList.toggle('active',pitchBypassed);
+    document.getElementById('pitch-bypass-btn').textContent=pitchBypassed?'BYP ✓':'BYP';
+  } else {
+    delayBypassed=!delayBypassed;
+    if(delayBypassed){delayDryGain.gain.rampTo(1,r);delayWetGain.gain.rampTo(0,r);}
+    else{delayDryGain.gain.rampTo(parseFloat(document.getElementById('delay-dry').value),r); delayWetGain.gain.rampTo(parseFloat(document.getElementById('delay-wet').value),r);}
+    document.getElementById('delay-bypass-btn').classList.toggle('active',delayBypassed);
+    document.getElementById('delay-bypass-btn').textContent=delayBypassed?'BYP ✓':'BYP';
+  }
+}
+
+// ── Parameter setters ─────────────────────────────────────────────
+function setInputGainDb(db){if(inputGainNode)inputGainNode.gain.rampTo(dbToGain(parseFloat(db)),0.05); const el=document.getElementById('input-gain-val'); el.textContent=parseFloat(db).toFixed(1)+' dB'; el.dataset.value=db;}
+function setOutputGainDb(db){if(outputGainNode)outputGainNode.gain.rampTo(dbToGain(parseFloat(db)),0.05); const el=document.getElementById('output-gain-val'); el.textContent=parseFloat(db).toFixed(1)+' dB'; el.dataset.value=db;}
+
+function setPitchSemi(v){
+  const st=parseFloat(v); if(pitchShift)pitchShift.pitch=st;
+  document.getElementById('pitch-semi-val').textContent=(st>=0?'+':'')+st.toFixed(1); document.getElementById('pitch-semi-val').dataset.value=st;
+  const hz=semiToHz(st); const exact=Math.abs(st-Math.round(st))<0.05;
+  document.getElementById('pitch-approx').textContent=exact?'':' ≈';
+  const hel=document.getElementById('pitch-hz-val'); hel.textContent=hz.toFixed(2)+' Hz'; hel.dataset.value=hz;
+}
+function setPitchHz(hz){const st=hzToSemi(Math.max(1,parseFloat(hz))); document.getElementById('pitch-semi').value=st; setPitchSemi(st);}
+function setPitchWindow(v){if(pitchShift)pitchShift.windowSize=parseFloat(v); document.getElementById('pitch-window-val').textContent=parseFloat(v).toFixed(2)+'s';}
+function setPitchType(v){document.getElementById('pitch-window').value=v; setPitchWindow(v);}
+function setPitchWetDry(v){
+  const wd=parseFloat(v);
+  if(!pitchBypassed){pitchWetG.gain.rampTo(wd,0.05); pitchDryG.gain.rampTo(1-wd,0.05);}
+  document.getElementById('pitch-wetdry-val').textContent=wd>=0.5?`WET ${Math.round(wd*100)}%`:`DRY ${Math.round((1-wd)*100)}%`;
+}
+
+function setDelayTimePos(pos){
+  const t=timeLog.toVal(parseFloat(pos)); if(delayNode)delayNode.delayTime.rampTo(t,0.1);
+  const el=document.getElementById('delay-time-val'); el.textContent=t>=1?t.toFixed(2)+'s':t.toFixed(3)+'s'; el.dataset.value=t;
+}
+function setDelayTimeSec(t){document.getElementById('delay-time').value=timeLog.toPos(t); setDelayTimePos(timeLog.toPos(t));}
+function setFeedback(v){
+  const f=parseFloat(v); if(feedbackGain)feedbackGain.gain.rampTo(f,0.05);
+  const isDanger=f>=1; document.getElementById('delay-fb-val').textContent=Math.round(f*100)+'%';
+  document.getElementById('delay-fb-val').classList.toggle('danger',isDanger);
+  document.getElementById('fb-danger').classList.toggle('show',isDanger);
+  document.getElementById('delay-fb').classList.toggle('danger-range',isDanger);
+}
+function setDelayDry(v){if(!delayBypassed&&delayDryGain)delayDryGain.gain.rampTo(parseFloat(v),0.05); document.getElementById('delay-dry-val').textContent=Math.round(v*100)+'%';}
+function setDelayWet(v){if(!delayBypassed&&delayWetGain)delayWetGain.gain.rampTo(parseFloat(v),0.05); document.getElementById('delay-wet-val').textContent=Math.round(v*100)+'%';}
+
+// ── Preset system ─────────────────────────────────────────────────
+function buildPresetSlots(){
+  ['pitch','delay'].forEach(fx=>{
+    const row=document.getElementById(fx+'-presets'); row.innerHTML='';
+    for(let i=0;i<8;i++){
+      const b=document.createElement('button'); b.className='preset-slot'; b.dataset.slot=i; b.textContent=i+1;
+      b.addEventListener('click',e=>{if(e.shiftKey)saveFxPreset(fx,i);else loadFxPreset(fx,i);});
+      row.appendChild(b);
+    }
+  });
+  // Global slots
+  loadPresetUI();
+}
+function getFxState(fx){
+  if(fx==='pitch') return {window:parseFloat(document.getElementById('pitch-window').value),semi:parseFloat(document.getElementById('pitch-semi').value),wetdry:parseFloat(document.getElementById('pitch-wetdry').value)};
+  if(fx==='delay') return {time:parseFloat(document.getElementById('delay-time-val').dataset.value||0.5),fb:parseFloat(document.getElementById('delay-fb').value),dry:parseFloat(document.getElementById('delay-dry').value),wet:parseFloat(document.getElementById('delay-wet').value)};
+}
+function applyFxState(fx,s){
+  if(fx==='pitch'){
+    document.getElementById('pitch-window').value=s.window; setPitchWindow(s.window);
+    document.getElementById('pitch-semi').value=s.semi; setPitchSemi(s.semi);
+    document.getElementById('pitch-wetdry').value=s.wetdry; setPitchWetDry(s.wetdry);
+  } else if(fx==='delay'){
+    setDelayTimeSec(s.time); document.getElementById('delay-fb').value=s.fb; setFeedback(s.fb);
+    document.getElementById('delay-dry').value=s.dry; setDelayDry(s.dry);
+    document.getElementById('delay-wet').value=s.wet; setDelayWet(s.wet);
+  }
+}
+function saveFxPreset(fx,slot){
+  localStorage.setItem(`fx_${fx}_${slot}`,JSON.stringify(getFxState(fx)));
+  loadPresetUI();
+}
+function loadFxPreset(fx,slot){
+  const s=localStorage.getItem(`fx_${fx}_${slot}`); if(!s)return;
+  applyFxState(fx,JSON.parse(s));
+}
+function getGlobalState(){
+  return {
+    inputGainDb:parseFloat(document.getElementById('input-gain-db').value),
+    outputGainDb:parseFloat(document.getElementById('output-gain-db').value),
+    testEnabled, testWave:document.getElementById('test-wave').value,
+    testFreqHz:freqLog.toVal(parseFloat(document.getElementById('test-freq-sl').value)),
+    testGainDb:parseFloat(document.getElementById('test-gain-sl').value),
+    pitch:getFxState('pitch'), delay:getFxState('delay')
+  };
+}
+function applyGlobalState(s){
+  document.getElementById('input-gain-db').value=s.inputGainDb; setInputGainDb(s.inputGainDb);
+  document.getElementById('output-gain-db').value=s.outputGainDb; setOutputGainDb(s.outputGainDb);
+  document.getElementById('test-wave').value=s.testWave; setTestWave(s.testWave);
+  setTestFreqHz(s.testFreqHz); document.getElementById('test-gain-sl').value=s.testGainDb; setTestGainDb(s.testGainDb);
+  if(s.testEnabled!==testEnabled) toggleTestTone();
+  applyFxState('pitch',s.pitch); applyFxState('delay',s.delay);
+}
+function handleGlobalPreset(btn){
+  const slot=parseInt(btn.dataset.slot);
+  if(event.shiftKey){localStorage.setItem('fx_global_'+slot,JSON.stringify(getGlobalState())); loadPresetUI();}
+  else{const s=localStorage.getItem('fx_global_'+slot); if(s)applyGlobalState(JSON.parse(s));}
+}
+function loadPresetUI(){
+  ['pitch','delay'].forEach(fx=>{
+    const slots=document.querySelectorAll(`#${fx}-presets .preset-slot`);
+    slots.forEach((b,i)=>{b.classList.toggle('saved',!!localStorage.getItem(`fx_${fx}_${i}`));});
+  });
+  document.querySelectorAll('#global-preset-bar .global-slot').forEach(b=>{
+    b.classList.toggle('saved',!!localStorage.getItem('fx_global_'+b.dataset.slot));
+  });
+}
+
+// ── makeEditable ──────────────────────────────────────────────────
+function makeEditable(el,{parse,format,min,max,slider,onSet}){
+  el.title='Click to type'; el.style.cursor='text';
+  el.addEventListener('click',function(){
+    if(el.querySelector('input'))return;
+    const cur=parseFloat(el.dataset.value)||0;
+    const inp=document.createElement('input'); inp.type='text'; inp.value=format?format(cur):cur;
+    inp.style.cssText='width:85px;background:#111;border:1px solid #c8a854;color:#c8a854;font-family:Courier New,monospace;font-size:.64rem;padding:1px 3px;outline:none;';
+    el.innerHTML=''; el.appendChild(inp); inp.focus(); inp.select();
+    const commit=()=>{
+      let v=parse?parse(inp.value):parseFloat(inp.value);
+      if(isNaN(v))v=cur;
+      if(min!==undefined)v=Math.max(min,v); if(max!==undefined)v=Math.min(max,v);
+      if(slider)slider.value=typeof slider.logRange==='function'?slider.logRange(v):v;
+      onSet(v);
+    };
+    inp.addEventListener('blur',commit);
+    inp.addEventListener('keydown',e=>{if(e.key==='Enter')inp.blur(); if(e.key==='Escape'){el.textContent=format?format(cur):cur; el.dataset.value=cur;}});
+  });
+}
+
+// ── Double-click to toggle ────────────────────────────────────────
+function setupDblClick(){
+  // Mix/percentage sliders: toggle 0 ↔ 1
+  [['pitch-wetdry',setPitchWetDry],['delay-dry',setDelayDry],['delay-wet',setDelayWet],
+   ['delay-fb',setFeedback]].forEach(([id,fn])=>{
+    document.getElementById(id).addEventListener('dblclick',e=>{
+      e.preventDefault(); const sl=document.getElementById(id);
+      const v=parseFloat(sl.value); const nv=v>0.5?0:1; sl.value=nv; fn(nv);
+    });
+  });
+  // dB sliders: toggle -60 ↔ 0
+  [['input-gain-db',setInputGainDb],['output-gain-db',setOutputGainDb],
+   ['test-gain-sl',setTestGainDb]].forEach(([id,fn])=>{
+    document.getElementById(id).addEventListener('dblclick',e=>{
+      e.preventDefault(); const sl=document.getElementById(id);
+      const v=parseFloat(sl.value); const nv=v>-30?-60:0; sl.value=nv; fn(nv);
+    });
+  });
+  // Pitch semitones: dblclick → reset to 0
+  document.getElementById('pitch-semi').addEventListener('dblclick',e=>{
+    e.preventDefault(); document.getElementById('pitch-semi').value=0; setPitchSemi(0);
+  });
+  // Delay time: dblclick → reset to 0.5s
+  document.getElementById('delay-time').addEventListener('dblclick',e=>{
+    e.preventDefault(); setDelayTimeSec(0.5);
+  });
+  // Test freq: dblclick → reset to 440Hz
+  document.getElementById('test-freq-sl').addEventListener('dblclick',e=>{
+    e.preventDefault(); setTestFreqHz(440);
+  });
+}
+
+function setupEditables(){
+  makeEditable(document.getElementById('input-gain-val'),{min:-60,max:12,slider:document.getElementById('input-gain-db'),format:v=>v.toFixed(1)+' dB',parse:s=>parseFloat(s),onSet:setInputGainDb});
+  makeEditable(document.getElementById('output-gain-val'),{min:-60,max:12,slider:document.getElementById('output-gain-db'),format:v=>v.toFixed(1)+' dB',parse:s=>parseFloat(s),onSet:setOutputGainDb});
+  makeEditable(document.getElementById('delay-time-val'),{min:0.001,max:60,format:v=>v>=1?v.toFixed(2)+'s':v.toFixed(3)+'s',parse:s=>parseFloat(s.replace('s','')),onSet:setDelayTimeSec});
+  makeEditable(document.getElementById('pitch-semi-val'),{min:-24,max:24,slider:document.getElementById('pitch-semi'),format:v=>(v>=0?'+':'')+v.toFixed(1),parse:s=>parseFloat(s),onSet:setPitchSemi});
+  makeEditable(document.getElementById('pitch-hz-val'),{min:1,max:20000,format:v=>v.toFixed(2)+' Hz',parse:s=>parseFloat(s.replace(' Hz','')),onSet:setPitchHz});
+  makeEditable(document.getElementById('test-freq-val'),{min:20,max:20000,format:v=>Math.round(v)+' Hz',parse:s=>parseFloat(s.replace(' Hz','')),onSet:setTestFreqHz});
+  makeEditable(document.getElementById('test-semi-val'),{min:-48,max:48,format:v=>v.toFixed(1),parse:s=>parseFloat(s.replace(/[≈\s]/g,'')),onSet:setTestFreqSemi});
+}
+
+</script>
 </body>
 </html>
