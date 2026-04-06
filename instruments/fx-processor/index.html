@@ -76,6 +76,32 @@ hr.div { border:none; border-top:1px solid #1e1e1e; margin:8px 0 7px; }
 .global-slot { padding:4px 8px; background:transparent; border:1px solid #2a2a2a; color:#444; font-family:'Courier New',monospace; font-size:.65rem; cursor:pointer; border-radius:3px; transition:all .1s; }
 .global-slot.saved { border-color:#3a4a4a; color:#6aa; }
 .global-slot:hover { border-color:#555; color:#888; }
+
+/* ── PlaySpace ─────────────────────────────────────────────────── */
+#playspace-panel {
+  width:100%; display:flex; flex-direction:column; align-items:center;
+  padding:14px 10px 24px; border-top:1px solid #1e1e1e; margin-top:10px;
+}
+#ps-header {
+  display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap;
+  justify-content:center; width:100%;
+}
+.ps-label { font-size:.6rem; letter-spacing:.25em; color:#555; }
+.ps-hint  { font-size:.58rem; color:#3a3a3a; letter-spacing:.1em; }
+#ps-slots { display:flex; gap:4px; }
+.ps-slot-btn {
+  width:22px; height:22px; background:transparent; border:1px solid #2a2a2a;
+  color:#3a3a3a; font-family:'Courier New',monospace; font-size:.62rem;
+  cursor:pointer; border-radius:3px; transition:all .15s; line-height:1;
+}
+.ps-slot-btn.selected { border-color:#c8a854; color:#c8a854; background:rgba(200,168,84,.1); }
+.ps-slot-btn.placed   { border-color:#4a6a4a; color:#6a8; }
+.ps-slot-btn.placed.selected { border-color:#c8a854; color:#c8a854; }
+#playspace-canvas {
+  background:#060606; border:1px solid #1e1e1e; cursor:crosshair;
+  display:block; image-rendering:crisp-edges;
+  width:min(38vh, 70vw); height:min(38vh, 70vw);
+}
 </style>
 </head>
 <body>
@@ -309,6 +335,26 @@ hr.div { border:none; border-top:1px solid #1e1e1e; margin:8px 0 7px; }
     </div>
 
   </div><!-- end #chain -->
+
+  <!-- ── PLAY SPACE ──────────────────────────────────────────────── -->
+  <div id="playspace-panel">
+    <div id="ps-header">
+      <span class="ps-label">PLAY SPACE</span>
+      <div id="ps-slots">
+        <button class="ps-slot-btn selected" data-slot="0" onclick="psSelectSlot(0)">1</button>
+        <button class="ps-slot-btn" data-slot="1" onclick="psSelectSlot(1)">2</button>
+        <button class="ps-slot-btn" data-slot="2" onclick="psSelectSlot(2)">3</button>
+        <button class="ps-slot-btn" data-slot="3" onclick="psSelectSlot(3)">4</button>
+        <button class="ps-slot-btn" data-slot="4" onclick="psSelectSlot(4)">5</button>
+        <button class="ps-slot-btn" data-slot="5" onclick="psSelectSlot(5)">6</button>
+        <button class="ps-slot-btn" data-slot="6" onclick="psSelectSlot(6)">7</button>
+        <button class="ps-slot-btn" data-slot="7" onclick="psSelectSlot(7)">8</button>
+      </div>
+      <span class="ps-hint">select slot → click to place · drag to interpolate</span>
+    </div>
+    <canvas id="playspace-canvas"></canvas>
+  </div>
+
 </div><!-- end #board -->
 
 <script>
@@ -811,6 +857,320 @@ function setupEditables(){
   makeEditable(document.getElementById('pitch-hz-val'),{min:1,max:20000,format:v=>v.toFixed(2)+' Hz',parse:s=>parseFloat(s.replace(' Hz','')),onSet:setPitchHz});
   makeEditable(document.getElementById('test-freq-val'),{min:20,max:20000,format:v=>Math.round(v)+' Hz',parse:s=>parseFloat(s.replace(' Hz','')),onSet:setTestFreqHz});
   makeEditable(document.getElementById('test-semi-val'),{min:-48,max:48,format:v=>v.toFixed(1),parse:s=>parseFloat(s.replace(/[≈\s]/g,'')),onSet:setTestFreqSemi});
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// PLAY SPACE — 2D interpolation space for global presets
+// ═══════════════════════════════════════════════════════════════════════
+
+const PS_SLOTS     = 8;
+const PS_R         = 20;          // preset circle radius (canvas px)
+const PS_IDW_POWER = 2;           // inverse distance weighting exponent
+
+let psData       = Array(PS_SLOTS).fill(null); // {state, x, y} or null
+let psCursor     = null;          // {x,y} canvas pixels, null = not placed
+let psSelected   = 0;             // which slot is armed for placement
+let psDragging   = false;
+let psDragMoved  = false;
+let psRAF        = null;
+
+// ── Load from localStorage ──────────────────────────────────────────────
+function psInit() {
+  for (let i = 0; i < PS_SLOTS; i++) {
+    const s = localStorage.getItem('fx_global_' + i);
+    if (s) {
+      const d = JSON.parse(s);
+      // d may have x,y from new saves, or be old format (no position)
+      psData[i] = d;
+    }
+  }
+  psUpdateSlotBtns();
+  psSetupCanvas();
+  psRedraw();
+}
+
+// ── Slot selection ──────────────────────────────────────────────────────
+function psSelectSlot(i) {
+  psSelected = i;
+  document.querySelectorAll('.ps-slot-btn').forEach((b,j) => {
+    b.classList.toggle('selected', j === i);
+  });
+  document.querySelector('.ps-hint') &&
+    (document.querySelector('.ps-hint').textContent =
+      psData[i] ? `slot ${i+1} placed — drag cursor or click to move` : `slot ${i+1} — click canvas to place`);
+}
+
+function psUpdateSlotBtns() {
+  document.querySelectorAll('.ps-slot-btn').forEach((b, i) => {
+    b.classList.toggle('placed', !!(psData[i] && psData[i].x !== undefined));
+  });
+}
+
+// ── Default concentric positions for unplaced presets ───────────────────
+function psDefaultPositions(W, H) {
+  // Returns {x,y} for each of the 8 slots, using canvas pixels
+  // Placed presets use their stored position; unplaced get concentric layout
+  const unplaced = [];
+  for (let i = 0; i < PS_SLOTS; i++) {
+    if (!psData[i] || psData[i].x === undefined) unplaced.push(i);
+  }
+  const positions = {};
+  const cx = W / 2, cy = H / 2;
+  const n = unplaced.length;
+  if (n === 0) return positions;
+
+  if (n === 1) {
+    positions[unplaced[0]] = {x: cx, y: cy};
+  } else if (n <= 6) {
+    // Single ring
+    const r = Math.min(W, H) * 0.28;
+    unplaced.forEach((slot, i) => {
+      const a = (i / n) * Math.PI * 2 - Math.PI / 2;
+      positions[slot] = {x: cx + r*Math.cos(a), y: cy + r*Math.sin(a)};
+    });
+  } else {
+    // Two rings
+    const innerN = Math.ceil(n / 2), outerN = n - innerN;
+    const rIn = Math.min(W,H) * 0.18, rOut = Math.min(W,H) * 0.36;
+    unplaced.slice(0, innerN).forEach((slot, i) => {
+      const a = (i / innerN) * Math.PI * 2 - Math.PI / 2;
+      positions[slot] = {x: cx + rIn*Math.cos(a), y: cy + rIn*Math.sin(a)};
+    });
+    unplaced.slice(innerN).forEach((slot, i) => {
+      const a = (i / outerN) * Math.PI * 2 - Math.PI / 2 + Math.PI/outerN;
+      positions[slot] = {x: cx + rOut*Math.cos(a), y: cy + rOut*Math.sin(a)};
+    });
+  }
+  return positions;
+}
+
+// ── Get display position for a slot ─────────────────────────────────────
+function psGetPos(slot, W, H, defaults) {
+  if (psData[slot] && psData[slot].x !== undefined) {
+    return {x: psData[slot].x * W, y: psData[slot].y * H};
+  }
+  return defaults[slot] || null;
+}
+
+// ── IDW interpolation ────────────────────────────────────────────────────
+function psInterpolate(cx, cy, W, H, defaults) {
+  const placed = [];
+  for (let i = 0; i < PS_SLOTS; i++) {
+    if (psData[i] && psData[i].x !== undefined) {
+      placed.push({...psData[i], px: psData[i].x * W, py: psData[i].y * H});
+    }
+  }
+  if (placed.length === 0) return;
+  if (placed.length === 1) { applyGlobalState(placed[0]); return; }
+
+  // Distances
+  const dists = placed.map(p => Math.sqrt((cx-p.px)**2 + (cy-p.py)**2));
+  const minD  = Math.min(...dists);
+
+  // If very close to a preset, snap to it
+  if (minD < PS_R * 0.5) {
+    applyGlobalState(placed[dists.indexOf(minD)]);
+    return;
+  }
+
+  const weights = dists.map(d => 1 / Math.pow(d, PS_IDW_POWER));
+  const total   = weights.reduce((s, w) => s + w, 0);
+
+  // Blend numeric params
+  const numKeys = ['inputGainDb','outputGainDb','testGainDb','testFreqHz',
+    'pitch.window','pitch.semi','pitch.wetdry',
+    'delay.time','delay.fb','delay.dry','delay.wet'];
+
+  const result = {testEnabled: placed[0].testEnabled,
+                  testWave: placed[0].testWave,
+                  pitch: {}, delay: {}};
+
+  numKeys.forEach(k => {
+    let val = 0;
+    placed.forEach((p, i) => {
+      const v = k.includes('.') ? p[k.split('.')[0]][k.split('.')[1]] : p[k];
+      val += (v||0) * weights[i] / total;
+    });
+    if (k.includes('.')) {
+      const [obj, prop] = k.split('.');
+      result[obj][prop] = val;
+    } else {
+      result[k] = val;
+    }
+  });
+
+  // Flatten for applyGlobalState compat
+  const flat = {
+    inputGainDb: result.inputGainDb,
+    outputGainDb: result.outputGainDb,
+    testEnabled: result.testEnabled,
+    testWave: result.testWave,
+    testFreqHz: result.testFreqHz,
+    testGainDb: result.testGainDb,
+    pitch: result.pitch,
+    delay: result.delay
+  };
+  applyGlobalState(flat);
+}
+
+
+// ── Canvas drawing ───────────────────────────────────────────────────────
+function psRedraw() {
+  const canvas = document.getElementById('playspace-canvas');
+  if (!canvas) return;
+  const W = canvas.width, H = canvas.height;
+  const ctx = canvas.getContext('2d');
+  const defaults = psDefaultPositions(W, H);
+
+  // Background
+  ctx.fillStyle = '#060606';
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle grid
+  ctx.strokeStyle = '#111';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x <= W; x += W/8) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for (let y = 0; y <= H; y += H/8) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  // Center crosshairs
+  ctx.strokeStyle = '#161616'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0,H/2); ctx.lineTo(W,H/2); ctx.stroke();
+
+  // Draw influence halos from placed presets
+  for (let i = 0; i < PS_SLOTS; i++) {
+    if (!psData[i] || psData[i].x === undefined) continue;
+    const pos = psGetPos(i, W, H, defaults);
+    if (!pos) continue;
+    const grad = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, W * 0.3);
+    grad.addColorStop(0, 'rgba(200,168,84,0.04)');
+    grad.addColorStop(1, 'rgba(200,168,84,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(pos.x, pos.y, W*0.3, 0, Math.PI*2); ctx.fill();
+  }
+
+  // Cursor influence halo
+  if (psCursor) {
+    const halo = ctx.createRadialGradient(psCursor.x, psCursor.y, 0, psCursor.x, psCursor.y, 60);
+    halo.addColorStop(0, 'rgba(100,160,255,0.07)');
+    halo.addColorStop(1, 'rgba(100,160,255,0)');
+    ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(psCursor.x, psCursor.y, 60, 0, Math.PI*2); ctx.fill();
+  }
+
+  // Draw preset circles
+  for (let i = 0; i < PS_SLOTS; i++) {
+    const pos = psGetPos(i, W, H, defaults);
+    if (!pos) continue;
+    const isPlaced   = !!(psData[i] && psData[i].x !== undefined);
+    const isSelected = i === psSelected;
+    const isCursorNear = psCursor && Math.sqrt((psCursor.x-pos.x)**2+(psCursor.y-pos.y)**2) < PS_R*2.5;
+
+    // Circle fill
+    if (isPlaced) {
+      ctx.fillStyle = isCursorNear ? 'rgba(200,168,84,0.28)' : 'rgba(200,168,84,0.12)';
+    } else {
+      ctx.fillStyle = 'rgba(40,40,40,0.8)';
+    }
+    ctx.beginPath(); ctx.arc(pos.x, pos.y, PS_R, 0, Math.PI*2); ctx.fill();
+
+    // Circle border
+    ctx.lineWidth = isSelected ? 2 : 1;
+    ctx.strokeStyle = isSelected ? '#c8a854' : (isPlaced ? '#6a6a3a' : '#333');
+    ctx.beginPath(); ctx.arc(pos.x, pos.y, PS_R, 0, Math.PI*2); ctx.stroke();
+    if (!isPlaced) {
+      // Dashed for unplaced
+      ctx.setLineDash([3,3]); ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(pos.x, pos.y, PS_R, 0, Math.PI*2); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Number label
+    ctx.fillStyle = isPlaced ? (isCursorNear ? '#c8a854' : '#8a7a3a') : '#333';
+    ctx.font = `${isSelected?'bold ':''} 11px "Courier New"`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(i + 1, pos.x, pos.y);
+  }
+
+  // Draw cursor
+  if (psCursor) {
+    const {x, y} = psCursor;
+    ctx.strokeStyle = 'rgba(100,160,255,0.9)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x-10,y); ctx.lineTo(x+10,y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x,y-10); ctx.lineTo(x,y+10); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI*2); ctx.stroke();
+    ctx.fillStyle = 'rgba(100,160,255,0.2)'; ctx.fill();
+  }
+}
+
+// ── Canvas setup & interaction ───────────────────────────────────────────
+function psSetupCanvas() {
+  const canvas = document.getElementById('playspace-canvas');
+  if (!canvas) return;
+
+  // Size canvas to its CSS display size
+  function psResize() {
+    const r = canvas.getBoundingClientRect();
+    canvas.width  = Math.round(r.width);
+    canvas.height = Math.round(r.height);
+    psRedraw();
+  }
+  psResize();
+  new ResizeObserver(psResize).observe(canvas);
+
+  canvas.addEventListener('mousedown', e => {
+    psDragging = true; psDragMoved = false;
+    const pos = psCanvasPos(e, canvas);
+    psCursor = pos;
+    psRedraw();
+  });
+
+  window.addEventListener('mousemove', e => {
+    if (!psDragging) return;
+    psDragMoved = true;
+    psCursor = psCanvasPos(e, canvas);
+    psRedraw();
+    // Live interpolation while dragging
+    if (rawCtx) psInterpolate(psCursor.x, psCursor.y, canvas.width, canvas.height, psDefaultPositions(canvas.width, canvas.height));
+  });
+
+  window.addEventListener('mouseup', e => {
+    if (!psDragging) return;
+    psDragging = false;
+    if (!psDragMoved) {
+      // It was a click — place selected preset here
+      const pos = psCanvasPos(e, canvas);
+      const W = canvas.width, H = canvas.height;
+      // Save current state + position to selected slot
+      const state = getGlobalState();
+      state.x = pos.x / W;
+      state.y = pos.y / H;
+      psData[psSelected] = state;
+      localStorage.setItem('fx_global_' + psSelected, JSON.stringify(state));
+      loadPresetUI(); // update existing preset bar
+      psUpdateSlotBtns();
+      // Auto-advance to next empty slot
+      const next = psData.findIndex((d, i) => i > psSelected && !d);
+      if (next >= 0) psSelectSlot(next);
+      document.querySelector('.ps-hint').textContent = `slot ${psSelected+1} placed!`;
+    }
+    psRedraw();
+  });
+}
+
+function psCanvasPos(e, canvas) {
+  const r = canvas.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+// ── Override handleGlobalPreset to include position ──────────────────────
+// (The existing function saves without x/y — we keep it for backward compat
+//  PlaySpace adds x/y on top when saving via canvas click)
+
+// ── Init PlaySpace after board shows ─────────────────────────────────────
+const _origShowBoard = showBoard;
+function showBoard() {
+  _origShowBoard();
+  requestAnimationFrame(() => { psInit(); });
 }
 
 </script>
