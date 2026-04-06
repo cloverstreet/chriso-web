@@ -22,7 +22,7 @@ body { background:#0d0d0d; font-family:'Courier New',monospace; color:#ccc; min-
 <style>
 .input-col { display:flex; flex-direction:column; align-items:center; flex-shrink:0; }
 .merge-svg { display:block; overflow:visible; }
-.unit { background:#161616; border:1px solid #2d2d2d; border-radius:6px; padding:12px 13px 14px; min-width:170px; position:relative; }
+.unit { background:#161616; border:1px solid #2d2d2d; border-radius:6px; padding:12px 13px 14px; min-width:210px; position:relative; }
 .unit-title { font-size:.62rem; letter-spacing:.25em; color:#777; text-align:center; margin-bottom:10px; padding-bottom:7px; border-bottom:1px solid #252525; }
 .bypass-btn { position:absolute; top:10px; right:10px; padding:2px 7px; background:transparent; border:1px solid #333; color:#555; font-family:'Courier New',monospace; font-size:.55rem; letter-spacing:.1em; cursor:pointer; border-radius:2px; transition:all .15s; }
 .bypass-btn.active { border-color:#c8a854; color:#c8a854; background:rgba(200,168,84,.08); }
@@ -50,7 +50,7 @@ hr.div { border:none; border-top:1px solid #1e1e1e; margin:8px 0 7px; }
 .meter-fill { width:100%; background:linear-gradient(to top,#2a7a2a,#8aba3a,#c8a854); transition:height .04s; }
 .meter-db { font-size:.58rem; color:#555; text-align:center; margin-top:2px; }
 .wire-svg { flex-shrink:0; align-self:center; overflow:visible; }
-#delay-unit { min-width:195px; }
+#delay-unit { min-width:240px; }
 .fb-svg { display:block; width:100%; overflow:visible; margin-bottom:7px; }
 .danger-zone { display:none; font-size:.57rem; color:#e05050; margin-top:2px; animation:blink 1s step-end infinite; }
 .danger-zone.show { display:block; }
@@ -127,10 +127,11 @@ hr.div { border:none; border-top:1px solid #1e1e1e; margin:8px 0 7px; }
           <div class="meter-db" id="in-db">—</div>
         </div>
         <button class="mute-btn" id="input-mute" onclick="toggleMute('input')">LIVE</button>
+        <button class="toggle-btn" id="sys-audio-btn" onclick="toggleSystemAudio()" style="margin-top:5px;font-size:.57rem;letter-spacing:.1em;" title="Capture system audio output via screen share">SYS AUDIO CAPTURE</button>
       </div>
-      <svg class="merge-svg" width="170" height="20" viewBox="0 0 170 20">
-        <line x1="85" y1="0" x2="85" y2="20" stroke="#252525" stroke-width="1"/>
-        <text x="85" y="14" text-anchor="middle" font-family="Courier New" font-size="7" fill="#3a3a3a" letter-spacing="2">+ SUM</text>
+      <svg class="merge-svg" width="210" height="20" viewBox="0 0 210 20">
+        <line x1="105" y1="0" x2="105" y2="20" stroke="#252525" stroke-width="1"/>
+        <text x="105" y="14" text-anchor="middle" font-family="Courier New" font-size="7" fill="#3a3a3a" letter-spacing="2">+ SUM</text>
       </svg>
 
       <!-- TEST TONE -->
@@ -319,6 +320,7 @@ let testEnabled=false, currentTestWave='sine';
 let currentDeviceId='', currentChannel='mix', numChannels=1;
 let inputMuted=false, outputMuted=false;
 let pitchBypassed=false, delayBypassed=false;
+let systemStream=null, systemSource=null, systemAudioGain;
 
 // ── Init ─────────────────────────────────────────────────────────
 async function initAudio() {
@@ -342,6 +344,8 @@ async function initAudio() {
     outputGainNode = new Tone.Gain(1);
     outputMuteNode = new Tone.Gain(1);
     outputMeter    = new Tone.Meter({ normalRange:true, smoothing:0.85 });
+    systemAudioGain = rawCtx.createGain(); systemAudioGain.gain.value=0;
+    systemAudioGain.connect(sumGain.input);
 
     // Native test tone
     testOscGain=rawCtx.createGain(); testNoiseGain=rawCtx.createGain();
@@ -475,6 +479,38 @@ function routeChannel(ch) {
 }
 async function changeInputDevice(){await connectSource(document.getElementById('input-device').value,'mix');}
 function changeInputChannel(){routeChannel(document.getElementById('input-channel').value);}
+async function toggleSystemAudio(){
+  const btn=document.getElementById('sys-audio-btn');
+  if(systemStream){
+    if(systemSource){try{systemSource.disconnect();}catch(e){}}
+    systemStream.getTracks().forEach(t=>t.stop());
+    systemStream=null; systemSource=null;
+    systemAudioGain.gain.setTargetAtTime(0,rawCtx.currentTime,0.02);
+    btn.textContent='SYS AUDIO CAPTURE'; btn.classList.remove('on');
+    return;
+  }
+  btn.textContent='... requesting ...'; btn.disabled=true;
+  try {
+    const ds=await navigator.mediaDevices.getDisplayMedia({audio:true, video:{width:1,height:1,frameRate:1}});
+    ds.getVideoTracks().forEach(t=>t.stop()); // discard video
+    const aTracks=ds.getAudioTracks();
+    if(!aTracks.length){btn.textContent='NO AUDIO — share a tab/window with audio'; btn.disabled=false; return;}
+    systemStream=new MediaStream(aTracks);
+    systemSource=rawCtx.createMediaStreamSource(systemStream);
+    systemSource.connect(systemAudioGain);
+    systemAudioGain.gain.setTargetAtTime(1,rawCtx.currentTime,0.02);
+    btn.textContent='SYS AUDIO ✓ (capturing)'; btn.classList.add('on'); btn.disabled=false;
+    aTracks[0].addEventListener('ended',()=>{
+      systemStream=null; systemSource=null;
+      systemAudioGain.gain.setTargetAtTime(0,rawCtx.currentTime,0.02);
+      btn.textContent='SYS AUDIO CAPTURE'; btn.classList.remove('on');
+    });
+  } catch(e){
+    btn.textContent='CANCELLED / DENIED'; btn.disabled=false;
+    setTimeout(()=>{btn.textContent='SYS AUDIO CAPTURE';},2500);
+  }
+}
+
 async function changeOutputDevice(){
   const id=document.getElementById('output-device').value;
   if(rawCtx.setSinkId){try{await rawCtx.setSinkId(id);}catch(e){console.warn(e);}}
