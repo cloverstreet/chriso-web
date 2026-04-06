@@ -391,14 +391,13 @@ let testOscTone=null, testNoiseTone=null, testOscGainTone, testNoiseGainTone, te
 let pitchShift, pitchDryG, pitchWetG;
 let delayNode, feedbackGain, delayDryGain, delayWetGain;
 let outputGainNode, outputMuteNode, outputMeter;
-let systemStream=null, systemSource=null, sysNativeGain=null; // system audio (native)
+let systemStream=null, systemSource=null, sysNativeGain=null; // system audio (native — getDisplayMedia)
 let noiseBuffer=null; // kept for compat
 let testEnabled=false, currentTestWave='sine';
 let testMasterGain; // alias to testMasterGainTone.gain for compat
 let currentDeviceId='', currentChannel='mix', numChannels=1;
 let inputMuted=false, outputMuted=false;
 let pitchBypassed=false, delayBypassed=false;
-let systemStream=null, systemSource=null, sysNativeGain;
 let micAnalyser=null, testAnalyser=null;
 
 // ── Init ─────────────────────────────────────────────────────────
