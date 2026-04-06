@@ -6,126 +6,249 @@
 <title>FX Processor — chriso.org</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 <style>
+/* ── Reset & base ───────────────────────────────────────────────── */
 * { margin:0; padding:0; box-sizing:border-box; }
-body { background:#0d0d0d; font-family:'Courier New',monospace; color:#ccc; min-height:100vh; display:flex; flex-direction:column; align-items:center; padding:20px; overflow-x:auto; }
-#start-screen { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px; height:80vh; }
-#start-screen h1 { font-size:1.1rem; font-weight:400; letter-spacing:.3em; color:#666; }
-#start-btn { padding:14px 40px; background:transparent; border:1px solid #c8a854; color:#c8a854; font-family:'Courier New',monospace; font-size:.85rem; letter-spacing:.2em; cursor:pointer; transition:all .2s; }
+body {
+  background:#0d0d0d; color:#d0d0d0;
+  font-family:'Courier New',monospace; font-size:13px;
+  min-height:100vh; display:flex; flex-direction:column;
+  align-items:center; padding:16px 12px; overflow-x:auto;
+}
+
+/* ── Start screen ───────────────────────────────────────────────── */
+#start-screen {
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  gap:20px; height:80vh;
+}
+#start-screen h1 { font-size:1rem; font-weight:400; letter-spacing:.35em; color:#555; }
+#start-btn {
+  padding:14px 44px; background:transparent;
+  border:1px solid #c8a854; color:#c8a854;
+  font-family:'Courier New',monospace; font-size:.9rem;
+  letter-spacing:.2em; cursor:pointer; transition:all .2s;
+}
 #start-btn:hover { background:#c8a854; color:#000; }
 #start-btn:disabled { opacity:.4; cursor:default; }
-#start-status { font-size:.72rem; color:#555; letter-spacing:.15em; }
-#board { display:none; flex-direction:column; width:100%; }
-#global-preset-bar { display:flex; align-items:center; gap:6px; padding:8px 10px 16px; flex-wrap:wrap; }
-#global-preset-bar .bar-label { font-size:.58rem; color:#555; letter-spacing:.15em; margin-right:4px; }
-#chain { display:flex; flex-direction:row; align-items:flex-start; overflow-x:auto; padding:0 10px 20px; gap:0; }
-</style>
-<style>
-.input-col { display:flex; flex-direction:row; align-items:flex-start; flex-shrink:0; gap:5px; }
-.merge-svg { display:block; overflow:visible; }
-.unit { background:#161616; border:1px solid #2d2d2d; border-radius:6px; padding:11px 12px 13px; width:210px; flex-shrink:0; position:relative; }
-.unit-title { font-size:.68rem; letter-spacing:.22em; color:#888; text-align:center; margin-bottom:10px; padding-bottom:7px; border-bottom:1px solid #252525; }
-.unit.narrow { width:160px; }
-.bypass-btn { position:absolute; top:10px; right:10px; padding:2px 7px; background:transparent; border:1px solid #333; color:#555; font-family:'Courier New',monospace; font-size:.55rem; letter-spacing:.1em; cursor:pointer; border-radius:2px; transition:all .15s; }
-.bypass-btn.active { border-color:#c8a854; color:#c8a854; background:rgba(200,168,84,.08); }
-.ctrl { margin-bottom:9px; }
-.ctrl label { display:block; font-size:.68rem; letter-spacing:.12em; color:#999; margin-bottom:4px; cursor:default; }
-.ctrl label:hover { color:#ccc; }
-.ctrl-row { display:flex; align-items:center; gap:5px; }
-.ctrl-val { font-size:.72rem; color:#c8a854; white-space:nowrap; min-width:54px; text-align:right; cursor:text; }
-.ctrl-val:hover { color:#e8c874; text-decoration:underline dotted #888; }
-.ctrl-val.danger { color:#e05050; }
-.ctrl-val input { width:100%; background:#111; border:1px solid #c8a854; color:#c8a854; font-family:'Courier New',monospace; font-size:.65rem; padding:1px 3px; outline:none; }
-input[type="range"] { -webkit-appearance:none; flex:1; height:3px; background:#333; outline:none; border-radius:2px; cursor:pointer; }
-input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:12px; height:12px; background:#c8a854; border-radius:50%; cursor:pointer; }
-input[type="range"].danger-range::-webkit-slider-thumb { background:#e05050; }
-select { width:100%; background:#1e1e1e; border:1px solid #383838; color:#ccc; font-family:'Courier New',monospace; font-size:.65rem; padding:4px 5px; outline:none; cursor:pointer; margin-bottom:2px; border-radius:2px; }
-.toggle-btn { width:100%; padding:4px 0; background:transparent; border:1px solid #444; color:#666; font-family:'Courier New',monospace; font-size:.6rem; letter-spacing:.15em; cursor:pointer; border-radius:3px; margin-bottom:7px; transition:all .15s; }
-.toggle-btn.on { border-color:#5a5; color:#5a5; background:rgba(90,170,90,.06); }
-.mute-btn { width:100%; margin-top:7px; padding:4px 0; background:transparent; border:1px solid #2a6e2a; color:#5a5; font-family:'Courier New',monospace; font-size:.6rem; letter-spacing:.2em; cursor:pointer; border-radius:3px; transition:all .15s; }
-.mute-btn.muted { border-color:#6e2a2a; color:#a55; background:#1a0a0a; }
-hr.div { border:none; border-top:1px solid #1e1e1e; margin:8px 0 7px; }
-.ch-note { font-size:.62rem; color:#666; letter-spacing:.06em; margin-top:2px; }
-.mini-meter-wrap { display:flex; gap:2px; height:26px; align-items:flex-end; margin-top:3px; }
-.mini-meter-bar { flex:1; background:#1a1a1a; border-radius:1px; overflow:hidden; height:100%; display:flex; flex-direction:column; justify-content:flex-end; }
-.mini-meter-fill { width:100%; background:linear-gradient(to top,#2a7a2a,#8aba3a,#c8a854); transition:height .04s; }
-.mini-meter-db { font-size:.54rem; color:#444; text-align:center; margin-top:1px; }
+#start-status { font-size:.75rem; color:#555; letter-spacing:.15em; }
 
+/* ── Board ──────────────────────────────────────────────────────── */
+#board { display:none; flex-direction:column; width:100%; gap:0; }
+#about-row {
+  display:flex; justify-content:flex-end;
+  padding:0 4px 8px; width:100%;
+}
+#about-row a {
+  font-size:.65rem; color:#3a3a3a; letter-spacing:.12em;
+  text-decoration:none; border-bottom:1px solid #222;
+  padding-bottom:1px; transition:color .2s;
+}
+#about-row a:hover { color:#888; }
+
+/* ── Global preset bar ──────────────────────────────────────────── */
+#global-preset-bar {
+  display:flex; align-items:center; gap:5px;
+  padding:6px 4px 12px; flex-wrap:wrap;
+}
+.bar-label { font-size:.62rem; letter-spacing:.2em; color:#555; margin-right:3px; }
+.global-slot {
+  width:24px; height:22px; background:transparent;
+  border:1px solid #252525; color:#3a3a3a;
+  font-family:'Courier New',monospace; font-size:.7rem;
+  cursor:pointer; border-radius:2px; transition:all .12s;
+}
+.global-slot.saved { border-color:#3a4a3a; color:#5a8; }
+.global-slot:hover { border-color:#555; color:#999; }
+.global-slot.saved:hover { border-color:#5a5; }
 </style>
+
 <style>
-.meter-wrap { display:flex; gap:3px; height:48px; align-items:flex-end; margin-top:3px; }
-.meter-bar { flex:1; background:#1a1a1a; border-radius:2px; overflow:hidden; height:100%; display:flex; flex-direction:column; justify-content:flex-end; }
-.meter-fill { width:100%; background:linear-gradient(to top,#2a7a2a,#8aba3a,#c8a854); transition:height .04s; }
-.meter-db { font-size:.58rem; color:#555; text-align:center; margin-top:2px; }
-.wire-svg { flex-shrink:0; align-self:center; overflow:visible; }
-#delay-unit { width:240px; }
-.fb-svg { display:block; width:100%; overflow:visible; margin-bottom:7px; }
-.danger-zone { display:none; font-size:.57rem; color:#e05050; margin-top:2px; animation:blink 1s step-end infinite; }
+/* ── Main chain row ─────────────────────────────────────────────── */
+#chain {
+  display:flex; flex-direction:row;
+  align-items:stretch; /* equal height */
+  overflow-x:auto; gap:0; width:100%;
+}
+
+/* ── Column wrappers (inputs / outputs) ────────────────────────── */
+.col-wrap {
+  display:flex; flex-direction:column;
+  gap:0; flex-shrink:0;
+}
+.col-label {
+  font-size:.6rem; letter-spacing:.28em; color:#444;
+  text-align:center; padding:0 0 5px; text-transform:uppercase;
+}
+
+/* ── Module base ────────────────────────────────────────────────── */
+.module {
+  background:#111; border:1px solid #242424;
+  border-radius:5px; padding:9px 11px 10px;
+  position:relative; flex-shrink:0;
+}
+/* Standard width */
+.module { width:170px; }
+/* Double wide for FX */
+.module.wide { width:300px; }
+/* Half height = compact padding, no meters taking space */
+.module.half { }
+
+/* Module header: title + bypass inline */
+.mod-head {
+  display:flex; align-items:center;
+  justify-content:space-between;
+  margin-bottom:9px; padding-bottom:7px;
+  border-bottom:1px solid #1e1e1e;
+}
+.mod-title {
+  font-size:.66rem; letter-spacing:.22em; color:#888;
+  text-transform:uppercase;
+}
+.byp-btn {
+  padding:1px 6px; background:transparent;
+  border:1px solid #2a2a2a; color:#444;
+  font-family:'Courier New',monospace; font-size:.58rem;
+  letter-spacing:.1em; cursor:pointer; border-radius:2px;
+  transition:all .15s; white-space:nowrap;
+}
+.byp-btn.on  { border-color:#c8a854; color:#c8a854; background:rgba(200,168,84,.08); }
+.byp-btn.muted { border-color:#6e2a2a; color:#a55; background:#160808; }
+
+/* ── Controls ───────────────────────────────────────────────────── */
+.ctrl { margin-bottom:8px; }
+.ctrl label {
+  display:block; font-size:.67rem; letter-spacing:.12em;
+  color:#999; margin-bottom:3px;
+}
+.ctrl-row { display:flex; align-items:center; gap:5px; }
+.ctrl-val {
+  font-size:.74rem; color:#c8a854; white-space:nowrap;
+  min-width:52px; text-align:right; cursor:text;
+}
+.ctrl-val:hover { color:#e8c874; text-decoration:underline dotted #666; }
+.ctrl-val.danger { color:#e05050; }
+input[type="range"] {
+  -webkit-appearance:none; flex:1; height:3px;
+  background:#2a2a2a; outline:none; border-radius:2px; cursor:pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance:none; width:13px; height:13px;
+  background:#c8a854; border-radius:50%; cursor:pointer;
+}
+input[type="range"].danger-range::-webkit-slider-thumb { background:#e05050; }
+select {
+  width:100%; background:#161616; border:1px solid #2e2e2e;
+  color:#c0c0c0; font-family:'Courier New',monospace;
+  font-size:.7rem; padding:3px 5px; outline:none;
+  cursor:pointer; border-radius:2px; margin-bottom:2px;
+}
+hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
+.ch-note { font-size:.63rem; color:#555; margin-top:2px; }
+.editable-val {
+  font-size:.72rem; color:#c8a854; cursor:text;
+}
+.editable-val:hover { color:#e8c874; text-decoration:underline dotted #666; }
+.display-val { font-size:.67rem; color:#999; }
+.display-approx { color:#556; }
+.danger-zone {
+  display:none; font-size:.6rem; color:#e05050;
+  margin-top:2px; animation:blink 1s step-end infinite;
+}
 .danger-zone.show { display:block; }
 @keyframes blink { 50%{opacity:0;} }
-.display-row { display:flex; align-items:center; gap:5px; margin-top:2px; }
-.display-val { font-size:.68rem; color:#aab; }
-.display-approx { color:#557; }
-.editable-val { font-size:.72rem; color:#c8a854; cursor:text; }
-.editable-val:hover { color:#e8c874; text-decoration:underline dotted #888; }
-.editable-val input { background:#111; border:1px solid #c8a854; color:#c8a854; font-family:'Courier New',monospace; font-size:.64rem; padding:1px 3px; outline:none; width:85px; }
-/* Preset slots */
-.preset-row { display:flex; gap:3px; margin-top:9px; padding-top:8px; border-top:1px solid #1e1e1e; }
-.preset-slot { flex:1; padding:3px 0; background:transparent; border:1px solid #2a2a2a; color:#444; font-family:'Courier New',monospace; font-size:.58rem; cursor:pointer; border-radius:2px; transition:all .1s; text-align:center; }
-.preset-slot.saved { border-color:#3a4a3a; color:#6a8; }
-.preset-slot:hover { border-color:#555; color:#888; }
-.preset-slot.saved:hover { border-color:#5a5; color:#8ba; }
-.preset-hint { font-size:.55rem; color:#3a3a3a; text-align:center; margin-top:3px; letter-spacing:.05em; }
-.global-slot { padding:4px 8px; background:transparent; border:1px solid #2a2a2a; color:#444; font-family:'Courier New',monospace; font-size:.65rem; cursor:pointer; border-radius:3px; transition:all .1s; }
-.global-slot.saved { border-color:#3a4a4a; color:#6aa; }
-.global-slot:hover { border-color:#555; color:#888; }
+</style>
 
-/* ── PlaySpace ─────────────────────────────────────────────────── */
+<style>
+/* ── Meters ─────────────────────────────────────────────────────── */
+.meter-wrap { display:flex; gap:3px; height:44px; align-items:flex-end; margin-top:3px; }
+.meter-bar { flex:1; background:#161616; border-radius:2px; overflow:hidden; height:100%; display:flex; flex-direction:column; justify-content:flex-end; }
+.meter-fill { width:100%; background:linear-gradient(to top,#2a7a2a,#7ab02a,#c8a854); transition:height .04s; }
+.meter-db { font-size:.6rem; color:#444; text-align:center; margin-top:2px; }
+.mini-meter-wrap { display:flex; gap:2px; height:22px; align-items:flex-end; margin-top:3px; }
+.mini-meter-bar { flex:1; background:#161616; border-radius:1px; overflow:hidden; height:100%; display:flex; flex-direction:column; justify-content:flex-end; }
+.mini-meter-fill { width:100%; background:linear-gradient(to top,#2a7a2a,#7ab02a,#c8a854); transition:height .04s; }
+.mini-meter-db { font-size:.58rem; color:#3a3a3a; text-align:center; margin-top:1px; }
+
+/* ── Wires between modules ──────────────────────────────────────── */
+.wire-svg { flex-shrink:0; align-self:center; }
+
+/* ── Delay feedback arc ─────────────────────────────────────────── */
+.fb-svg { display:block; width:100%; overflow:visible; margin-bottom:7px; }
+
+/* ── Preset slots ───────────────────────────────────────────────── */
+.preset-row { display:flex; gap:3px; margin-top:8px; padding-top:7px; border-top:1px solid #1a1a1a; }
+.preset-slot {
+  flex:1; padding:3px 0; background:transparent;
+  border:1px solid #222; color:#3a3a3a;
+  font-family:'Courier New',monospace; font-size:.62rem;
+  cursor:pointer; border-radius:2px; text-align:center; transition:all .1s;
+}
+.preset-slot.saved { border-color:#3a4a3a; color:#5a8; }
+.preset-slot:hover { border-color:#555; color:#999; }
+.preset-slot.saved:hover { border-color:#5a5; }
+.preset-hint { font-size:.56rem; color:#2e2e2e; text-align:center; margin-top:2px; }
+
+/* ── Toggle (enable) button ─────────────────────────────────────── */
+.toggle-btn {
+  width:100%; padding:4px 0; background:transparent;
+  border:1px solid #333; color:#555;
+  font-family:'Courier New',monospace; font-size:.65rem;
+  letter-spacing:.15em; cursor:pointer; border-radius:3px;
+  margin-bottom:7px; transition:all .15s;
+}
+.toggle-btn.on { border-color:#3a6e3a; color:#5a5; background:rgba(90,160,90,.06); }
+
+/* ── PlaySpace ──────────────────────────────────────────────────── */
 #playspace-panel {
-  width:100%; display:flex; flex-direction:column; align-items:center;
-  padding:14px 10px 24px; border-top:1px solid #1e1e1e; margin-top:10px;
+  width:100%; display:flex; flex-direction:column;
+  align-items:center; padding:12px 4px 24px;
+  border-top:1px solid #181818; margin-top:10px;
 }
 #ps-header {
-  display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap;
-  justify-content:center; width:100%;
+  display:flex; align-items:center; gap:8px;
+  margin-bottom:10px; flex-wrap:wrap; justify-content:center;
 }
-.ps-label { font-size:.64rem; letter-spacing:.22em; color:#777; }
-.ps-hint  { font-size:.62rem; color:#555; letter-spacing:.1em; }
+.ps-label { font-size:.64rem; letter-spacing:.25em; color:#666; }
+.ps-hint  { font-size:.62rem; color:#444; letter-spacing:.1em; }
 #ps-slots { display:flex; gap:4px; }
 .ps-slot-btn {
-  width:22px; height:22px; background:transparent; border:1px solid #2a2a2a;
-  color:#3a3a3a; font-family:'Courier New',monospace; font-size:.62rem;
-  cursor:pointer; border-radius:3px; transition:all .15s; line-height:1;
+  width:22px; height:22px; background:transparent;
+  border:1px solid #222; color:#3a3a3a;
+  font-family:'Courier New',monospace; font-size:.65rem;
+  cursor:pointer; border-radius:3px; transition:all .12s; line-height:1;
 }
 .ps-slot-btn.selected { border-color:#c8a854; color:#c8a854; background:rgba(200,168,84,.1); }
-.ps-slot-btn.placed   { border-color:#4a6a4a; color:#6a8; }
+.ps-slot-btn.placed   { border-color:#3a5a3a; color:#5a8; }
 .ps-slot-btn.placed.selected { border-color:#c8a854; color:#c8a854; }
 #playspace-canvas {
-  background:#060606; border:1px solid #1e1e1e; cursor:crosshair;
-  display:block; image-rendering:crisp-edges;
-  width:min(38vh, 70vw); height:min(38vh, 70vw);
+  background:#050505; border:1px solid #1a1a1a;
+  cursor:crosshair; display:block;
+  width:min(40vh,72vw); height:min(40vh,72vw);
 }
 </style>
 </head>
 <body>
 
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!-- START SCREEN                                                   -->
+<!-- ══════════════════════════════════════════════════════════════ -->
 <div id="start-screen">
   <h1>FX PROCESSOR</h1>
   <button id="start-btn" onclick="initAudio()">INITIALISE AUDIO</button>
   <div id="start-status">click to request microphone / device access</div>
 </div>
 
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!-- BOARD                                                          -->
+<!-- ══════════════════════════════════════════════════════════════ -->
 <div id="board">
-  <!-- Global presets -->
-  <div style="display:flex;justify-content:flex-end;padding:0 10px 4px;width:100%;">
-    <a href="/instruments/fx-processor/about.html" target="_blank"
-       style="font-family:'Courier New',monospace;font-size:.6rem;color:#444;letter-spacing:.12em;
-              text-decoration:none;border-bottom:1px solid #2a2a2a;padding-bottom:1px;transition:color .2s;"
-       onmouseover="this.style.color='#888'" onmouseout="this.style.color='#444'">
-      about this prototype ↗
-    </a>
+
+  <!-- About + global presets -->
+  <div id="about-row">
+    <a href="/instruments/fx-processor/about.html" target="_blank">about this prototype ↗</a>
   </div>
   <div id="global-preset-bar">
-    <span class="bar-label">GLOBAL PRESETS</span>
+    <span class="bar-label">GLOBAL</span>
     <button class="global-slot" data-slot="0" onclick="handleGlobalPreset(this)">1</button>
     <button class="global-slot" data-slot="1" onclick="handleGlobalPreset(this)">2</button>
     <button class="global-slot" data-slot="2" onclick="handleGlobalPreset(this)">3</button>
@@ -134,56 +257,57 @@ hr.div { border:none; border-top:1px solid #1e1e1e; margin:8px 0 7px; }
     <button class="global-slot" data-slot="5" onclick="handleGlobalPreset(this)">6</button>
     <button class="global-slot" data-slot="6" onclick="handleGlobalPreset(this)">7</button>
     <button class="global-slot" data-slot="7" onclick="handleGlobalPreset(this)">8</button>
-    <span class="bar-label" style="margin-left:8px">shift+click: save</span>
+    <span class="bar-label" style="margin-left:6px;color:#333">shift+click: save</span>
   </div>
 
+  <!-- ── Main chain row ─────────────────────────────────────────── -->
   <div id="chain">
-    <!-- ── INPUT COLUMN ─────────────────────────────────── -->
-    <div class="input-col">
-      <div class="unit narrow">
-        <div class="unit-title">MIC INPUT</div>
-        <div class="ctrl"><label>DEVICE</label>
+
+    <!-- ════════ INPUTS COLUMN ════════ -->
+    <div class="col-wrap">
+      <div class="col-label">INPUTS</div>
+
+      <!-- MIC INPUT module -->
+      <div class="module half" id="mic-module">
+        <div class="mod-head">
+          <span class="mod-title">MIC INPUT</span>
+          <button class="byp-btn" id="input-mute" onclick="toggleMute('input')">LIVE</button>
+        </div>
+        <div class="ctrl">
+          <label>DEVICE</label>
           <select id="input-device" onchange="changeInputDevice()">
             <option value="">Default (System)</option>
           </select>
         </div>
-        <div class="ctrl"><label>CHANNEL</label>
+        <div class="ctrl">
+          <label>CHANNEL</label>
           <select id="input-channel" onchange="changeInputChannel()">
             <option value="mix">— init first —</option>
           </select>
           <div class="ch-note" id="ch-note"></div>
         </div>
-        <div class="ctrl"><label>MIC LEVEL</label>
-          <div class="mini-meter-wrap">
-            <div class="mini-meter-bar"><div class="mini-meter-fill" id="mic-m-l" style="height:0%"></div></div>
-            <div class="mini-meter-bar"><div class="mini-meter-fill" id="mic-m-r" style="height:0%"></div></div>
-          </div>
-          <div class="mini-meter-db" id="mic-db">—</div>
-        </div>
-        <hr class="div">
-        <div class="ctrl"><label>GAIN</label>
+        <div class="ctrl">
+          <label>GAIN</label>
           <div class="ctrl-row">
             <input type="range" id="input-gain-db" min="-60" max="12" step="0.5" value="0" oninput="setInputGainDb(this.value)">
             <span class="ctrl-val" id="input-gain-val" data-value="0">0.0 dB</span>
           </div>
         </div>
-        <div class="ctrl"><label>LEVEL</label>
-          <div class="meter-wrap">
-            <div class="meter-bar"><div class="meter-fill" id="in-m-l" style="height:0%"></div></div>
-            <div class="meter-bar"><div class="meter-fill" id="in-m-r" style="height:0%"></div></div>
-          </div>
-          <div class="meter-db" id="in-db">—</div>
+        <div class="mini-meter-wrap">
+          <div class="mini-meter-bar"><div class="mini-meter-fill" id="mic-m-l" style="height:0%"></div></div>
+          <div class="mini-meter-bar"><div class="mini-meter-fill" id="mic-m-r" style="height:0%"></div></div>
         </div>
-        <button class="mute-btn" id="input-mute" onclick="toggleMute('input')">LIVE</button>
-        <button class="toggle-btn" id="sys-audio-btn" onclick="toggleSystemAudio()" style="margin-top:5px;font-size:.54rem;letter-spacing:.08em;" title="On macOS: choose a Chrome Tab for audio. Screen/Window sharing may not include audio.">CAPTURE TAB AUDIO (?)</button>
+        <div class="mini-meter-db" id="mic-db">—</div>
       </div>
 
-
-      <!-- TEST TONE -->
-      <div class="unit narrow">
-        <div class="unit-title">TEST TONE</div>
-        <button class="toggle-btn" id="test-toggle" onclick="toggleTestTone()">DISABLED</button>
-        <div class="ctrl"><label>WAVEFORM</label>
+      <!-- SIGNAL GENERATOR module -->
+      <div class="module half" id="siggen-module">
+        <div class="mod-head">
+          <span class="mod-title">SIG GEN</span>
+          <button class="byp-btn" id="test-enable-btn" onclick="toggleTestTone()">OFF</button>
+        </div>
+        <div class="ctrl">
+          <label>WAVEFORM</label>
           <select id="test-wave" onchange="setTestWave(this.value)">
             <option value="sine">Sine</option>
             <option value="square">Square</option>
@@ -192,158 +316,201 @@ hr.div { border:none; border-top:1px solid #1e1e1e; margin:8px 0 7px; }
             <option value="noise">White Noise</option>
           </select>
         </div>
-        <div class="ctrl" id="test-freq-ctrl"><label>FREQUENCY (log)</label>
+        <div class="ctrl" id="test-freq-ctrl">
+          <label>FREQUENCY (log)</label>
           <div class="ctrl-row">
-            <input type="range" id="test-freq-sl" min="0" max="1000" step="1" value="500" oninput="setTestFreqPos(this.value)">
-            <span class="editable-val" id="test-freq-val" data-value="440">440 Hz</span>
+            <input type="range" id="test-freq-sl" min="0" max="1000" step="1" value="263" oninput="setTestFreqPos(this.value)">
+            <span class="editable-val" id="test-freq-val" data-value="110">110 Hz</span>
           </div>
-          <div class="display-row">
-            <span class="display-val">ST FROM A4:</span>
-            <span class="editable-val" id="test-semi-val" data-value="0">0.0</span>
+          <div style="display:flex;gap:5px;margin-top:2px;align-items:center;">
+            <span class="display-val">ST A4:</span>
+            <span class="editable-val" id="test-semi-val" data-value="-24">-24.0</span>
           </div>
         </div>
-        <div class="ctrl"><label>LEVEL</label>
-          <div class="mini-meter-wrap">
-            <div class="mini-meter-bar"><div class="mini-meter-fill" id="test-m-l" style="height:0%"></div></div>
-            <div class="mini-meter-bar"><div class="mini-meter-fill" id="test-m-r" style="height:0%"></div></div>
-          </div>
-          <div class="mini-meter-db" id="test-db">—</div>
-        </div>
-        <div class="ctrl"><label>GAIN</label>
+        <div class="ctrl">
+          <label>GAIN</label>
           <div class="ctrl-row">
             <input type="range" id="test-gain-sl" min="-60" max="0" step="0.5" value="-12" oninput="setTestGainDb(this.value)">
             <span class="ctrl-val" id="test-gain-val" data-value="-12">-12.0 dB</span>
           </div>
         </div>
+        <div class="mini-meter-wrap">
+          <div class="mini-meter-bar"><div class="mini-meter-fill" id="test-m-l" style="height:0%"></div></div>
+          <div class="mini-meter-bar"><div class="mini-meter-fill" id="test-m-r" style="height:0%"></div></div>
+        </div>
+        <div class="mini-meter-db" id="test-db">—</div>
+        <!-- System audio capture -->
+        <hr class="div">
+        <button class="toggle-btn" id="sys-audio-btn" onclick="toggleSystemAudio()"
+          title="macOS: choose a Chrome Tab for audio" style="font-size:.6rem;letter-spacing:.08em;">
+          CAPTURE TAB AUDIO (?)
+        </button>
       </div>
-    </div><!-- end input-col -->
 
-    <!-- wire: col → pitch -->
-    <svg class="wire-svg" width="28" height="60" viewBox="0 0 28 60">
-      <path d="M0,30 C10,30 18,34 28,34" stroke="#c8a854" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    </div><!-- end inputs col-wrap -->
+
+    <!-- wire: inputs → pitch -->
+    <svg class="wire-svg" width="22" height="60" viewBox="0 0 22 60" style="align-self:center;">
+      <path d="M0,30 C8,30 14,33 22,33" stroke="#c8a854" stroke-width="2" fill="none" stroke-linecap="round"/>
     </svg>
 
-    <!-- ── PITCH SHIFT ──────────────────────────────────── -->
-    <div class="unit">
-      <div class="unit-title">PITCH SHIFT</div>
-      <button class="bypass-btn" id="pitch-bypass-btn" onclick="toggleFxBypass('pitch')">BYP</button>
-      <div class="ctrl"><label>TYPE</label>
-        <select id="pitch-type" onchange="setPitchType(this.value)">
-          <option value="0.05">Phase Vocoder — Fast</option>
-          <option value="0.1" selected>Phase Vocoder — Std</option>
-          <option value="0.25">Phase Vocoder — Quality</option>
-          <option value="0.5">Phase Vocoder — HQ</option>
-        </select>
+    <!-- ════════ PITCH SHIFT (double wide) ════════ -->
+    <div class="module wide" id="pitch-module">
+      <div class="mod-head">
+        <span class="mod-title">PITCH SHIFT</span>
+        <button class="byp-btn" id="pitch-bypass-btn" onclick="toggleFxBypass('pitch')">BYP</button>
       </div>
-      <div class="ctrl"><label>WINDOW (latency)</label>
-        <div class="ctrl-row">
-          <input type="range" id="pitch-window" min="0.01" max="0.5" step="0.01" value="0.1" oninput="setPitchWindow(this.value)">
-          <span class="ctrl-val" id="pitch-window-val" data-value="0.1">0.10s</span>
+      <div style="display:flex;gap:16px;">
+        <!-- Left: controls -->
+        <div style="flex:1;min-width:0;">
+          <div class="ctrl">
+            <label>TYPE</label>
+            <select id="pitch-type" onchange="setPitchType(this.value)">
+              <option value="0.05">Phase Vocoder — Fast</option>
+              <option value="0.1" selected>Phase Vocoder — Std</option>
+              <option value="0.25">Phase Vocoder — Quality</option>
+              <option value="0.5">Phase Vocoder — HQ</option>
+            </select>
+          </div>
+          <div class="ctrl">
+            <label>WINDOW (latency)</label>
+            <div class="ctrl-row">
+              <input type="range" id="pitch-window" min="0.01" max="0.5" step="0.01" value="0.1" oninput="setPitchWindow(this.value)">
+              <span class="ctrl-val" id="pitch-window-val" data-value="0.1">0.10s</span>
+            </div>
+          </div>
+          <div class="ctrl">
+            <label>SEMITONES</label>
+            <div class="ctrl-row">
+              <input type="range" id="pitch-semi" min="-24" max="24" step="0.1" value="0" oninput="setPitchSemi(this.value)">
+              <span class="ctrl-val" id="pitch-semi-val" data-value="0">0.0</span>
+            </div>
+          </div>
+          <div class="ctrl">
+            <label>HZ (ref A4)</label>
+            <div style="display:flex;gap:5px;align-items:center;margin-top:2px;">
+              <span class="display-val">440 → <span class="display-approx" id="pitch-approx"></span></span>
+              <span class="editable-val" id="pitch-hz-val" data-value="440">440.00 Hz</span>
+            </div>
+          </div>
+        </div>
+        <!-- Right: wet/dry + presets -->
+        <div style="flex:1;min-width:0;">
+          <div class="ctrl">
+            <label>WET / DRY</label>
+            <div class="ctrl-row">
+              <input type="range" id="pitch-wetdry" min="0" max="1" step="0.01" value="0.5" oninput="setPitchWetDry(this.value)">
+              <span class="ctrl-val" id="pitch-wetdry-val">50%</span>
+            </div>
+          </div>
+          <div class="preset-row" id="pitch-presets"></div>
+          <div class="preset-hint">click: load · shift: save</div>
         </div>
       </div>
-      <div class="ctrl"><label>SEMITONES</label>
-        <div class="ctrl-row">
-          <input type="range" id="pitch-semi" min="-24" max="24" step="0.1" value="0" oninput="setPitchSemi(this.value)">
-          <span class="ctrl-val" id="pitch-semi-val" data-value="0">0.0</span>
-        </div>
-      </div>
-      <div class="ctrl"><label>HZ (ref A4)</label>
-        <div class="display-row">
-          <span class="display-val">440 → <span class="display-approx" id="pitch-approx"></span></span>
-          <span class="editable-val" id="pitch-hz-val" data-value="440">440.00 Hz</span>
-        </div>
-      </div>
-      <hr class="div">
-      <div class="ctrl"><label>WET / DRY</label>
-        <div class="ctrl-row">
-          <input type="range" id="pitch-wetdry" min="0" max="1" step="0.01" value="0.5" oninput="setPitchWetDry(this.value)">
-          <span class="ctrl-val" id="pitch-wetdry-val">WET 100%</span>
-        </div>
-      </div>
-      <div class="preset-row" id="pitch-presets"></div>
-      <div class="preset-hint">click: load · shift+click: save</div>
     </div>
 
     <!-- wire: pitch → delay -->
-    <svg class="wire-svg" width="28" height="60" viewBox="0 0 28 60">
-      <path d="M0,34 C10,34 18,30 28,30" stroke="#c8a854" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <svg class="wire-svg" width="22" height="60" viewBox="0 0 22 60" style="align-self:center;">
+      <path d="M0,33 C8,33 14,30 22,30" stroke="#c8a854" stroke-width="2" fill="none" stroke-linecap="round"/>
     </svg>
 
-    <!-- ── DELAY ─────────────────────────────────────────── -->
-    <div class="unit" id="delay-unit">
-      <div class="unit-title">DELAY</div>
-      <button class="bypass-btn" id="delay-bypass-btn" onclick="toggleFxBypass('delay')">BYP</button>
-      <svg class="fb-svg" height="32" viewBox="0 0 214 32">
-        <path d="M190,28 C190,6 107,2 107,2 C107,2 24,6 24,28"
+    <!-- ════════ DELAY (double wide) ════════ -->
+    <div class="module wide" id="delay-module">
+      <div class="mod-head">
+        <span class="mod-title">DELAY</span>
+        <button class="byp-btn" id="delay-bypass-btn" onclick="toggleFxBypass('delay')">BYP</button>
+      </div>
+      <!-- Feedback arc -->
+      <svg class="fb-svg" height="28" viewBox="0 0 298 28">
+        <path d="M272,24 C272,6 150,2 149,2 C148,2 26,6 26,24"
               stroke="#a854c8" stroke-width="2" fill="none" stroke-linecap="round"/>
-        <line x1="190" y1="28" x2="190" y2="32" stroke="#a854c8" stroke-width="2"/>
-        <line x1="24"  y1="28" x2="24"  y2="32" stroke="#a854c8" stroke-width="2"/>
-        <text x="107" y="14" text-anchor="middle" font-family="Courier New" font-size="7" fill="#a854c8" letter-spacing="2">FEEDBACK</text>
-        <text x="190" y="12" text-anchor="middle" font-family="Courier New" font-size="6" fill="#7a3a9a">OUT</text>
-        <text x="24"  y="12" text-anchor="middle" font-family="Courier New" font-size="6" fill="#7a3a9a">IN</text>
+        <line x1="272" y1="24" x2="272" y2="28" stroke="#a854c8" stroke-width="2"/>
+        <line x1="26"  y1="24" x2="26"  y2="28" stroke="#a854c8" stroke-width="2"/>
+        <text x="149" y="14" text-anchor="middle" font-family="Courier New" font-size="8" fill="#a854c8" letter-spacing="3">FEEDBACK</text>
+        <text x="272" y="11" text-anchor="middle" font-family="Courier New" font-size="6" fill="#7a3a9a">OUT</text>
+        <text x="26"  y="11" text-anchor="middle" font-family="Courier New" font-size="6" fill="#7a3a9a">IN</text>
       </svg>
-      <div class="ctrl"><label>TIME (log scale)</label>
-        <div class="ctrl-row">
-          <input type="range" id="delay-time" min="0" max="1000" step="1" value="340" oninput="setDelayTimePos(this.value)">
-          <span class="ctrl-val" id="delay-time-val" data-value="0.5">0.50s</span>
+      <div style="display:flex;gap:16px;">
+        <!-- Left: time + feedback -->
+        <div style="flex:1;min-width:0;">
+          <div class="ctrl">
+            <label>TIME (log)</label>
+            <div class="ctrl-row">
+              <input type="range" id="delay-time" min="0" max="1000" step="1" value="340" oninput="setDelayTimePos(this.value)">
+              <span class="ctrl-val" id="delay-time-val" data-value="0.5">0.50s</span>
+            </div>
+          </div>
+          <div class="ctrl">
+            <label>FEEDBACK</label>
+            <div class="ctrl-row">
+              <input type="range" id="delay-fb" min="0" max="1.5" step="0.01" value="0.3" oninput="setFeedback(this.value)">
+              <span class="ctrl-val" id="delay-fb-val">30%</span>
+            </div>
+            <div class="danger-zone" id="fb-danger">⚠ RUNAWAY!</div>
+          </div>
+        </div>
+        <!-- Right: dry/wet + presets -->
+        <div style="flex:1;min-width:0;">
+          <div class="ctrl">
+            <label>DRY MIX</label>
+            <div class="ctrl-row">
+              <input type="range" id="delay-dry" min="0" max="1" step="0.01" value="1" oninput="setDelayDry(this.value)">
+              <span class="ctrl-val" id="delay-dry-val">100%</span>
+            </div>
+          </div>
+          <div class="ctrl">
+            <label>WET MIX</label>
+            <div class="ctrl-row">
+              <input type="range" id="delay-wet" min="0" max="1" step="0.01" value="0.4" oninput="setDelayWet(this.value)">
+              <span class="ctrl-val" id="delay-wet-val">40%</span>
+            </div>
+          </div>
+          <div class="preset-row" id="delay-presets"></div>
+          <div class="preset-hint">click: load · shift: save</div>
         </div>
       </div>
-      <div class="ctrl"><label>FEEDBACK</label>
-        <div class="ctrl-row">
-          <input type="range" id="delay-fb" min="0" max="1.5" step="0.01" value="0.3" oninput="setFeedback(this.value)">
-          <span class="ctrl-val" id="delay-fb-val">30%</span>
-        </div>
-        <div class="danger-zone" id="fb-danger">⚠ RUNAWAY — reduce feedback!</div>
-      </div>
-      <div class="ctrl"><label>DRY MIX</label>
-        <div class="ctrl-row">
-          <input type="range" id="delay-dry" min="0" max="1" step="0.01" value="1" oninput="setDelayDry(this.value)">
-          <span class="ctrl-val" id="delay-dry-val">100%</span>
-        </div>
-      </div>
-      <div class="ctrl"><label>WET MIX</label>
-        <div class="ctrl-row">
-          <input type="range" id="delay-wet" min="0" max="1" step="0.01" value="0.4" oninput="setDelayWet(this.value)">
-          <span class="ctrl-val" id="delay-wet-val">40%</span>
-        </div>
-      </div>
-      <div class="preset-row" id="delay-presets"></div>
-      <div class="preset-hint">click: load · shift+click: save</div>
     </div>
 
     <!-- wire: delay → output -->
-    <svg class="wire-svg" width="28" height="60" viewBox="0 0 28 60">
-      <path d="M0,30 C10,30 18,34 28,34" stroke="#c8a854" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <svg class="wire-svg" width="22" height="60" viewBox="0 0 22 60" style="align-self:center;">
+      <path d="M0,30 C8,30 14,33 22,33" stroke="#c8a854" stroke-width="2" fill="none" stroke-linecap="round"/>
     </svg>
 
-    <!-- ── OUTPUT ──────────────────────────────────────────── -->
-    <div class="unit">
-      <div class="unit-title">OUTPUT</div>
-      <div class="ctrl"><label>DEVICE</label>
-        <select id="output-device" onchange="changeOutputDevice()">
-          <option value="">Default (System)</option>
-        </select>
-      </div>
-      <hr class="div">
-      <div class="ctrl"><label>GAIN</label>
-        <div class="ctrl-row">
-          <input type="range" id="output-gain-db" min="-60" max="12" step="0.5" value="0" oninput="setOutputGainDb(this.value)">
-          <span class="ctrl-val" id="output-gain-val" data-value="0">0.0 dB</span>
+    <!-- ════════ OUTPUTS COLUMN ════════ -->
+    <div class="col-wrap">
+      <div class="col-label">OUTPUTS</div>
+
+      <!-- OUTPUT module -->
+      <div class="module half" id="output-module">
+        <div class="mod-head">
+          <span class="mod-title">OUTPUT</span>
+          <button class="byp-btn muted" id="output-mute" onclick="toggleMute('output')">LIVE</button>
         </div>
-      </div>
-      <div class="ctrl"><label>LEVEL</label>
+        <div class="ctrl">
+          <label>DEVICE</label>
+          <select id="output-device" onchange="changeOutputDevice()">
+            <option value="">Default (System)</option>
+          </select>
+        </div>
+        <div class="ctrl">
+          <label>GAIN</label>
+          <div class="ctrl-row">
+            <input type="range" id="output-gain-db" min="-60" max="12" step="0.5" value="0" oninput="setOutputGainDb(this.value)">
+            <span class="ctrl-val" id="output-gain-val" data-value="0">0.0 dB</span>
+          </div>
+        </div>
         <div class="meter-wrap">
           <div class="meter-bar"><div class="meter-fill" id="out-m-l" style="height:0%"></div></div>
           <div class="meter-bar"><div class="meter-fill" id="out-m-r" style="height:0%"></div></div>
         </div>
         <div class="meter-db" id="out-db">—</div>
       </div>
-      <button class="mute-btn" id="output-mute" onclick="toggleMute('output')">LIVE</button>
-    </div>
+
+    </div><!-- end outputs col-wrap -->
 
   </div><!-- end #chain -->
 
-  <!-- ── PLAY SPACE ──────────────────────────────────────────────── -->
+  <!-- ════════ PLAY SPACE ════════ -->
   <div id="playspace-panel">
     <div id="ps-header">
       <span class="ps-label">PLAY SPACE</span>
@@ -357,7 +524,7 @@ hr.div { border:none; border-top:1px solid #1e1e1e; margin:8px 0 7px; }
         <button class="ps-slot-btn" data-slot="6" onclick="psSelectSlot(6)">7</button>
         <button class="ps-slot-btn" data-slot="7" onclick="psSelectSlot(7)">8</button>
       </div>
-      <span class="ps-hint">select slot → click to place · drag to interpolate</span>
+      <span class="ps-hint" id="ps-hint">select slot → click to place · drag to interpolate</span>
     </div>
     <canvas id="playspace-canvas"></canvas>
   </div>
@@ -365,6 +532,7 @@ hr.div { border:none; border-top:1px solid #1e1e1e; margin:8px 0 7px; }
 </div><!-- end #board -->
 
 <script>
+
 // ── Helpers ─────────────────────────────────────────────────────
 const dbToGain = db => db <= -60 ? 0 : Math.pow(10, db / 20);
 const gainToDb = g  => g < 0.0001 ? -Infinity : 20 * Math.log10(g);
@@ -570,7 +738,7 @@ async function changeOutputDevice(){
 function toggleTestTone(){
   testEnabled=!testEnabled;
   if(testMasterGainTone)testMasterGainTone.gain.rampTo(testEnabled?dbToGain(parseFloat(document.getElementById('test-gain-sl').value)):0,0.05);
-  const btn=document.getElementById('test-toggle'); btn.textContent=testEnabled?'ENABLED':'DISABLED'; btn.classList.toggle('on',testEnabled);
+  const btn=document.getElementById('test-enable-btn'); btn.textContent=testEnabled?'ON':'OFF'; btn.classList.toggle('on',testEnabled);
 }
 function setTestWave(wave){
   currentTestWave=wave;
@@ -621,11 +789,10 @@ function animateMeters(){
   const j=p=>p>1?(Math.random()-.5)*4:0;
   // Main I/O meters
   const ip=pct(iL),op=pct(oL);
-  document.getElementById('in-m-l').style.height=Math.max(0,ip+j(ip))+'%';
-  document.getElementById('in-m-r').style.height=Math.max(0,ip+j(ip))+'%';
+  // in-m no longer in DOM (removed with layout refactor)
   document.getElementById('out-m-l').style.height=Math.max(0,op+j(op))+'%';
   document.getElementById('out-m-r').style.height=Math.max(0,op+j(op))+'%';
-  document.getElementById('in-db').textContent=iL<SILENCE?'—':fmtDb(gainToDb(iL));
+  // in-db no longer in DOM
   document.getElementById('out-db').textContent=oL<SILENCE?'—':fmtDb(gainToDb(oL));
   // Per-source mini meters
   const mp=pct(mL),tp=pct(tL);
@@ -868,8 +1035,8 @@ function psSelectSlot(i) {
   document.querySelectorAll('.ps-slot-btn').forEach((b,j) => {
     b.classList.toggle('selected', j === i);
   });
-  document.querySelector('.ps-hint') &&
-    (document.querySelector('.ps-hint').textContent =
+  document.getElementById('ps-hint') &&
+    (document.getElementById('ps-hint').textContent =
       psData[i] ? `slot ${i+1} placed — drag cursor or click to move` : `slot ${i+1} — click canvas to place`);
 }
 
@@ -1124,7 +1291,7 @@ function psSetupCanvas() {
       // Auto-advance to next empty slot
       const next = psData.findIndex((d, i) => i > psSelected && !d);
       if (next >= 0) psSelectSlot(next);
-      document.querySelector('.ps-hint').textContent = `slot ${psSelected+1} placed!`;
+      document.getElementById('ps-hint').textContent = `slot ${psSelected+1} placed!`;
     }
     psRedraw();
   });
@@ -1140,6 +1307,7 @@ function psCanvasPos(e, canvas) {
 //  PlaySpace adds x/y on top when saving via canvas click)
 
 // psInit() is called from initAudio() after showBoard()
+
 
 </script>
 </body>
