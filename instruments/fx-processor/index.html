@@ -66,7 +66,7 @@ body {
 /* ── Main chain row ─────────────────────────────────────────────── */
 #chain {
   display:flex; flex-direction:row;
-  align-items:stretch; /* equal height */
+  align-items:flex-start; /* each column its own height */
   overflow-x:auto; gap:0; width:100%;
 }
 
@@ -105,15 +105,26 @@ body {
 }
 /* Bypass button — left of title */
 .byp-btn {
-  padding:2px 7px; background:transparent;
-  border:1px solid #2a2a2a; color:#555;
-  font-family:'Courier New',monospace; font-size:.65rem;
-  font-weight:400; letter-spacing:.08em; cursor:pointer;
+  padding:2px 8px; background:rgba(30,80,30,.4);
+  border:1px solid #2a6a2a; color:#4c4;
+  font-family:'Courier New',monospace; font-size:.7rem;
+  font-weight:600; letter-spacing:.04em; cursor:pointer;
   border-radius:2px; transition:all .15s; white-space:nowrap;
-  flex-shrink:0;
+  flex-shrink:0; text-shadow: 0 0 8px rgba(80,200,80,.4);
 }
-.byp-btn.bypassed { border-color:#c8a854; color:#c8a854; background:rgba(200,168,84,.08); }
-.byp-btn.muted    { border-color:#6e2a2a; color:#c05050; background:rgba(100,30,30,.15); }
+.byp-btn.bypassed {
+  background:rgba(80,20,20,.5); border-color:#8a2a2a;
+  color:#d44; text-decoration:line-through; text-shadow:none;
+  letter-spacing:.04em;
+}
+.byp-btn.muted {
+  background:rgba(80,20,20,.5); border-color:#8a2a2a; color:#c44;
+  text-shadow:none;
+}
+.byp-btn.off {
+  background:rgba(30,30,30,.4); border-color:#2a2a2a;
+  color:#555; text-shadow:none; font-weight:400;
+}
 /* Preset slots row in header */
 .head-presets {
   display:flex; gap:2px; margin-left:auto; flex-shrink:0;
@@ -175,14 +186,24 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
 
 <style>
 /* ── Meters ─────────────────────────────────────────────────────── */
-.meter-wrap { display:flex; gap:3px; height:44px; align-items:flex-end; margin-top:3px; }
-.meter-bar { flex:1; background:#161616; border-radius:2px; overflow:hidden; height:100%; display:flex; flex-direction:column; justify-content:flex-end; }
-.meter-fill { width:100%; background:linear-gradient(to top,#2a7a2a,#7ab02a,#c8a854); transition:height .04s; }
-.meter-db { font-size:.6rem; color:#444; text-align:center; margin-top:2px; }
-.mini-meter-wrap { display:flex; gap:2px; height:22px; align-items:flex-end; margin-top:3px; }
-.mini-meter-bar { flex:1; background:#161616; border-radius:1px; overflow:hidden; height:100%; display:flex; flex-direction:column; justify-content:flex-end; }
-.mini-meter-fill { width:100%; background:linear-gradient(to top,#2a7a2a,#7ab02a,#c8a854); transition:height .04s; }
-.mini-meter-db { font-size:.58rem; color:#3a3a3a; text-align:center; margin-top:1px; }
+/* Horizontal meters */
+.hmeter-wrap { position:relative; width:100%; height:8px; background:#111; border-radius:2px; margin-top:4px; overflow:visible; }
+.hmeter-l, .hmeter-r { position:absolute; left:0; height:4px; border-radius:1px; transition:width .04s; }
+.hmeter-l { top:0; background:linear-gradient(to right,#2a7a2a,#7ab02a,#c8a854,#e05050); }
+.hmeter-r { top:4px; background:linear-gradient(to right,#2a7a2a,#7ab02a,#c8a854,#e05050); }
+.hmeter-peak-l, .hmeter-peak-r { position:absolute; width:2px; top:0; height:4px; background:#fff; border-radius:1px; transition:left .15s; }
+.hmeter-peak-r { top:4px; }
+.hmeter-clip { position:absolute; right:0; top:0; width:4px; height:8px; background:#e05050; border-radius:0 2px 2px 0; display:none; }
+.hmeter-clip.show { display:block; }
+.hmeter-db { font-size:.58rem; color:#3a3a3a; margin-top:1px; text-align:right; }
+/* Mini horizontal (for input modules — two rows stacked) */
+.mini-hmeter-wrap { position:relative; width:100%; height:6px; background:#111; border-radius:1px; margin-top:3px; overflow:visible; }
+.mini-hmeter-l, .mini-hmeter-r { position:absolute; left:0; height:3px; border-radius:1px; transition:width .04s; }
+.mini-hmeter-l { top:0; background:linear-gradient(to right,#2a7a2a,#7ab02a,#c8a854,#e05050); }
+.mini-hmeter-r { top:3px; background:linear-gradient(to right,#2a7a2a,#7ab02a,#c8a854,#e05050); }
+.mini-hmeter-peak-l, .mini-hmeter-peak-r { position:absolute; width:1px; top:0; height:3px; background:#aaa; }
+.mini-hmeter-peak-r { top:3px; }
+.mini-hmeter-db { font-size:.56rem; color:#333; text-align:right; margin-top:1px; }
 
 /* ── Wires between modules ──────────────────────────────────────── */
 .wire-svg { flex-shrink:0; align-self:center; }
@@ -308,11 +329,13 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
             <span class="ctrl-val" id="input-gain-val" data-value="0">0.0 dB</span>
           </div>
         </div>
-        <div class="mini-meter-wrap">
-          <div class="mini-meter-bar"><div class="mini-meter-fill" id="mic-m-l" style="height:0%"></div></div>
-          <div class="mini-meter-bar"><div class="mini-meter-fill" id="mic-m-r" style="height:0%"></div></div>
+        <div class="mini-hmeter-wrap" id="mic-meter">
+          <div class="mini-hmeter-l" id="mic-m-l" style="width:0%"></div>
+          <div class="mini-hmeter-r" id="mic-m-r" style="width:0%"></div>
+          <div class="mini-hmeter-peak-l" id="mic-pk-l" style="left:0"></div>
+          <div class="mini-hmeter-peak-r" id="mic-pk-r" style="left:0"></div>
         </div>
-        <div class="mini-meter-db" id="mic-db">—</div>
+        <div class="mini-hmeter-db" id="mic-db">—</div>
       </div>
 
       <!-- SIGNAL GENERATOR module -->
@@ -349,11 +372,13 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
             <span class="ctrl-val" id="test-gain-val" data-value="-12">-12.0 dB</span>
           </div>
         </div>
-        <div class="mini-meter-wrap">
-          <div class="mini-meter-bar"><div class="mini-meter-fill" id="test-m-l" style="height:0%"></div></div>
-          <div class="mini-meter-bar"><div class="mini-meter-fill" id="test-m-r" style="height:0%"></div></div>
+        <div class="mini-hmeter-wrap" id="test-meter">
+          <div class="mini-hmeter-l" id="test-m-l" style="width:0%"></div>
+          <div class="mini-hmeter-r" id="test-m-r" style="width:0%"></div>
+          <div class="mini-hmeter-peak-l" id="test-pk-l" style="left:0"></div>
+          <div class="mini-hmeter-peak-r" id="test-pk-r" style="left:0"></div>
         </div>
-        <div class="mini-meter-db" id="test-db">—</div>
+        <div class="mini-hmeter-db" id="test-db">—</div>
 
       </div>
 
@@ -371,11 +396,13 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
           style="font-size:.65rem;letter-spacing:.08em;">
           CLICK TO SELECT SOURCE
         </button>
-        <div class="mini-meter-wrap" style="margin-top:6px;">
-          <div class="mini-meter-bar"><div class="mini-meter-fill" id="sys-m-l" style="height:0%"></div></div>
-          <div class="mini-meter-bar"><div class="mini-meter-fill" id="sys-m-r" style="height:0%"></div></div>
+        <div class="mini-hmeter-wrap" id="sys-meter" style="margin-top:6px;">
+          <div class="mini-hmeter-l" id="sys-m-l" style="width:0%"></div>
+          <div class="mini-hmeter-r" id="sys-m-r" style="width:0%"></div>
+          <div class="mini-hmeter-peak-l" id="sys-pk-l" style="left:0"></div>
+          <div class="mini-hmeter-peak-r" id="sys-pk-r" style="left:0"></div>
         </div>
-        <div class="mini-meter-db" id="sys-db">—</div>
+        <div class="mini-hmeter-db" id="sys-db">—</div>
       </div>
 
     </div><!-- end inputs col-wrap -->
@@ -531,11 +558,14 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
             <span class="ctrl-val" id="output-gain-val" data-value="0">0.0 dB</span>
           </div>
         </div>
-        <div class="meter-wrap">
-          <div class="meter-bar"><div class="meter-fill" id="out-m-l" style="height:0%"></div></div>
-          <div class="meter-bar"><div class="meter-fill" id="out-m-r" style="height:0%"></div></div>
+        <div class="hmeter-wrap" id="out-meter">
+          <div class="hmeter-l" id="out-m-l" style="width:0%"></div>
+          <div class="hmeter-r" id="out-m-r" style="width:0%"></div>
+          <div class="hmeter-peak-l" id="out-pk-l" style="left:0"></div>
+          <div class="hmeter-peak-r" id="out-pk-r" style="left:0"></div>
+          <div class="hmeter-clip" id="out-clip"></div>
         </div>
-        <div class="meter-db" id="out-db">—</div>
+        <div class="hmeter-db" id="out-db">—</div>
       </div>
 
     </div><!-- end outputs col-wrap -->
@@ -770,7 +800,9 @@ async function changeOutputDevice(){
 function toggleTestTone(){
   testEnabled=!testEnabled;
   if(testMasterGainTone)testMasterGainTone.gain.rampTo(testEnabled?dbToGain(parseFloat(document.getElementById('test-gain-sl').value)):0,0.05);
-  const btn=document.getElementById('test-enable-btn'); btn.textContent=testEnabled?'ON':'OFF'; btn.classList.toggle('on',testEnabled);
+  const btn=document.getElementById('test-enable-btn'); const tb=document.getElementById('test-enable-btn');
+  tb.textContent=testEnabled?'ENABLED':'OFF';
+  tb.classList.toggle('off',!testEnabled);
 }
 function setTestWave(wave){
   currentTestWave=wave;
@@ -814,31 +846,38 @@ function getAnalyserRMS(analyser) {
 // ── UI ────────────────────────────────────────────────────────────
 function showBoard(){document.getElementById('start-screen').style.display='none'; document.getElementById('board').style.display='flex';}
 
+// Peak hold state
+const peaks = {};
+function hMeter(lin, idL, idR, pkL, pkR, dbEl, clipEl) {
+  const el = document.getElementById(idL); if (!el) return;
+  const W = el.parentElement.offsetWidth || 100;
+  const db = lin < SILENCE ? -Infinity : gainToDb(lin);
+  const pct = lin < SILENCE ? 0 : Math.max(0, Math.min(100, (db + 60) / 60 * 100));
+  const j = pct > 2 ? (Math.random() - 0.5) * 1.5 : 0;
+  el.style.width = Math.max(0, pct + j) + '%';
+  document.getElementById(idR).style.width = Math.max(0, pct - j) + '%';
+  // Peak hold: rise fast, fall slow
+  const key = idL;
+  if (!peaks[key] || pct > peaks[key].pct) { peaks[key] = { pct, t: Date.now() }; }
+  else if (Date.now() - peaks[key].t > 1600) { peaks[key].pct = Math.max(0, peaks[key].pct - 1.2); }
+  const px = Math.round((peaks[key].pct / 100) * W);
+  if (document.getElementById(pkL)) document.getElementById(pkL).style.left = px + 'px';
+  if (document.getElementById(pkR)) document.getElementById(pkR).style.left = px + 'px';
+  if (dbEl && document.getElementById(dbEl)) document.getElementById(dbEl).textContent = lin < SILENCE ? '—' : fmtDb(db);
+  if (clipEl && document.getElementById(clipEl)) document.getElementById(clipEl).classList.toggle('show', lin > 0.98);
+}
 function animateMeters(){
-  const iL=Math.max(0,inputMeter.getValue()||0), oL=Math.max(0,outputMeter.getValue()||0);
-  const mL=getAnalyserRMS(micAnalyser), tL=getAnalyserRMS(testAnalyser);
-  const pct=l=>{if(l<SILENCE)return 0;const db=gainToDb(l);return Math.max(0,Math.min(100,(db+60)/60*100));};
-  const j=p=>p>1?(Math.random()-.5)*4:0;
-  // Main I/O meters
-  const ip=pct(iL),op=pct(oL);
-  // in-m no longer in DOM (removed with layout refactor)
-  document.getElementById('out-m-l').style.height=Math.max(0,op+j(op))+'%';
-  document.getElementById('out-m-r').style.height=Math.max(0,op+j(op))+'%';
-  // in-db no longer in DOM
-  document.getElementById('out-db').textContent=oL<SILENCE?'—':fmtDb(gainToDb(oL));
-  // Per-source mini meters
-  const mp=pct(mL),tp=pct(tL);
-  document.getElementById('mic-m-l').style.height=Math.max(0,mp+j(mp))+'%';
-  document.getElementById('mic-m-r').style.height=Math.max(0,mp+j(mp))+'%';
-  document.getElementById('mic-db').textContent=mL<SILENCE?'—':fmtDb(gainToDb(mL));
-  document.getElementById('test-m-l').style.height=Math.max(0,tp+j(tp))+'%';
-  document.getElementById('test-m-r').style.height=Math.max(0,tp+j(tp))+'%';
-  document.getElementById('test-db').textContent=tL<SILENCE?'—':fmtDb(gainToDb(tL));
+  const oL = Math.max(0, outputMeter.getValue()||0);
+  const mL = getAnalyserRMS(micAnalyser);
+  const tL = getAnalyserRMS(testAnalyser);
+  hMeter(oL, 'out-m-l','out-m-r','out-pk-l','out-pk-r','out-db','out-clip');
+  hMeter(mL, 'mic-m-l','mic-m-r','mic-pk-l','mic-pk-r','mic-db', null);
+  hMeter(tL, 'test-m-l','test-m-r','test-pk-l','test-pk-r','test-db', null);
   requestAnimationFrame(animateMeters);
 }
 
 function toggleMute(which){
-  if(which==='input'){inputMuted=!inputMuted; micGainNode.gain.rampTo(inputMuted?0:1,0.05); const b=document.getElementById('input-mute'); b.textContent=inputMuted?'MUTED':'LIVE'; b.classList.toggle('muted',inputMuted);}
+  if(which==='input'){inputMuted=!inputMuted; micGainNode.gain.rampTo(inputMuted?0:1,0.05); const b=document.getElementById('input-mute'); b.textContent=inputMuted?'MUTED':'LIVE'; b.classList.toggle('muted',inputMuted); b.classList.toggle('off',false);}
   else{outputMuted=!outputMuted; outputMuteNode.gain.rampTo(outputMuted?0:1,0.05); const b=document.getElementById('output-mute'); b.textContent=outputMuted?'MUTED':'LIVE'; b.classList.toggle('muted',outputMuted);}
 }
 
@@ -849,14 +888,16 @@ function toggleFxBypass(fx){
     pitchBypassed=!pitchBypassed;
     if(pitchBypassed){pitchDryG.gain.rampTo(1,r);pitchWetG.gain.rampTo(0,r);}
     else{const wd=parseFloat(document.getElementById('pitch-wetdry').value); pitchWetG.gain.rampTo(wd,r); pitchDryG.gain.rampTo(1-wd,r);}
-    document.getElementById('pitch-bypass-btn').classList.toggle('active',pitchBypassed);
-    document.getElementById('pitch-bypass-btn').textContent=pitchBypassed?'BYP ✓':'BYP';
+    const pb=document.getElementById('pitch-bypass-btn');
+    pb.textContent=pitchBypassed?'BYPASSED':'ENABLED';
+    pb.classList.toggle('bypassed',pitchBypassed);
   } else {
     delayBypassed=!delayBypassed;
     if(delayBypassed){delayDryGain.gain.rampTo(1,r);delayWetGain.gain.rampTo(0,r);}
     else{delayDryGain.gain.rampTo(parseFloat(document.getElementById('delay-dry').value),r); delayWetGain.gain.rampTo(parseFloat(document.getElementById('delay-wet').value),r);}
-    document.getElementById('delay-bypass-btn').classList.toggle('active',delayBypassed);
-    document.getElementById('delay-bypass-btn').textContent=delayBypassed?'BYP ✓':'BYP';
+    const db=document.getElementById('delay-bypass-btn');
+    db.textContent=delayBypassed?'BYPASSED':'ENABLED';
+    db.classList.toggle('bypassed',delayBypassed);
   }
 }
 
@@ -936,7 +977,6 @@ function loadFxPreset(fx,slot){
 function getGlobalState(){
   return {
     inputGainDb:parseFloat(document.getElementById('input-gain-db').value),
-    outputGainDb:parseFloat(document.getElementById('output-gain-db').value),
     testEnabled, testWave:document.getElementById('test-wave').value,
     testFreqHz:freqLog.toVal(parseFloat(document.getElementById('test-freq-sl').value)),
     testGainDb:parseFloat(document.getElementById('test-gain-sl').value),
@@ -945,7 +985,6 @@ function getGlobalState(){
 }
 function applyGlobalState(s){
   document.getElementById('input-gain-db').value=s.inputGainDb; setInputGainDb(s.inputGainDb);
-  document.getElementById('output-gain-db').value=s.outputGainDb; setOutputGainDb(s.outputGainDb);
   document.getElementById('test-wave').value=s.testWave; setTestWave(s.testWave);
   setTestFreqHz(s.testFreqHz); document.getElementById('test-gain-sl').value=s.testGainDb; setTestGainDb(s.testGainDb);
   if(s.testEnabled!==testEnabled) toggleTestTone();
