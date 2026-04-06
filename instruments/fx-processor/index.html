@@ -23,26 +23,27 @@ body { background:#0d0d0d; font-family:'Courier New',monospace; color:#ccc; min-
 .input-col { display:flex; flex-direction:column; align-items:stretch; flex-shrink:0; width:210px; }
 .merge-svg { display:block; overflow:visible; }
 .unit { background:#161616; border:1px solid #2d2d2d; border-radius:6px; padding:12px 13px 14px; width:210px; flex-shrink:0; position:relative; }
-.unit-title { font-size:.62rem; letter-spacing:.25em; color:#777; text-align:center; margin-bottom:10px; padding-bottom:7px; border-bottom:1px solid #252525; }
+.unit-title { font-size:.68rem; letter-spacing:.22em; color:#888; text-align:center; margin-bottom:10px; padding-bottom:7px; border-bottom:1px solid #252525; }
 .bypass-btn { position:absolute; top:10px; right:10px; padding:2px 7px; background:transparent; border:1px solid #333; color:#555; font-family:'Courier New',monospace; font-size:.55rem; letter-spacing:.1em; cursor:pointer; border-radius:2px; transition:all .15s; }
 .bypass-btn.active { border-color:#c8a854; color:#c8a854; background:rgba(200,168,84,.08); }
 .ctrl { margin-bottom:9px; }
-.ctrl label { display:block; font-size:.6rem; letter-spacing:.13em; color:#888; margin-bottom:3px; }
+.ctrl label { display:block; font-size:.68rem; letter-spacing:.12em; color:#999; margin-bottom:4px; cursor:default; }
+.ctrl label:hover { color:#ccc; }
 .ctrl-row { display:flex; align-items:center; gap:5px; }
-.ctrl-val { font-size:.65rem; color:#c8a854; white-space:nowrap; min-width:54px; text-align:right; cursor:text; }
-.ctrl-val:hover { text-decoration:underline dotted #555; }
+.ctrl-val { font-size:.72rem; color:#c8a854; white-space:nowrap; min-width:54px; text-align:right; cursor:text; }
+.ctrl-val:hover { color:#e8c874; text-decoration:underline dotted #888; }
 .ctrl-val.danger { color:#e05050; }
 .ctrl-val input { width:100%; background:#111; border:1px solid #c8a854; color:#c8a854; font-family:'Courier New',monospace; font-size:.65rem; padding:1px 3px; outline:none; }
 input[type="range"] { -webkit-appearance:none; flex:1; height:3px; background:#333; outline:none; border-radius:2px; cursor:pointer; }
 input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:12px; height:12px; background:#c8a854; border-radius:50%; cursor:pointer; }
 input[type="range"].danger-range::-webkit-slider-thumb { background:#e05050; }
-select { width:100%; background:#1e1e1e; border:1px solid #383838; color:#bbb; font-family:'Courier New',monospace; font-size:.65rem; padding:4px 5px; outline:none; cursor:pointer; margin-bottom:2px; border-radius:2px; }
+select { width:100%; background:#1e1e1e; border:1px solid #383838; color:#ccc; font-family:'Courier New',monospace; font-size:.65rem; padding:4px 5px; outline:none; cursor:pointer; margin-bottom:2px; border-radius:2px; }
 .toggle-btn { width:100%; padding:4px 0; background:transparent; border:1px solid #444; color:#666; font-family:'Courier New',monospace; font-size:.6rem; letter-spacing:.15em; cursor:pointer; border-radius:3px; margin-bottom:7px; transition:all .15s; }
 .toggle-btn.on { border-color:#5a5; color:#5a5; background:rgba(90,170,90,.06); }
 .mute-btn { width:100%; margin-top:7px; padding:4px 0; background:transparent; border:1px solid #2a6e2a; color:#5a5; font-family:'Courier New',monospace; font-size:.6rem; letter-spacing:.2em; cursor:pointer; border-radius:3px; transition:all .15s; }
 .mute-btn.muted { border-color:#6e2a2a; color:#a55; background:#1a0a0a; }
 hr.div { border:none; border-top:1px solid #1e1e1e; margin:8px 0 7px; }
-.ch-note { font-size:.58rem; color:#555; letter-spacing:.06em; margin-top:2px; }
+.ch-note { font-size:.62rem; color:#666; letter-spacing:.06em; margin-top:2px; }
 .mini-meter-wrap { display:flex; gap:2px; height:26px; align-items:flex-end; margin-top:3px; }
 .mini-meter-bar { flex:1; background:#1a1a1a; border-radius:1px; overflow:hidden; height:100%; display:flex; flex-direction:column; justify-content:flex-end; }
 .mini-meter-fill { width:100%; background:linear-gradient(to top,#2a7a2a,#8aba3a,#c8a854); transition:height .04s; }
@@ -61,10 +62,10 @@ hr.div { border:none; border-top:1px solid #1e1e1e; margin:8px 0 7px; }
 .danger-zone.show { display:block; }
 @keyframes blink { 50%{opacity:0;} }
 .display-row { display:flex; align-items:center; gap:5px; margin-top:2px; }
-.display-val { font-size:.64rem; color:#99a; }
+.display-val { font-size:.68rem; color:#aab; }
 .display-approx { color:#557; }
-.editable-val { font-size:.64rem; color:#c8a854; cursor:text; }
-.editable-val:hover { text-decoration:underline dotted #555; }
+.editable-val { font-size:.72rem; color:#c8a854; cursor:text; }
+.editable-val:hover { color:#e8c874; text-decoration:underline dotted #888; }
 .editable-val input { background:#111; border:1px solid #c8a854; color:#c8a854; font-family:'Courier New',monospace; font-size:.64rem; padding:1px 3px; outline:none; width:85px; }
 /* Preset slots */
 .preset-row { display:flex; gap:3px; margin-top:9px; padding-top:8px; border-top:1px solid #1e1e1e; }
@@ -86,8 +87,8 @@ hr.div { border:none; border-top:1px solid #1e1e1e; margin:8px 0 7px; }
   display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap;
   justify-content:center; width:100%;
 }
-.ps-label { font-size:.6rem; letter-spacing:.25em; color:#555; }
-.ps-hint  { font-size:.58rem; color:#3a3a3a; letter-spacing:.1em; }
+.ps-label { font-size:.64rem; letter-spacing:.22em; color:#777; }
+.ps-hint  { font-size:.62rem; color:#555; letter-spacing:.1em; }
 #ps-slots { display:flex; gap:4px; }
 .ps-slot-btn {
   width:22px; height:22px; background:transparent; border:1px solid #2a2a2a;
@@ -114,6 +115,14 @@ hr.div { border:none; border-top:1px solid #1e1e1e; margin:8px 0 7px; }
 
 <div id="board">
   <!-- Global presets -->
+  <div style="display:flex;justify-content:flex-end;padding:0 10px 4px;width:100%;">
+    <a href="/instruments/fx-processor/about.html" target="_blank"
+       style="font-family:'Courier New',monospace;font-size:.6rem;color:#444;letter-spacing:.12em;
+              text-decoration:none;border-bottom:1px solid #2a2a2a;padding-bottom:1px;transition:color .2s;"
+       onmouseover="this.style.color='#888'" onmouseout="this.style.color='#444'">
+      about this prototype ↗
+    </a>
+  </div>
   <div id="global-preset-bar">
     <span class="bar-label">GLOBAL PRESETS</span>
     <button class="global-slot" data-slot="0" onclick="handleGlobalPreset(this)">1</button>
@@ -419,7 +428,6 @@ async function initAudio() {
     systemAudioGain.connect(sumGain);
     micAnalyser = rawCtx.createAnalyser(); micAnalyser.fftSize=256; micAnalyser.smoothingTimeConstant=0.8;
     testAnalyser = rawCtx.createAnalyser(); testAnalyser.fftSize=256; testAnalyser.smoothingTimeConstant=0.8;
-    testMasterGain.connect(testAnalyser); // tap test tone separately
 
     // Native test tone
     testOscGain=rawCtx.createGain(); testNoiseGain=rawCtx.createGain();
@@ -431,6 +439,7 @@ async function initAudio() {
     noiseSource.buffer=noiseBuffer; noiseSource.loop=true; noiseSource.start();
     noiseSource.connect(testNoiseGain); testNoiseGain.connect(testMasterGain);
     testMasterGain.connect(sumGain); // native→native: no .input needed
+    testMasterGain.connect(testAnalyser); // tap for separate meter
 
     // Graph
     sumGain.connect(inputGainNode.input); // native sumGain → Tone inputGain via .input
