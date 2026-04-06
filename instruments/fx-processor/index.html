@@ -20,9 +20,9 @@ body { background:#0d0d0d; font-family:'Courier New',monospace; color:#ccc; min-
 #chain { display:flex; flex-direction:row; align-items:flex-start; overflow-x:auto; padding:0 10px 20px; gap:0; }
 </style>
 <style>
-.input-col { display:flex; flex-direction:column; align-items:center; flex-shrink:0; }
+.input-col { display:flex; flex-direction:column; align-items:stretch; flex-shrink:0; width:210px; }
 .merge-svg { display:block; overflow:visible; }
-.unit { background:#161616; border:1px solid #2d2d2d; border-radius:6px; padding:12px 13px 14px; min-width:210px; position:relative; }
+.unit { background:#161616; border:1px solid #2d2d2d; border-radius:6px; padding:12px 13px 14px; width:210px; flex-shrink:0; position:relative; }
 .unit-title { font-size:.62rem; letter-spacing:.25em; color:#777; text-align:center; margin-bottom:10px; padding-bottom:7px; border-bottom:1px solid #252525; }
 .bypass-btn { position:absolute; top:10px; right:10px; padding:2px 7px; background:transparent; border:1px solid #333; color:#555; font-family:'Courier New',monospace; font-size:.55rem; letter-spacing:.1em; cursor:pointer; border-radius:2px; transition:all .15s; }
 .bypass-btn.active { border-color:#c8a854; color:#c8a854; background:rgba(200,168,84,.08); }
@@ -50,7 +50,7 @@ hr.div { border:none; border-top:1px solid #1e1e1e; margin:8px 0 7px; }
 .meter-fill { width:100%; background:linear-gradient(to top,#2a7a2a,#8aba3a,#c8a854); transition:height .04s; }
 .meter-db { font-size:.58rem; color:#555; text-align:center; margin-top:2px; }
 .wire-svg { flex-shrink:0; align-self:center; overflow:visible; }
-#delay-unit { min-width:240px; }
+#delay-unit { width:240px; }
 .fb-svg { display:block; width:100%; overflow:visible; margin-bottom:7px; }
 .danger-zone { display:none; font-size:.57rem; color:#e05050; margin-top:2px; animation:blink 1s step-end infinite; }
 .danger-zone.show { display:block; }
@@ -127,11 +127,11 @@ hr.div { border:none; border-top:1px solid #1e1e1e; margin:8px 0 7px; }
           <div class="meter-db" id="in-db">—</div>
         </div>
         <button class="mute-btn" id="input-mute" onclick="toggleMute('input')">LIVE</button>
-        <button class="toggle-btn" id="sys-audio-btn" onclick="toggleSystemAudio()" style="margin-top:5px;font-size:.57rem;letter-spacing:.1em;" title="Capture system audio output via screen share">SYS AUDIO CAPTURE</button>
+        <button class="toggle-btn" id="sys-audio-btn" onclick="toggleSystemAudio()" style="margin-top:5px;font-size:.54rem;letter-spacing:.08em;" title="On macOS: choose a Chrome Tab for audio. Screen/Window sharing may not include audio.">CAPTURE TAB AUDIO (?)</button>
       </div>
-      <svg class="merge-svg" width="210" height="20" viewBox="0 0 210 20">
-        <line x1="105" y1="0" x2="105" y2="20" stroke="#252525" stroke-width="1"/>
-        <text x="105" y="14" text-anchor="middle" font-family="Courier New" font-size="7" fill="#3a3a3a" letter-spacing="2">+ SUM</text>
+      <svg class="merge-svg" width="210" height="18" viewBox="0 0 210 18" style="display:block;">
+        <line x1="105" y1="0" x2="105" y2="18" stroke="#252525" stroke-width="1"/>
+        <text x="105" y="13" text-anchor="middle" font-family="Courier New" font-size="7" fill="#3a3a3a" letter-spacing="2">+ SUM</text>
       </svg>
 
       <!-- TEST TONE -->
@@ -221,10 +221,14 @@ hr.div { border:none; border-top:1px solid #1e1e1e; margin:8px 0 7px; }
     <div class="unit" id="delay-unit">
       <div class="unit-title">DELAY</div>
       <button class="bypass-btn" id="delay-bypass-btn" onclick="toggleFxBypass('delay')">BYP</button>
-      <svg class="fb-svg" height="30" viewBox="0 0 195 30">
-        <path d="M161,26 C161,8 100,2 97,2 C94,2 34,8 34,26" stroke="#a854c8" stroke-width="2" fill="none" stroke-linecap="round"/>
-        <circle cx="161" cy="26" r="3" fill="#a854c8"/><circle cx="34" cy="26" r="3" fill="#a854c8"/>
-        <text x="97" y="13" text-anchor="middle" font-family="Courier New" font-size="7" fill="#a854c8" letter-spacing="2">FEEDBACK</text>
+      <svg class="fb-svg" height="32" viewBox="0 0 214 32">
+        <path d="M190,28 C190,6 107,2 107,2 C107,2 24,6 24,28"
+              stroke="#a854c8" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <line x1="190" y1="28" x2="190" y2="32" stroke="#a854c8" stroke-width="2"/>
+        <line x1="24"  y1="28" x2="24"  y2="32" stroke="#a854c8" stroke-width="2"/>
+        <text x="107" y="14" text-anchor="middle" font-family="Courier New" font-size="7" fill="#a854c8" letter-spacing="2">FEEDBACK</text>
+        <text x="190" y="12" text-anchor="middle" font-family="Courier New" font-size="6" fill="#7a3a9a">OUT</text>
+        <text x="24"  y="12" text-anchor="middle" font-family="Courier New" font-size="6" fill="#7a3a9a">IN</text>
       </svg>
       <div class="ctrl"><label>TIME (log scale)</label>
         <div class="ctrl-row">
@@ -351,7 +355,7 @@ async function initAudio() {
     testOscGain=rawCtx.createGain(); testNoiseGain=rawCtx.createGain();
     testMasterGain=rawCtx.createGain(); testMasterGain.gain.value=0;
     testOscGain.gain.value=1; testNoiseGain.gain.value=0;
-    testOscNode=rawCtx.createOscillator(); testOscNode.type='sine'; testOscNode.frequency.value=440; testOscNode.start();
+    testOscNode=rawCtx.createOscillator(); testOscNode.type='sine'; testOscNode.frequency.value=110; testOscNode.start();
     testOscNode.connect(testOscGain); testOscGain.connect(testMasterGain);
     noiseBuffer=createNoiseBuffer(); noiseSource=rawCtx.createBufferSource();
     noiseSource.buffer=noiseBuffer; noiseSource.loop=true; noiseSource.start();
@@ -377,7 +381,7 @@ async function initAudio() {
     showBoard();
     animateMeters();
     // Init log slider positions
-    document.getElementById('test-freq-sl').value = freqLog.toPos(440);
+    document.getElementById('test-freq-sl').value = freqLog.toPos(110); setTestFreqPos(freqLog.toPos(110));
     document.getElementById('delay-time').value = timeLog.toPos(0.5);
     setPitchSemi(0); setTestGainDb(-12); setPitchWetDry(0.5);
   } catch(e) { st.textContent='error: '+e.message; btn.disabled=false; }
@@ -486,7 +490,7 @@ async function toggleSystemAudio(){
     systemStream.getTracks().forEach(t=>t.stop());
     systemStream=null; systemSource=null;
     systemAudioGain.gain.setTargetAtTime(0,rawCtx.currentTime,0.02);
-    btn.textContent='SYS AUDIO CAPTURE'; btn.classList.remove('on');
+    btn.textContent='CAPTURE TAB AUDIO (?)'; btn.classList.remove('on');
     return;
   }
   btn.textContent='... requesting ...'; btn.disabled=true;
@@ -503,11 +507,11 @@ async function toggleSystemAudio(){
     aTracks[0].addEventListener('ended',()=>{
       systemStream=null; systemSource=null;
       systemAudioGain.gain.setTargetAtTime(0,rawCtx.currentTime,0.02);
-      btn.textContent='SYS AUDIO CAPTURE'; btn.classList.remove('on');
+      btn.textContent='CAPTURE TAB AUDIO (?)'; btn.classList.remove('on');
     });
   } catch(e){
     btn.textContent='CANCELLED / DENIED'; btn.disabled=false;
-    setTimeout(()=>{btn.textContent='SYS AUDIO CAPTURE';},2500);
+    setTimeout(()=>{btn.textContent='CAPTURE TAB AUDIO (?)';},2500);
   }
 }
 
@@ -748,7 +752,7 @@ function setupDblClick(){
   });
   // Test freq: dblclick → reset to 440Hz
   document.getElementById('test-freq-sl').addEventListener('dblclick',e=>{
-    e.preventDefault(); setTestFreqHz(440);
+    e.preventDefault(); setTestFreqHz(110);
   });
 }
 
