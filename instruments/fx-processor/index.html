@@ -20,10 +20,11 @@ body { background:#0d0d0d; font-family:'Courier New',monospace; color:#ccc; min-
 #chain { display:flex; flex-direction:row; align-items:flex-start; overflow-x:auto; padding:0 10px 20px; gap:0; }
 </style>
 <style>
-.input-col { display:flex; flex-direction:column; align-items:stretch; flex-shrink:0; width:210px; }
+.input-col { display:flex; flex-direction:row; align-items:flex-start; flex-shrink:0; gap:5px; }
 .merge-svg { display:block; overflow:visible; }
-.unit { background:#161616; border:1px solid #2d2d2d; border-radius:6px; padding:12px 13px 14px; width:210px; flex-shrink:0; position:relative; }
+.unit { background:#161616; border:1px solid #2d2d2d; border-radius:6px; padding:11px 12px 13px; width:210px; flex-shrink:0; position:relative; }
 .unit-title { font-size:.68rem; letter-spacing:.22em; color:#888; text-align:center; margin-bottom:10px; padding-bottom:7px; border-bottom:1px solid #252525; }
+.unit.narrow { width:160px; }
 .bypass-btn { position:absolute; top:10px; right:10px; padding:2px 7px; background:transparent; border:1px solid #333; color:#555; font-family:'Courier New',monospace; font-size:.55rem; letter-spacing:.1em; cursor:pointer; border-radius:2px; transition:all .15s; }
 .bypass-btn.active { border-color:#c8a854; color:#c8a854; background:rgba(200,168,84,.08); }
 .ctrl { margin-bottom:9px; }
@@ -139,7 +140,7 @@ hr.div { border:none; border-top:1px solid #1e1e1e; margin:8px 0 7px; }
   <div id="chain">
     <!-- ── INPUT COLUMN ─────────────────────────────────── -->
     <div class="input-col">
-      <div class="unit">
+      <div class="unit narrow">
         <div class="unit-title">MIC INPUT</div>
         <div class="ctrl"><label>DEVICE</label>
           <select id="input-device" onchange="changeInputDevice()">
@@ -176,13 +177,10 @@ hr.div { border:none; border-top:1px solid #1e1e1e; margin:8px 0 7px; }
         <button class="mute-btn" id="input-mute" onclick="toggleMute('input')">LIVE</button>
         <button class="toggle-btn" id="sys-audio-btn" onclick="toggleSystemAudio()" style="margin-top:5px;font-size:.54rem;letter-spacing:.08em;" title="On macOS: choose a Chrome Tab for audio. Screen/Window sharing may not include audio.">CAPTURE TAB AUDIO (?)</button>
       </div>
-      <svg class="merge-svg" width="210" height="18" viewBox="0 0 210 18" style="display:block;">
-        <line x1="105" y1="0" x2="105" y2="18" stroke="#252525" stroke-width="1"/>
-        <text x="105" y="13" text-anchor="middle" font-family="Courier New" font-size="7" fill="#3a3a3a" letter-spacing="2">+ SUM</text>
-      </svg>
+
 
       <!-- TEST TONE -->
-      <div class="unit">
+      <div class="unit narrow">
         <div class="unit-title">TEST TONE</div>
         <button class="toggle-btn" id="test-toggle" onclick="toggleTestTone()">DISABLED</button>
         <div class="ctrl"><label>WAVEFORM</label>
@@ -221,8 +219,8 @@ hr.div { border:none; border-top:1px solid #1e1e1e; margin:8px 0 7px; }
     </div><!-- end input-col -->
 
     <!-- wire: col → pitch -->
-    <svg class="wire-svg" width="34" height="115" viewBox="0 0 34 115">
-      <path d="M0,57 C12,57 22,65 34,65" stroke="#c8a854" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <svg class="wire-svg" width="28" height="60" viewBox="0 0 28 60">
+      <path d="M0,30 C10,30 18,34 28,34" stroke="#c8a854" stroke-width="2.5" fill="none" stroke-linecap="round"/>
     </svg>
 
     <!-- ── PITCH SHIFT ──────────────────────────────────── -->
@@ -267,8 +265,8 @@ hr.div { border:none; border-top:1px solid #1e1e1e; margin:8px 0 7px; }
     </div>
 
     <!-- wire: pitch → delay -->
-    <svg class="wire-svg" width="34" height="115" viewBox="0 0 34 115">
-      <path d="M0,65 C12,65 22,57 34,57" stroke="#c8a854" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <svg class="wire-svg" width="28" height="60" viewBox="0 0 28 60">
+      <path d="M0,34 C10,34 18,30 28,30" stroke="#c8a854" stroke-width="2.5" fill="none" stroke-linecap="round"/>
     </svg>
 
     <!-- ── DELAY ─────────────────────────────────────────── -->
@@ -314,8 +312,8 @@ hr.div { border:none; border-top:1px solid #1e1e1e; margin:8px 0 7px; }
     </div>
 
     <!-- wire: delay → output -->
-    <svg class="wire-svg" width="34" height="115" viewBox="0 0 34 115">
-      <path d="M0,57 C12,57 22,63 34,63" stroke="#c8a854" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <svg class="wire-svg" width="28" height="60" viewBox="0 0 28 60">
+      <path d="M0,30 C10,30 18,34 28,34" stroke="#c8a854" stroke-width="2.5" fill="none" stroke-linecap="round"/>
     </svg>
 
     <!-- ── OUTPUT ──────────────────────────────────────────── -->
@@ -376,9 +374,9 @@ const semiToHz = st => 440 * Math.pow(2, st / 12);
 const SILENCE  = 0.001;
 
 // Logarithmic slider utilities
-const freqLog = { // 20Hz → 20kHz
-  toVal: p => 20 * Math.pow(1000, p / 1000),
-  toPos: v => Math.round(1000 * Math.log(Math.max(v,20) / 20) / Math.log(1000))
+const freqLog = { // 0.5Hz → 20kHz (allow sub-bass and near-zero)
+  toVal: p => 0.5 * Math.pow(40000, p / 1000),
+  toPos: v => v < 0.5 ? 0 : Math.round(1000 * Math.log(v / 0.5) / Math.log(40000))
 };
 const timeLog = { // 0.01s → 60s
   toVal: p => 0.01 * Math.pow(6000, p / 1000),
@@ -387,18 +385,20 @@ const timeLog = { // 0.01s → 60s
 
 // ── State ────────────────────────────────────────────────────────
 let rawCtx;
-let currentStream=null, streamSource=null, chanSplit=null, chanMerge=null;
-let sumGain, inputGainNode, inputMuteNode, inputMeter;
+let micInput=null; // Tone.UserMedia
+let micGainNode, preFxGain, inputMeter; // Tone nodes
+let testOscTone=null, testNoiseTone=null, testOscGainTone, testNoiseGainTone, testMasterGainTone; // all Tone.js
 let pitchShift, pitchDryG, pitchWetG;
 let delayNode, feedbackGain, delayDryGain, delayWetGain;
 let outputGainNode, outputMuteNode, outputMeter;
-let testOscNode=null, noiseSource=null, testOscGain, testNoiseGain, testMasterGain;
-let noiseBuffer=null;
+let systemStream=null, systemSource=null, sysNativeGain=null; // system audio (native)
+let noiseBuffer=null; // kept for compat
 let testEnabled=false, currentTestWave='sine';
+let testMasterGain; // alias to testMasterGainTone.gain for compat
 let currentDeviceId='', currentChannel='mix', numChannels=1;
 let inputMuted=false, outputMuted=false;
 let pitchBypassed=false, delayBypassed=false;
-let systemStream=null, systemSource=null, systemAudioGain;
+let systemStream=null, systemSource=null, sysNativeGain;
 let micAnalyser=null, testAnalyser=null;
 
 // ── Init ─────────────────────────────────────────────────────────
@@ -409,14 +409,13 @@ async function initAudio() {
     await Tone.start();
     rawCtx = Tone.context.rawContext;
 
-    // sumGain is native so all sources (mic, test, sys) connect cleanly
-    sumGain = rawCtx.createGain(); sumGain.gain.value = 1;
-    inputGainNode  = new Tone.Gain(1);
-    inputMuteNode  = new Tone.Gain(1);
+    // ── ALL Tone.js — zero native→Tone bridging ──────────────────
+    micGainNode    = new Tone.Gain(1);   // mic gain + mute
+    preFxGain      = new Tone.Gain(1);   // sums mic + test → FX
     inputMeter     = new Tone.Meter({ normalRange:true, smoothing:0.85 });
     pitchShift     = new Tone.PitchShift({ pitch:0, windowSize:0.1 });
-    pitchDryG      = new Tone.Gain(0);  // 0 = wet
-    pitchWetG      = new Tone.Gain(1);  // 1 = wet
+    pitchDryG      = new Tone.Gain(0);
+    pitchWetG      = new Tone.Gain(1);
     delayNode      = new Tone.Delay({ delayTime:0.5, maxDelay:62 });
     feedbackGain   = new Tone.Gain(0.3);
     delayDryGain   = new Tone.Gain(1);
@@ -424,27 +423,32 @@ async function initAudio() {
     outputGainNode = new Tone.Gain(1);
     outputMuteNode = new Tone.Gain(1);
     outputMeter    = new Tone.Meter({ normalRange:true, smoothing:0.85 });
-    systemAudioGain = rawCtx.createGain(); systemAudioGain.gain.value=0;
-    systemAudioGain.connect(sumGain);
-    micAnalyser = rawCtx.createAnalyser(); micAnalyser.fftSize=256; micAnalyser.smoothingTimeConstant=0.8;
+
+    // Test tone: all Tone.js (eliminates native→Tone connection issues)
+    testOscGainTone    = new Tone.Gain(1);
+    testNoiseGainTone  = new Tone.Gain(0);
+    testMasterGainTone = new Tone.Gain(0); // off by default
+    testOscTone  = new Tone.Oscillator(110, 'sine').start();
+    testNoiseTone= new Tone.Noise('white').start();
+    testOscTone.connect(testOscGainTone);
+    testNoiseTone.connect(testNoiseGainTone);
+    testOscGainTone.connect(testMasterGainTone);
+    testNoiseGainTone.connect(testMasterGainTone);
+    testMasterGainTone.connect(preFxGain); // Tone→Tone ✓
+    testMasterGain = testMasterGainTone; // alias for backward-compat refs
+
+    // System audio (native; handled separately in toggleSystemAudio)
+    sysNativeGain = rawCtx.createGain(); sysNativeGain.gain.value = 0;
+
+    // Analysers for per-source metering
+    micAnalyser  = rawCtx.createAnalyser(); micAnalyser.fftSize=256; micAnalyser.smoothingTimeConstant=0.8;
     testAnalyser = rawCtx.createAnalyser(); testAnalyser.fftSize=256; testAnalyser.smoothingTimeConstant=0.8;
+    testMasterGainTone.connect(testAnalyser); // Tone→native analyser ✓
 
-    // Native test tone
-    testOscGain=rawCtx.createGain(); testNoiseGain=rawCtx.createGain();
-    testMasterGain=rawCtx.createGain(); testMasterGain.gain.value=0;
-    testOscGain.gain.value=1; testNoiseGain.gain.value=0;
-    testOscNode=rawCtx.createOscillator(); testOscNode.type='sine'; testOscNode.frequency.value=110; testOscNode.start();
-    testOscNode.connect(testOscGain); testOscGain.connect(testMasterGain);
-    noiseBuffer=createNoiseBuffer(); noiseSource=rawCtx.createBufferSource();
-    noiseSource.buffer=noiseBuffer; noiseSource.loop=true; noiseSource.start();
-    noiseSource.connect(testNoiseGain); testNoiseGain.connect(testMasterGain);
-    testMasterGain.connect(sumGain); // native→native: no .input needed
-    testMasterGain.connect(testAnalyser); // tap for separate meter
-
-    // Graph
-    sumGain.connect(inputGainNode.input); // native sumGain → Tone inputGain via .input
-    inputGainNode.connect(inputMeter); inputGainNode.connect(inputMuteNode);
-    inputMuteNode.connect(pitchDryG); inputMuteNode.connect(pitchShift); pitchShift.connect(pitchWetG);
+    // ── Signal graph (Tone.js throughout) ──────────────────────
+    micGainNode.connect(preFxGain);
+    preFxGain.connect(inputMeter);
+    preFxGain.connect(pitchDryG); preFxGain.connect(pitchShift); pitchShift.connect(pitchWetG);
     pitchDryG.connect(delayDryGain); pitchDryG.connect(delayNode);
     pitchWetG.connect(delayDryGain); pitchWetG.connect(delayNode);
     delayNode.connect(feedbackGain); feedbackGain.connect(delayNode);
@@ -452,7 +456,20 @@ async function initAudio() {
     delayDryGain.connect(outputGainNode); delayWetGain.connect(outputGainNode);
     outputGainNode.connect(outputMeter); outputGainNode.connect(outputMuteNode); outputMuteNode.toDestination();
 
-    await connectSource('', 'mix');
+    // Open mic with Tone.UserMedia — connects cleanly to Tone.js graph
+    micInput = new Tone.UserMedia();
+    try {
+      await micInput.open();
+      micInput.connect(micGainNode); // Tone.UserMedia→Tone.Gain ✓
+      micGainNode.connect(micAnalyser); // Tone.Gain→native analyser ✓
+    } catch(e) {
+      document.getElementById('start-status').textContent = 'mic error: ' + e.message;
+    }
+    // Open mic with Tone.UserMedia — handles native→Tone internally
+    micInput = new Tone.UserMedia();
+    await micInput.open();
+    micInput.connect(micGainNode); // Tone.UserMedia → Tone.Gain ✓
+    micGainNode.connect(micAnalyser); // Tone.Gain → native analyser ✓
     await enumerateDevices();
     buildPresetSlots();
     loadPresetUI();
@@ -468,10 +485,7 @@ async function initAudio() {
   } catch(e) { st.textContent='error: '+e.message; btn.disabled=false; }
 }
 
-function createNoiseBuffer() {
-  const len=rawCtx.sampleRate*2, buf=rawCtx.createBuffer(1,len,rawCtx.sampleRate), d=buf.getChannelData(0);
-  for(let i=0;i<len;i++) d[i]=Math.random()*2-1; return buf;
-}
+function createNoiseBuffer(){return null;} // Tone.Noise used instead
 
 // ── Device enumeration ───────────────────────────────────────────
 async function enumerateDevices() {
@@ -499,80 +513,28 @@ async function enumerateDevices() {
 }
 
 // ── Connect source (with channel probing) ────────────────────────
-async function connectSource(deviceId, channel) {
-  if(streamSource) { try{streamSource.disconnect();}catch(e){} }
-  if(chanSplit)    { try{chanSplit.disconnect();}   catch(e){} }
-  if(chanMerge)    { try{chanMerge.disconnect();}   catch(e){} }
-  if(currentStream) currentStream.getTracks().forEach(t=>t.stop());
-
-  // Probe capabilities first
-  let maxCh=2;
+async function changeInputDevice() {
+  const id = document.getElementById('input-device').value;
+  if (micInput) { try { micInput.close(); } catch(e) {} }
+  micInput = new Tone.UserMedia();
   try {
-    const probe=await navigator.mediaDevices.getUserMedia({audio:{deviceId:deviceId?{exact:deviceId}:undefined}});
-    const caps=probe.getAudioTracks()[0].getCapabilities?.();
-    maxCh=caps?.channelCount?.max??2;
-    probe.getTracks().forEach(t=>t.stop());
-  } catch(e){}
-
-  // Try to get all channels
-  let stream;
-  try {
-    stream=await navigator.mediaDevices.getUserMedia({audio:{
-      deviceId:deviceId?{exact:deviceId}:undefined,
-      channelCount:{exact:maxCh},
-      echoCancellation:false, autoGainControl:false, noiseSuppression:false
-    }});
+    await micInput.open(id || undefined);
+    micInput.connect(micGainNode);
+    micGainNode.connect(micAnalyser);
+    currentDeviceId = id;
+    document.getElementById('ch-note').textContent = 'input active ✓';
   } catch(e) {
-    try {
-      stream=await navigator.mediaDevices.getUserMedia({audio:{
-        deviceId:deviceId?{exact:deviceId}:undefined,
-        channelCount:{ideal:maxCh},
-        echoCancellation:false, autoGainControl:false, noiseSuppression:false
-      }});
-    } catch(e2) {
-      stream=await navigator.mediaDevices.getUserMedia({audio:deviceId?{deviceId:{exact:deviceId}}:true});
-    }
+    document.getElementById('ch-note').textContent = 'mic error: ' + e.message;
   }
-  currentStream=stream; currentDeviceId=deviceId;
-  numChannels=stream.getAudioTracks()[0].getSettings().channelCount||1;
-  streamSource=rawCtx.createMediaStreamSource(stream);
-
-  const chanSel=document.getElementById('input-channel');
-  chanSel.innerHTML=`<option value="mix">Sum (all ${numChannels} ch)</option>`;
-  for(let i=0;i<numChannels;i++){
-    const o=document.createElement('option'); o.value=i; o.textContent=`Ch ${i+1}`; chanSel.appendChild(o);
-  }
-  chanSel.value=(channel==='mix'||parseInt(channel)<numChannels)?channel:'mix';
-  currentChannel=chanSel.value;
-
-  // Channel note — explain browser limitation if relevant
-  const note=document.getElementById('ch-note');
-  if(numChannels<=2&&maxCh>2) note.textContent=`ℹ ${maxCh}ch device — browser limited to ${numChannels}ch. Route via TotalMix.`;
-  else if(numChannels>2) note.textContent=`✓ ${numChannels} channels available`;
-  else note.textContent='';
-
-  chanSplit=rawCtx.createChannelSplitter(Math.max(numChannels,2));
-  streamSource.connect(chanSplit); routeChannel(chanSel.value);
 }
-
-function routeChannel(ch) {
-  if(chanMerge){try{chanMerge.disconnect();}catch(e){}}
-  chanMerge=rawCtx.createChannelMerger(1);
-  if(ch==='mix'){for(let i=0;i<numChannels;i++){try{chanSplit.connect(chanMerge,i,0);}catch(e){}}}
-  else { chanSplit.connect(chanMerge,parseInt(ch),0); }
-  chanMerge.connect(sumGain); // native chanMerge → native sumGain
-  if(micAnalyser) chanMerge.connect(micAnalyser); // tap mic signal separately
-  currentChannel=ch;
-}
-async function changeInputDevice(){await connectSource(document.getElementById('input-device').value,'mix');}
-function changeInputChannel(){routeChannel(document.getElementById('input-channel').value);}
+function changeInputChannel() {} // channel splitting limited by browser — no-op
 async function toggleSystemAudio(){
   const btn=document.getElementById('sys-audio-btn');
   if(systemStream){
     if(systemSource){try{systemSource.disconnect();}catch(e){}}
     systemStream.getTracks().forEach(t=>t.stop());
     systemStream=null; systemSource=null;
-    systemAudioGain.gain.setTargetAtTime(0,rawCtx.currentTime,0.02);
+    sysNativeGain.gain.setTargetAtTime(0,rawCtx.currentTime,0.02);
     btn.textContent='CAPTURE TAB AUDIO (?)'; btn.classList.remove('on');
     return;
   }
@@ -584,12 +546,14 @@ async function toggleSystemAudio(){
     if(!aTracks.length){btn.textContent='NO AUDIO — share a tab/window with audio'; btn.disabled=false; return;}
     systemStream=new MediaStream(aTracks);
     systemSource=rawCtx.createMediaStreamSource(systemStream);
-    systemSource.connect(systemAudioGain);
-    systemAudioGain.gain.setTargetAtTime(1,rawCtx.currentTime,0.02);
+    systemSource.connect(sysNativeGain);
+    sysNativeGain.gain.setTargetAtTime(1,rawCtx.currentTime,0.02);
+    // Bridge native→Tone: connect to preFxGain's input node
+    try { sysNativeGain.connect(preFxGain.input); } catch(e) { console.warn('sys audio bridge:',e); }
     btn.textContent='SYS AUDIO ✓ (capturing)'; btn.classList.add('on'); btn.disabled=false;
     aTracks[0].addEventListener('ended',()=>{
       systemStream=null; systemSource=null;
-      systemAudioGain.gain.setTargetAtTime(0,rawCtx.currentTime,0.02);
+      sysNativeGain.gain.setTargetAtTime(0,rawCtx.currentTime,0.02);
       btn.textContent='CAPTURE TAB AUDIO (?)'; btn.classList.remove('on');
     });
   } catch(e){
@@ -606,21 +570,21 @@ async function changeOutputDevice(){
 // ── Test tone ────────────────────────────────────────────────────
 function toggleTestTone(){
   testEnabled=!testEnabled;
-  testMasterGain.gain.setTargetAtTime(testEnabled?dbToGain(parseFloat(document.getElementById('test-gain-sl').value)):0,rawCtx.currentTime,0.02);
+  if(testMasterGainTone)testMasterGainTone.gain.rampTo(testEnabled?dbToGain(parseFloat(document.getElementById('test-gain-sl').value)):0,0.05);
   const btn=document.getElementById('test-toggle'); btn.textContent=testEnabled?'ENABLED':'DISABLED'; btn.classList.toggle('on',testEnabled);
 }
 function setTestWave(wave){
   currentTestWave=wave;
   const isNoise=wave==='noise';
-  testOscGain.gain.setTargetAtTime(isNoise?0:1,rawCtx.currentTime,0.01);
-  testNoiseGain.gain.setTargetAtTime(isNoise?1:0,rawCtx.currentTime,0.01);
-  if(!isNoise) testOscNode.type=wave;
+  if(testOscGainTone)  testOscGainTone.gain.rampTo(isNoise?0:1,0.02);
+  if(testNoiseGainTone)testNoiseGainTone.gain.rampTo(isNoise?1:0,0.02);
+  if(!isNoise && testOscTone) testOscTone.type = wave;
   const ctrl=document.getElementById('test-freq-ctrl');
   ctrl.style.opacity=isNoise?'0.3':'1'; ctrl.style.pointerEvents=isNoise?'none':'';
 }
 function setTestFreqPos(pos){
   const hz=freqLog.toVal(parseFloat(pos));
-  if(testOscNode) testOscNode.frequency.setTargetAtTime(hz,rawCtx.currentTime,0.01);
+  if(testOscTone) testOscTone.frequency.rampTo(Math.max(hz,0.5),0.01);
   const st=hzToSemi(hz); const exact=Math.abs(st-Math.round(st))<0.05;
   document.getElementById('test-freq-val').textContent=Math.round(hz)+' Hz';
   document.getElementById('test-freq-val').dataset.value=hz;
@@ -634,7 +598,7 @@ function setTestFreqHz(hz){
 function setTestFreqSemi(st){setTestFreqHz(semiToHz(parseFloat(st)));}
 function setTestGainDb(db){
   const v=parseFloat(db);
-  if(testEnabled) testMasterGain.gain.setTargetAtTime(dbToGain(v),rawCtx.currentTime,0.02);
+  if(testEnabled && testMasterGainTone) testMasterGainTone.gain.rampTo(dbToGain(v),0.05);
   document.getElementById('test-gain-val').textContent=v.toFixed(1)+' dB';
   document.getElementById('test-gain-val').dataset.value=v;
 }
@@ -676,7 +640,7 @@ function animateMeters(){
 }
 
 function toggleMute(which){
-  if(which==='input'){inputMuted=!inputMuted; inputMuteNode.gain.rampTo(inputMuted?0:1,0.05); const b=document.getElementById('input-mute'); b.textContent=inputMuted?'MUTED':'LIVE'; b.classList.toggle('muted',inputMuted);}
+  if(which==='input'){inputMuted=!inputMuted; micGainNode.gain.rampTo(inputMuted?0:1,0.05); const b=document.getElementById('input-mute'); b.textContent=inputMuted?'MUTED':'LIVE'; b.classList.toggle('muted',inputMuted);}
   else{outputMuted=!outputMuted; outputMuteNode.gain.rampTo(outputMuted?0:1,0.05); const b=document.getElementById('output-mute'); b.textContent=outputMuted?'MUTED':'LIVE'; b.classList.toggle('muted',outputMuted);}
 }
 
@@ -699,7 +663,7 @@ function toggleFxBypass(fx){
 }
 
 // ── Parameter setters ─────────────────────────────────────────────
-function setInputGainDb(db){if(inputGainNode)inputGainNode.gain.rampTo(dbToGain(parseFloat(db)),0.05); const el=document.getElementById('input-gain-val'); el.textContent=parseFloat(db).toFixed(1)+' dB'; el.dataset.value=db;}
+function setInputGainDb(db){if(micGainNode)micGainNode.gain.rampTo(dbToGain(parseFloat(db)),0.05); const el=document.getElementById('input-gain-val'); el.textContent=parseFloat(db).toFixed(1)+' dB'; el.dataset.value=db;}
 function setOutputGainDb(db){if(outputGainNode)outputGainNode.gain.rampTo(dbToGain(parseFloat(db)),0.05); const el=document.getElementById('output-gain-val'); el.textContent=parseFloat(db).toFixed(1)+' dB'; el.dataset.value=db;}
 
 function setPitchSemi(v){
