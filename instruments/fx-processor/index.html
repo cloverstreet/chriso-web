@@ -459,6 +459,7 @@ async function initAudio() {
     setupEditables();
     setupDblClick();
     showBoard();
+    requestAnimationFrame(() => psInit()); // init PlaySpace after DOM is rendered
     animateMeters();
     // Init log slider positions
     document.getElementById('test-freq-sl').value = freqLog.toPos(110); setTestFreqPos(freqLog.toPos(110));
@@ -1175,12 +1176,7 @@ function psCanvasPos(e, canvas) {
 // (The existing function saves without x/y — we keep it for backward compat
 //  PlaySpace adds x/y on top when saving via canvas click)
 
-// ── Init PlaySpace after board shows ─────────────────────────────────────
-const _origShowBoard = showBoard;
-function showBoard() {
-  _origShowBoard();
-  requestAnimationFrame(() => { psInit(); });
-}
+// psInit() is called from initAudio() after showBoard()
 
 </script>
 </body>
