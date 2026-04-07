@@ -87,9 +87,9 @@ body {
   position:relative; flex-shrink:0;
 }
 /* Standard width */
-.module { width:170px; }
+.module { width:155px; }
 /* Double wide for FX */
-.module.wide { width:300px; }
+.module.wide { width:265px; }
 /* Half height = compact padding, no meters taking space */
 .module.half { }
 
@@ -263,7 +263,7 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
 /* ── Vertical fader + gain bar (for input modules) ─────────────── */
 .vfader-track {
   display:flex; flex-direction:column; align-items:center;
-  height:100%; gap:2px;
+  height:100%; gap:1px;
 }
 .vfader-label { font-size:.6rem; color:#888; letter-spacing:.1em; }
 .vfader-val { font-size:.68rem; color:#c8a854; text-align:center; min-width:32px; }
@@ -335,9 +335,6 @@ input.gain-meter-slider::-webkit-slider-thumb {
 <div id="board">
 
   <!-- About + global presets -->
-  <div id="about-row">
-    <a href="/instruments/fx-processor/about.html" target="_blank">about this prototype ↗</a>
-  </div>
 
 
 
@@ -372,8 +369,8 @@ input.gain-meter-slider::-webkit-slider-thumb {
           <span style="font-size:.6rem;color:#888;letter-spacing:.1em;">GAIN</span>
           <span class="ctrl-val" id="input-gain-val" style="font-size:.68rem;">0dB</span>
         </div>
-        <div style="display:flex;justify-content:center;height:80px;min-height:80px;margin-bottom:4px;">
-          <div class="gain-meter-wrap" style="height:80px;">
+        <div style="display:flex;justify-content:center;height:68px;min-height:68px;margin-bottom:4px;">
+          <div class="gain-meter-wrap" style="height:68px;">
             <div class="gain-meter-bg">
               <div class="gain-meter-level" id="mic-level" style="height:0%"></div>
               <div class="gain-meter-peak" id="mic-pk" style="bottom:0%"></div>
@@ -415,8 +412,8 @@ input.gain-meter-slider::-webkit-slider-thumb {
           <span style="font-size:.6rem;color:#888;letter-spacing:.1em;">GAIN</span>
           <span class="ctrl-val" id="test-gain-val" style="font-size:.68rem;">-12dB</span>
         </div>
-        <div style="display:flex;justify-content:center;height:80px;min-height:80px;margin-bottom:4px;">
-          <div class="gain-meter-wrap" style="height:80px;">
+        <div style="display:flex;justify-content:center;height:68px;min-height:68px;margin-bottom:4px;">
+          <div class="gain-meter-wrap" style="height:68px;">
             <div class="gain-meter-bg">
               <div class="gain-meter-level" id="test-level" style="height:0%"></div>
               <div class="gain-meter-peak" id="test-pk" style="bottom:0%"></div>
@@ -598,7 +595,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
             <option value="">Default (System)</option>
           </select>
         </div>
-        <div style="display:flex;gap:5px;height:80px;min-height:80px;align-items:stretch;margin-bottom:4px;">
+        <div style="display:flex;gap:5px;height:80px;min-height:68px;align-items:stretch;margin-bottom:4px;">
           <!-- Combined gain+meter slider: thumb=gain, track fill=level -->
           <div class="vfader-label" style="writing-mode:vertical-rl;transform:rotate(180deg);align-self:center;margin-right:2px;">GAIN</div>
           <div class="gain-meter-wrap" style="height:100%;">
