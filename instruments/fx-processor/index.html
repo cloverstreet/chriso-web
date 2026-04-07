@@ -618,7 +618,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
             <input class="gain-meter-slider" type="range" id="output-gain-db"
               min="-60" max="12" step="0.5" value="0" oninput="setOutputGainDb(this.value)">
           </div>
-          <div class="vfader-val" id="output-gain-val" data-value="0" style="writing-mode:vertical-rl;transform:rotate(180deg);font-size:.6rem;">0dB</div>
+          <span class="ctrl-val" id="output-gain-val" data-value="0" style="font-size:.68rem;align-self:flex-end;padding-left:4px;">0dB</span>
         </div>
         </div>
         <div style="font-size:.58rem;color:#555;text-align:right;margin-top:2px;" id="out-db">—</div>
@@ -769,14 +769,14 @@ async function initAudio() {
     // Open mic with Tone.UserMedia — handles native→Tone internally
     micInput = new Tone.UserMedia();
     await micInput.open();
-    micInput.connect(micGainNode); // Tone.UserMedia → Tone.Gain ✓
-    micGainNode.connect(micAnalyser); // Tone.Gain → native analyser ✓
+    // mic already connected in try block above
     await enumerateDevices();
     buildPresetSlots();
     loadPresetUI();
     setupEditables();
     setupDblClick();
     showBoard();
+    applyDefaultState(); // apply safe defaults
     requestAnimationFrame(() => psInit()); // init PlaySpace after DOM is rendered
     animateMeters();
     // Init log slider positions
@@ -914,6 +914,9 @@ function getAnalyserRMS(analyser) {
   return Math.sqrt(s / d.length);
 }
 
+// ── Meters state ─────────────────────────────────────────────────
+const peaks = {};
+
 // ── Vertical meter ─────────────────────────────────────────────────
 function vMeter(lin, fillId, peakId, dbId) {
   const el = document.getElementById(fillId); if (!el) return;
@@ -939,6 +942,22 @@ function vMeter(lin, fillId, peakId, dbId) {
 }
 
 
+
+// ── Default startup state ─────────────────────────────────────────
+function applyDefaultState() {
+  // Mic: muted by default (feedback prevention)
+  inputMuted = false; toggleMute('input'); // toggles to muted
+  // Sig gen: on at -20dB (safe level)
+  testEnabled = false; toggleTestTone(); // toggles to enabled
+  // Output gain: -12dB
+  const outSlider = document.getElementById('output-gain-db');
+  if (outSlider) { outSlider.value = -12; setOutputGainDb(-12); }
+  // Delay wet at 0.5 (~-6dB), dry at 1.0 (0dB)
+  const drySlider = document.getElementById('delay-dry');
+  const wetSlider = document.getElementById('delay-wet');
+  if (drySlider) { drySlider.value = 1.0; setDelayDry(1.0); }
+  if (wetSlider) { wetSlider.value = 0.5; setDelayWet(0.5); }
+}
 // ── Board display ─────────────────────────────────────────────────
 function showBoard() {
   document.getElementById('start-screen').style.display = 'none';
@@ -1032,8 +1051,8 @@ function setFeedback(v){
   document.getElementById('fb-danger').classList.toggle('show',isDanger);
   document.getElementById('delay-fb').classList.toggle('danger-range',isDanger);
 }
-function setDelayDry(v){if(!delayBypassed&&delayDryGain)delayDryGain.gain.rampTo(parseFloat(v),0.05); document.getElementById('delay-dry-val').textContent=Math.round(v*100)+'%';}
-function setDelayWet(v){if(!delayBypassed&&delayWetGain)delayWetGain.gain.rampTo(parseFloat(v),0.05); document.getElementById('delay-wet-val').textContent=Math.round(v*100)+'%';}
+function setDelayDry(v){if(!delayBypassed&&delayDryGain)delayDryGain.gain.rampTo(parseFloat(v),0.05); const dv=parseFloat(v); document.getElementById('delay-dry-val').textContent=dv<0.001?'-inf':fmtDb(gainToDb(dv));}
+function setDelayWet(v){if(!delayBypassed&&delayWetGain)delayWetGain.gain.rampTo(parseFloat(v),0.05); const wv=parseFloat(v); document.getElementById('delay-wet-val').textContent=wv<0.001?'-inf':fmtDb(gainToDb(wv));}
 
 // ── Preset system ─────────────────────────────────────────────────
 function buildPresetSlots(){
