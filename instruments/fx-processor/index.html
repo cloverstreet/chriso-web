@@ -697,10 +697,13 @@ input.gain-meter-slider::-webkit-slider-thumb {
             <option value="">Default (System)</option>
           </select>
         </div>
-        <div style="display:flex;gap:5px;height:80px;min-height:68px;align-items:stretch;margin-bottom:4px;">
-          <!-- Combined gain+meter slider: thumb=gain, track fill=level -->
-
-          <div class="gain-meter-wrap" style="height:100%;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
+          <span style="font-size:.6rem;color:#888;letter-spacing:.1em;">GAIN</span>
+          <span class="ctrl-val" id="output-gain-val" data-value="0" style="font-size:.68rem;">0dB</span>
+        </div>
+        <div style="display:flex;justify-content:center;height:68px;min-height:68px;margin-bottom:4px;">
+          <!-- Combined gain+meter slider -->
+          <div class="gain-meter-wrap" style="height:68px;">
             <div class="gain-meter-bg">
               <div class="gain-meter-bar">
                 <div class="gain-meter-level" id="out-level-l" style="height:0%"></div>
@@ -1322,12 +1325,13 @@ function setupDblClick(){
   });
 }
 
+function makeEditableSafe(el,opts){ if(el) makeEditable(el,opts); }
 function setupEditables(){
-  makeEditable(document.getElementById('input-gain-val'),{min:-60,max:12,slider:document.getElementById('input-gain-db'),format:v=>v.toFixed(1)+' dB',parse:s=>parseFloat(s),onSet:setInputGainDb});
-  makeEditable(document.getElementById('output-gain-val'),{min:-60,max:12,slider:document.getElementById('output-gain-db'),format:v=>v.toFixed(1)+' dB',parse:s=>parseFloat(s),onSet:setOutputGainDb});
-  makeEditable(document.getElementById('delay-time-val'),{min:0.001,max:60,format:v=>v>=1?v.toFixed(2)+'s':v.toFixed(3)+'s',parse:s=>parseFloat(s.replace('s','')),onSet:setDelayTimeSec});
-  makeEditable(document.getElementById('pitch-semi-val'),{min:-24,max:24,slider:document.getElementById('pitch-semi'),format:v=>(v>=0?'+':'')+v.toFixed(1),parse:s=>parseFloat(s),onSet:setPitchSemi});
-  makeEditable(document.getElementById('test-freq-val'),{min:20,max:20000,format:v=>Math.round(v)+' Hz',parse:s=>parseFloat(s.replace(' Hz','')),onSet:setTestFreqHz});
+  makeEditableSafe(document.getElementById('input-gain-val'),{min:-60,max:12,slider:document.getElementById('input-gain-db'),format:v=>v.toFixed(1)+' dB',parse:s=>parseFloat(s),onSet:setInputGainDb});
+  makeEditableSafe(document.getElementById('output-gain-val'),{min:-60,max:12,slider:document.getElementById('output-gain-db'),format:v=>v.toFixed(1)+' dB',parse:s=>parseFloat(s),onSet:setOutputGainDb});
+  makeEditableSafe(document.getElementById('delay-time-val'),{min:0.001,max:60,format:v=>v>=1?v.toFixed(2)+'s':v.toFixed(3)+'s',parse:s=>parseFloat(s.replace('s','')),onSet:setDelayTimeSec});
+  makeEditableSafe(document.getElementById('pitch-semi-val'),{min:-24,max:24,slider:document.getElementById('pitch-semi'),format:v=>(v>=0?'+':'')+v.toFixed(1),parse:s=>parseFloat(s),onSet:setPitchSemi});
+  makeEditableSafe(document.getElementById('test-freq-val'),{min:20,max:20000,format:v=>Math.round(v)+' Hz',parse:s=>parseFloat(s.replace(' Hz','')),onSet:setTestFreqHz});
 }
 
 // ═══════════════════════════════════════════════════════════════════════
