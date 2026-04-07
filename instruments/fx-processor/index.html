@@ -257,7 +257,7 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
 #playspace-canvas {
   background:#050505; border:1px solid #1a1a1a;
   cursor:crosshair; display:block;
-  width:min(50vh,82vw); height:min(50vh,82vw);
+  width:min(42vh,78vw); height:min(42vh,78vw);
 }
 
 /* ── Vertical fader + gain bar (for input modules) ─────────────── */
@@ -339,48 +339,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
     <a href="/instruments/fx-processor/about.html" target="_blank">about this prototype ↗</a>
   </div>
 
-  <!-- ════════ INTERPOLATION SPACE ════════ -->
-  <div id="playspace-panel">
-    <div id="ps-header">
-      <!-- Row 1: IS label + slot selector -->
-      <div id="ps-row1">
-        <span class="ps-label">INTERPOLATION SPACE</span>
-        <div id="ps-slots">
-          <button class="ps-slot-btn selected" data-slot="0" onclick="psSelectSlot(0)">1</button>
-          <button class="ps-slot-btn" data-slot="1" onclick="psSelectSlot(1)">2</button>
-          <button class="ps-slot-btn" data-slot="2" onclick="psSelectSlot(2)">3</button>
-          <button class="ps-slot-btn" data-slot="3" onclick="psSelectSlot(3)">4</button>
-          <button class="ps-slot-btn" data-slot="4" onclick="psSelectSlot(4)">5</button>
-          <button class="ps-slot-btn" data-slot="5" onclick="psSelectSlot(5)">6</button>
-          <button class="ps-slot-btn" data-slot="6" onclick="psSelectSlot(6)">7</button>
-          <button class="ps-slot-btn" data-slot="7" onclick="psSelectSlot(7)">8</button>
-        </div>
-      </div>
-      <!-- Row 2: Global presets + DEF + REVERT -->
-      <div id="ps-row2" style="display:flex;align-items:center;gap:4px;width:100%;padding:4px 0 2px;">
-        <span style="font-size:.6rem;letter-spacing:.18em;color:#666;">GLOBAL</span>
-        <button class="global-slot" data-slot="0" onclick="handleGlobalPreset(this)"
-          title="Default preset — click: recall · shift+click: save"
-          style="min-width:32px;font-size:.58rem;color:#888;border-color:#3a3a3a;">DEF</button>
-        <button class="global-slot" data-slot="1" onclick="handleGlobalPreset(this)">2</button>
-        <button class="global-slot" data-slot="2" onclick="handleGlobalPreset(this)">3</button>
-        <button class="global-slot" data-slot="3" onclick="handleGlobalPreset(this)">4</button>
-        <button class="global-slot" data-slot="4" onclick="handleGlobalPreset(this)">5</button>
-        <button class="global-slot" data-slot="5" onclick="handleGlobalPreset(this)">6</button>
-        <button class="global-slot" data-slot="6" onclick="handleGlobalPreset(this)">7</button>
-        <button class="global-slot" data-slot="7" onclick="handleGlobalPreset(this)">8</button>
-        <button onclick="applyFactoryDefaults()"
-          style="padding:1px 7px;background:transparent;border:1px solid #2a2a2a;color:#555;
-                 font-family:'Courier New',monospace;font-size:.6rem;letter-spacing:.06em;
-                 cursor:pointer;border-radius:2px;margin-left:4px;transition:all .15s;"
-          onmouseover="this.style.color='#c8a854';this.style.borderColor='#554a2a'"
-          onmouseout="this.style.color='#555';this.style.borderColor='#2a2a2a'">REVERT</button>
-        <span style="font-size:.58rem;color:#333;margin-left:4px;">shift+click: save</span>
-      </div>
-      <!-- Row 3: hint -->
-      <div id="ps-hint" style="font-size:.62rem;color:#555;text-align:center;margin-bottom:6px;">select slot · click canvas to place · drag to interpolate</div>
-    </div>
-    <canvas id="playspace-canvas"></canvas>
+
 
   <!-- ── Main chain row ─────────────────────────────────────────── -->
   <div id="chain">
@@ -660,8 +619,50 @@ input.gain-meter-slider::-webkit-slider-thumb {
 
   </div><!-- end #chain -->
 
+  <!-- ════════ INTERPOLATION SPACE ════════ -->
+  <div id="playspace-panel">
+    <div id="ps-header">
+      <!-- Row 1: IS label + slot selector -->
+      <div id="ps-row1">
+        <span class="ps-label" style="white-space:nowrap;">INTERP SPACE</span>
+        <div id="ps-slots">
+          <button class="ps-slot-btn selected" data-slot="0" onclick="psSelectSlot(0)">1</button>
+          <button class="ps-slot-btn" data-slot="1" onclick="psSelectSlot(1)">2</button>
+          <button class="ps-slot-btn" data-slot="2" onclick="psSelectSlot(2)">3</button>
+          <button class="ps-slot-btn" data-slot="3" onclick="psSelectSlot(3)">4</button>
+          <button class="ps-slot-btn" data-slot="4" onclick="psSelectSlot(4)">5</button>
+          <button class="ps-slot-btn" data-slot="5" onclick="psSelectSlot(5)">6</button>
+          <button class="ps-slot-btn" data-slot="6" onclick="psSelectSlot(6)">7</button>
+          <button class="ps-slot-btn" data-slot="7" onclick="psSelectSlot(7)">8</button>
+        </div>
+      </div>
+      <!-- Row 2: Global presets + DEF + REVERT -->
+      <div id="ps-row2" style="display:flex;align-items:center;gap:4px;width:100%;padding:4px 0 2px;">
+        <span style="font-size:.6rem;letter-spacing:.18em;color:#666;">GLOBAL</span>
+        <button class="global-slot" data-slot="0" onclick="handleGlobalPreset(this)"
+          title="Default preset — click: recall · shift+click: save"
+          style="min-width:32px;font-size:.58rem;color:#888;border-color:#3a3a3a;">DEF</button>
+        <button class="global-slot" data-slot="1" onclick="handleGlobalPreset(this)">2</button>
+        <button class="global-slot" data-slot="2" onclick="handleGlobalPreset(this)">3</button>
+        <button class="global-slot" data-slot="3" onclick="handleGlobalPreset(this)">4</button>
+        <button class="global-slot" data-slot="4" onclick="handleGlobalPreset(this)">5</button>
+        <button class="global-slot" data-slot="5" onclick="handleGlobalPreset(this)">6</button>
+        <button class="global-slot" data-slot="6" onclick="handleGlobalPreset(this)">7</button>
+        <button class="global-slot" data-slot="7" onclick="handleGlobalPreset(this)">8</button>
+        <button onclick="applyFactoryDefaults()"
+          style="padding:1px 7px;background:transparent;border:1px solid #2a2a2a;color:#555;
+                 font-family:'Courier New',monospace;font-size:.6rem;letter-spacing:.06em;
+                 cursor:pointer;border-radius:2px;margin-left:4px;transition:all .15s;"
+          onmouseover="this.style.color='#c8a854';this.style.borderColor='#554a2a'"
+          onmouseout="this.style.color='#555';this.style.borderColor='#2a2a2a'">REVERT</button>
+        <span style="font-size:.58rem;color:#333;margin-left:4px;">shift+click: save</span>
+      </div>
+      <!-- Row 3: hint -->
+      <div id="ps-hint" style="font-size:.62rem;color:#555;text-align:center;margin-bottom:6px;">select slot · click canvas to place · drag to interpolate</div>
+    </div>
+    <canvas id="playspace-canvas"></canvas>
 
-  </div>
+  </div><!-- end #playspace-panel -->
 
 </div><!-- end #board -->
 
