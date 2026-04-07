@@ -279,12 +279,13 @@ input.vfader::-webkit-slider-thumb {
 }
 /* Vertical signal meter — post-gain, beside fader */
 .vmeter {
-  width:7px; height:100%; background:#0d0d0d;
+  width:7px; height:100%;
+  background:linear-gradient(to top, #0d1a0d 0%, #0d1a0d 72%, #1a1800 83%, #1a0d00 89%, #1a0505 94%, #1a0000 100%);
   border-radius:2px; overflow:hidden; position:relative; flex-shrink:0;
 }
 .vmeter-fill {
   position:absolute; bottom:0; left:0; width:100%;
-  background:linear-gradient(to top, #1a6a1a 0%,#3aaa2a 72%,#c0b020 83%,#d06020 89%,#d02020 94%,#ff2020 100%);
+  background:linear-gradient(to top, #1a5a1a 0%, #2a9a2a 68%, #7ab020 78%, #b89010 85%, #c06010 91%, #c83010 96%, #e02020 100%);
   transition:height .04s;
 }
 .vmeter-peak { position:absolute; width:100%; height:2px; background:rgba(255,255,255,.6); }
@@ -292,11 +293,13 @@ input.vfader::-webkit-slider-thumb {
 .gain-meter-wrap { position:relative; width:14px; height:100%; flex-shrink:0; }
 .gain-meter-bg {
   position:absolute; bottom:0; left:50%; transform:translateX(-50%);
-  width:7px; height:100%; background:#0d0d0d; border-radius:2px; overflow:hidden;
+  width:7px; height:100%;
+  background:linear-gradient(to top, #0d1a0d 0%, #0d1a0d 72%, #1a1800 83%, #1a0d00 89%, #1a0505 94%, #1a0000 100%);
+  border-radius:2px; overflow:hidden;
 }
 .gain-meter-level {
   position:absolute; bottom:0; left:0; width:100%;
-  background:linear-gradient(to top, #1a6a1a 0%,#3aaa2a 72%,#c0b020 83%,#d06020 89%,#d02020 94%,#ff2020 100%);
+  background:linear-gradient(to top, #1a5a1a 0%, #2a9a2a 68%, #7ab020 78%, #b89010 85%, #c06010 91%, #c83010 96%, #e02020 100%);
   transition:height .04s;
 }
 .gain-meter-peak { position:absolute; width:100%; height:2px; background:rgba(255,255,255,.6); }
@@ -408,8 +411,8 @@ input.gain-meter-slider::-webkit-slider-thumb {
           <span style="font-size:.6rem;color:#888;letter-spacing:.1em;">GAIN</span>
           <span class="ctrl-val" id="input-gain-val" style="font-size:.68rem;">0dB</span>
         </div>
-        <div style="display:flex;justify-content:center;height:80px;margin-bottom:4px;">
-          <div class="gain-meter-wrap">
+        <div style="display:flex;justify-content:center;height:80px;min-height:80px;margin-bottom:4px;">
+          <div class="gain-meter-wrap" style="height:80px;">
             <div class="gain-meter-bg">
               <div class="gain-meter-level" id="mic-level" style="height:0%"></div>
               <div class="gain-meter-peak" id="mic-pk" style="bottom:0%"></div>
@@ -451,8 +454,8 @@ input.gain-meter-slider::-webkit-slider-thumb {
           <span style="font-size:.6rem;color:#888;letter-spacing:.1em;">GAIN</span>
           <span class="ctrl-val" id="test-gain-val" style="font-size:.68rem;">-12dB</span>
         </div>
-        <div style="display:flex;justify-content:center;height:80px;margin-bottom:4px;">
-          <div class="gain-meter-wrap">
+        <div style="display:flex;justify-content:center;height:80px;min-height:80px;margin-bottom:4px;">
+          <div class="gain-meter-wrap" style="height:80px;">
             <div class="gain-meter-bg">
               <div class="gain-meter-level" id="test-level" style="height:0%"></div>
               <div class="gain-meter-peak" id="test-pk" style="bottom:0%"></div>
@@ -623,10 +626,10 @@ input.gain-meter-slider::-webkit-slider-thumb {
             <option value="">Default (System)</option>
           </select>
         </div>
-        <div style="display:flex;gap:5px;height:80px;align-items:stretch;margin-bottom:4px;">
+        <div style="display:flex;gap:5px;height:80px;min-height:80px;align-items:stretch;margin-bottom:4px;">
           <!-- Combined gain+meter slider: thumb=gain, track fill=level -->
           <div class="vfader-label" style="writing-mode:vertical-rl;transform:rotate(180deg);align-self:center;margin-right:2px;">GAIN</div>
-          <div class="gain-meter-wrap">
+          <div class="gain-meter-wrap" style="height:100%;">
             <div class="gain-meter-bg">
               <div class="gain-meter-level" id="out-level" style="height:0%"></div>
               <div class="gain-meter-peak" id="out-pk" style="bottom:0%"></div>
@@ -992,8 +995,9 @@ function applyDefaultState() {
   inputMuted = false; toggleMute('input'); // toggles to muted
   // Sig gen: on
   testEnabled = false; toggleTestTone(); // toggles to enabled
-  // Pitch shift: bypass by default (avoids startup latency silence)
-  pitchBypassed = false; toggleFxBypass('pitch'); // toggles to bypassed
+  // Pitch: on but at 0 semitones (unity = no effect, buffer stays filled)
+  // Do NOT bypass - keeps FFT buffer primed so enabling works instantly
+  if (pitchBypassed) toggleFxBypass('pitch'); // ensure enabled
   // Output gain: -12dB
   const outSlider = document.getElementById('output-gain-db');
   if (outSlider) { outSlider.value = -12; setOutputGainDb(-12); }
