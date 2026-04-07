@@ -306,9 +306,9 @@ input.gain-meter-slider {
   background:transparent; -webkit-appearance:none; cursor:pointer; outline:none;
 }
 input.gain-meter-slider::-webkit-slider-thumb {
-  -webkit-appearance:none; width:22px; height:8px;
-  background:#6aaee0; border-radius:2px; cursor:pointer;
-  box-shadow:0 0 5px rgba(100,160,220,0.45);
+  -webkit-appearance:none; width:22px; height:5px;
+  background:#6aaee0; border-radius:1px; cursor:pointer;
+  box-shadow:0 0 4px rgba(100,160,220,0.5);
 }
 
 </style>
@@ -394,16 +394,19 @@ input.gain-meter-slider::-webkit-slider-thumb {
           </select>
           <div class="ch-note" id="ch-note"></div>
         </div>
-        <!-- Vertical fader + meter side by side -->
-        <div style="display:flex;gap:6px;align-items:flex-end;height:80px;margin-bottom:6px;">
-          <div class="vfader-track">
-            <span class="vfader-label">GAIN</span>
-            <input class="vfader" type="range" id="input-gain-db" min="-60" max="12" step="0.5" value="0" oninput="setInputGainDb(this.value)">
-            <span class="vfader-val" id="input-gain-val" data-value="0">0dB</span>
-          </div>
-          <div class="vmeter">
-            <div class="vmeter-fill" id="mic-m" style="height:0%"></div>
-            <div class="vmeter-peak" id="mic-pk" style="bottom:0%"></div>
+        <!-- Combined gain+meter slider -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
+          <span style="font-size:.6rem;color:#888;letter-spacing:.1em;">GAIN</span>
+          <span class="ctrl-val" id="input-gain-val" style="font-size:.68rem;">0dB</span>
+        </div>
+        <div style="display:flex;justify-content:center;height:80px;margin-bottom:4px;">
+          <div class="gain-meter-wrap">
+            <div class="gain-meter-bg">
+              <div class="gain-meter-level" id="mic-level" style="height:0%"></div>
+              <div class="gain-meter-peak" id="mic-pk" style="bottom:0%"></div>
+            </div>
+            <input class="gain-meter-slider" type="range" id="input-gain-db"
+              min="-60" max="12" step="0.5" value="0" oninput="setInputGainDb(this.value)">
           </div>
         </div>
         <div style="font-size:.58rem;color:#555;text-align:right;" id="mic-db">—</div>
@@ -434,15 +437,19 @@ input.gain-meter-slider::-webkit-slider-thumb {
           <input type="range" id="test-freq-sl" min="0" max="1000" step="1" value="263"
                  oninput="setTestFreqPos(this.value)" style="width:100%;">
         </div>
-        <div style="display:flex;gap:5px;height:80px;align-items:stretch;margin-bottom:4px;">
-          <div class="vfader-track">
-            <span class="vfader-label">GAIN</span>
-            <input class="vfader" type="range" id="test-gain-sl" min="-60" max="0" step="0.5" value="-12" oninput="setTestGainDb(this.value)">
-            <span class="vfader-val" id="test-gain-val" data-value="-12">-12dB</span>
-          </div>
-          <div class="vmeter" id="test-meter">
-            <div class="vmeter-fill" id="test-m" style="height:0%"></div>
-            <div class="vmeter-peak" id="test-pk" style="bottom:0%"></div>
+        <!-- Combined gain+meter slider -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
+          <span style="font-size:.6rem;color:#888;letter-spacing:.1em;">GAIN</span>
+          <span class="ctrl-val" id="test-gain-val" style="font-size:.68rem;">-12dB</span>
+        </div>
+        <div style="display:flex;justify-content:center;height:80px;margin-bottom:4px;">
+          <div class="gain-meter-wrap">
+            <div class="gain-meter-bg">
+              <div class="gain-meter-level" id="test-level" style="height:0%"></div>
+              <div class="gain-meter-peak" id="test-pk" style="bottom:0%"></div>
+            </div>
+            <input class="gain-meter-slider" type="range" id="test-gain-sl"
+              min="-60" max="0" step="0.5" value="-12" oninput="setTestGainDb(this.value)">
           </div>
         </div>
         <div style="font-size:.58rem;color:#444;text-align:right;margin-bottom:3px;" id="test-db">—</div>
@@ -777,7 +784,14 @@ async function initAudio() {
     setupDblClick();
     showBoard();
     applyDefaultState(); // apply safe defaults
-    requestAnimationFrame(() => psInit()); // init PlaySpace after DOM is rendered
+    // Slot 0 = permanent home preset at center (always reset to default state)
+    requestAnimationFrame(() => {
+      const homeState = getGlobalState();
+      homeState.x = 0.5; homeState.y = 0.5;
+      psData[0] = homeState;
+      localStorage.setItem('fx_global_0', JSON.stringify(homeState));
+      psInit();
+    }); // init PlaySpace after DOM is rendered
     animateMeters();
     // Init log slider positions
     document.getElementById('test-freq-sl').value = freqLog.toPos(110); setTestFreqPos(freqLog.toPos(110));
@@ -955,7 +969,7 @@ function applyDefaultState() {
   // Delay wet at 0.5 (~-6dB), dry at 1.0 (0dB)
   const drySlider = document.getElementById('delay-dry');
   const wetSlider = document.getElementById('delay-wet');
-  if (drySlider) { drySlider.value = 1.0; setDelayDry(1.0); }
+  if (drySlider) { drySlider.value = 0.398; setDelayDry(0.398); }
   if (wetSlider) { wetSlider.value = 0.5; setDelayWet(0.5); }
 }
 // ── Board display ─────────────────────────────────────────────────
@@ -972,8 +986,8 @@ function animateMeters(){
   const mL = getAnalyserRMS(micAnalyser);
   const tL = getAnalyserRMS(testAnalyser);
   // Vertical meters for mic and test
-  vMeter(mL, 'mic-m',  'mic-pk',  'mic-db');
-  vMeter(tL, 'test-m', 'test-pk', 'test-db');
+  vMeter(mL, 'mic-level', 'mic-pk', 'mic-db');
+  vMeter(tL, 'test-level', 'test-pk', 'test-db');
   // Output: combined gain+meter slider background
   const odb = oL < SILENCE ? -Infinity : gainToDb(oL);
   const opct = oL < SILENCE ? 0 : Math.max(0, Math.min(100, (odb+60)/60*100));
@@ -1213,6 +1227,11 @@ function psInit() {
   // Double rAF: ensures canvas has layout dimensions before sizing
   requestAnimationFrame(() => requestAnimationFrame(() => {
     psSetupCanvas();
+    // Cursor starts at center (on top of slot 0)
+    const c = document.getElementById('playspace-canvas');
+    if (c && c.width && c.height) {
+      psCursor = {x: c.width/2, y: c.height/2};
+    }
     psRedraw();
   }));
 }
