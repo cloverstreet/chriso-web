@@ -336,8 +336,10 @@ input.gain-meter-slider::-webkit-slider-thumb {
     <a href="/instruments/fx-processor/about.html" target="_blank">about this prototype ↗</a>
   </div>
   <div id="global-preset-bar">
-    <span class="bar-label">GLOBAL</span>
-    <button class="global-slot" data-slot="0" onclick="handleGlobalPreset(this)">1</button>
+    <span class="bar-label">PRESETS</span>
+    <button class="global-slot" data-slot="0" onclick="handleGlobalPreset(this)"
+      title="Default preset — click to recall, shift+click to override"
+      style="min-width:34px;font-size:.58rem;letter-spacing:.04em;color:#888;border-color:#3a3a3a;">DEF</button>
     <button class="global-slot" data-slot="1" onclick="handleGlobalPreset(this)">2</button>
     <button class="global-slot" data-slot="2" onclick="handleGlobalPreset(this)">3</button>
     <button class="global-slot" data-slot="3" onclick="handleGlobalPreset(this)">4</button>
@@ -345,7 +347,14 @@ input.gain-meter-slider::-webkit-slider-thumb {
     <button class="global-slot" data-slot="5" onclick="handleGlobalPreset(this)">6</button>
     <button class="global-slot" data-slot="6" onclick="handleGlobalPreset(this)">7</button>
     <button class="global-slot" data-slot="7" onclick="handleGlobalPreset(this)">8</button>
-    <span class="bar-label" style="margin-left:6px;color:#333">shift+click: save</span>
+    <button onclick="applyFactoryDefaults()"
+      title="Revert to factory defaults"
+      style="padding:1px 7px;background:transparent;border:1px solid #2a2a2a;color:#555;
+             font-family:'Courier New',monospace;font-size:.6rem;letter-spacing:.08em;
+             cursor:pointer;border-radius:2px;margin-left:6px;transition:all .15s;"
+      onmouseover="this.style.color='#c8a854';this.style.borderColor='#554a2a'"
+      onmouseout="this.style.color='#555';this.style.borderColor='#2a2a2a'">REVERT</button>
+    <span class="bar-label" style="color:#333;margin-left:4px;">shift+click: save</span>
   </div>
 
   <!-- ════════ INTERPOLATION SPACE ════════ -->
@@ -641,6 +650,29 @@ input.gain-meter-slider::-webkit-slider-thumb {
 </div><!-- end #board -->
 
 <script>
+// ── Factory defaults ────────────────────────────────────────────────
+const FACTORY_DEFAULTS = {
+  inputGainDb: 0, outputGainDb: -12,
+  testEnabled: true, testWave: 'sine', testFreqHz: 110, testGainDb: -12,
+  pitch: { window: 0.1, semi: 0, wetdry: 0.5 }, pitchBypassed: true,
+  delay: { time: 0.5, fb: 0.3, dry: 0.398, wet: 0.398 }, delayBypassed: false,
+  inputMuted: true
+};
+function applyFactoryDefaults() {
+  // Mic muted
+  if (!inputMuted) toggleMute('input');
+  // Sig gen on
+  if (!testEnabled) toggleTestTone();
+  // Pitch bypassed
+  if (!pitchBypassed) toggleFxBypass('pitch');
+  // Delay on
+  if (delayBypassed) toggleFxBypass('delay');
+  // Gains
+  const og=document.getElementById('output-gain-db'); if(og){og.value=-12;setOutputGainDb(-12);}
+  const dry=document.getElementById('delay-dry'); if(dry){dry.value=0.398;setDelayDry(0.398);}
+  const wet=document.getElementById('delay-wet'); if(wet){wet.value=0.398;setDelayWet(0.398);}
+}
+
 // Hi Claude, can you hear me? — yes! Your comment is in the JS now.
 
 // ── Note name from Hz ─────────────────────────────────────────────
@@ -961,16 +993,18 @@ function vMeter(lin, fillId, peakId, dbId) {
 function applyDefaultState() {
   // Mic: muted by default (feedback prevention)
   inputMuted = false; toggleMute('input'); // toggles to muted
-  // Sig gen: on at -20dB (safe level)
+  // Sig gen: on
   testEnabled = false; toggleTestTone(); // toggles to enabled
+  // Pitch shift: bypass by default (avoids startup latency silence)
+  pitchBypassed = false; toggleFxBypass('pitch'); // toggles to bypassed
   // Output gain: -12dB
   const outSlider = document.getElementById('output-gain-db');
   if (outSlider) { outSlider.value = -12; setOutputGainDb(-12); }
-  // Delay wet at 0.5 (~-6dB), dry at 1.0 (0dB)
+  // Delay dry at -8dB (~0.4), wet at -8dB (~0.4)
   const drySlider = document.getElementById('delay-dry');
   const wetSlider = document.getElementById('delay-wet');
   if (drySlider) { drySlider.value = 0.398; setDelayDry(0.398); }
-  if (wetSlider) { wetSlider.value = 0.5; setDelayWet(0.5); }
+  if (wetSlider) { wetSlider.value = 0.398; setDelayWet(0.398); }
 }
 // ── Board display ─────────────────────────────────────────────────
 function showBoard() {
@@ -1486,13 +1520,18 @@ function psSetupCanvas() {
     psRedraw();
   });
 
+  let psDragStartX = 0, psDragStartY = 0;
+  canvas.addEventListener('mousedown', e => {
+    const p = psCanvasPos(e, canvas); psDragStartX = p.x; psDragStartY = p.y;
+  });
   window.addEventListener('mousemove', e => {
     if (!psDragging) return;
-    psDragMoved = true;
     psCursor = psCanvasPos(e, canvas);
+    // Only flag as drag after 6px movement (prevents click-as-drag)
+    const dx = psCursor.x - psDragStartX, dy = psCursor.y - psDragStartY;
+    if (Math.sqrt(dx*dx + dy*dy) > 6) psDragMoved = true;
     psRedraw();
-    // Live interpolation while dragging
-    if (rawCtx) psInterpolate(psCursor.x, psCursor.y, canvas.width, canvas.height, psDefaultPositions(canvas.width, canvas.height));
+    if (psDragMoved && rawCtx) psInterpolate(psCursor.x, psCursor.y, canvas.width, canvas.height, psDefaultPositions(canvas.width, canvas.height));
   });
 
   window.addEventListener('mouseup', e => {
