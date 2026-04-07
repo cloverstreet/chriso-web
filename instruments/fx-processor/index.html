@@ -805,10 +805,7 @@ async function initAudio() {
     } catch(e) {
       document.getElementById('start-status').textContent = 'mic error: ' + e.message;
     }
-    // Open mic with Tone.UserMedia — handles native→Tone internally
-    micInput = new Tone.UserMedia();
-    await micInput.open();
-    // mic already connected in try block above
+    // (mic already opened and connected in try block above)
     await enumerateDevices();
     buildPresetSlots();
     loadPresetUI();
@@ -1139,17 +1136,24 @@ function loadFxPreset(fx,slot){
 function getGlobalState(){
   return {
     inputGainDb:parseFloat(document.getElementById('input-gain-db').value),
-    testEnabled, testWave:document.getElementById('test-wave').value,
+    outputGainDb:parseFloat(document.getElementById('output-gain-db').value),
+    inputMuted, testEnabled,
+    testWave:document.getElementById('test-wave').value,
     testFreqHz:freqLog.toVal(parseFloat(document.getElementById('test-freq-sl').value)),
     testGainDb:parseFloat(document.getElementById('test-gain-sl').value),
+    pitchBypassed, delayBypassed,
     pitch:getFxState('pitch'), delay:getFxState('delay')
   };
 }
 function applyGlobalState(s){
   document.getElementById('input-gain-db').value=s.inputGainDb; setInputGainDb(s.inputGainDb);
+  if(s.outputGainDb!==undefined){document.getElementById('output-gain-db').value=s.outputGainDb; setOutputGainDb(s.outputGainDb);}
   document.getElementById('test-wave').value=s.testWave; setTestWave(s.testWave);
   setTestFreqHz(s.testFreqHz); document.getElementById('test-gain-sl').value=s.testGainDb; setTestGainDb(s.testGainDb);
   if(s.testEnabled!==testEnabled) toggleTestTone();
+  if(s.inputMuted!==undefined && s.inputMuted!==inputMuted) toggleMute('input');
+  if(s.pitchBypassed!==undefined && s.pitchBypassed!==pitchBypassed) toggleFxBypass('pitch');
+  if(s.delayBypassed!==undefined && s.delayBypassed!==delayBypassed) toggleFxBypass('delay');
   applyFxState('pitch',s.pitch); applyFxState('delay',s.delay);
 }
 function handleGlobalPreset(btn){
@@ -1502,6 +1506,7 @@ function psRedraw() {
 function psSetupCanvas() {
   const canvas = document.getElementById('playspace-canvas');
   if (!canvas) return;
+  let psDragStartX = 0, psDragStartY = 0;
 
   // Size canvas to its CSS display size
   function psResize() {
@@ -1516,14 +1521,11 @@ function psSetupCanvas() {
   canvas.addEventListener('mousedown', e => {
     psDragging = true; psDragMoved = false;
     const pos = psCanvasPos(e, canvas);
+    psDragStartX = pos.x; psDragStartY = pos.y;
     psCursor = pos;
     psRedraw();
   });
 
-  let psDragStartX = 0, psDragStartY = 0;
-  canvas.addEventListener('mousedown', e => {
-    const p = psCanvasPos(e, canvas); psDragStartX = p.x; psDragStartY = p.y;
-  });
   window.addEventListener('mousemove', e => {
     if (!psDragging) return;
     psCursor = psCanvasPos(e, canvas);
