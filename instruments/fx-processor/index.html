@@ -89,7 +89,7 @@ body {
 /* Standard width */
 .module { width:155px; }
 /* Double wide for FX */
-.module.wide { width:265px; }
+.module.wide { width:265px; min-height:215px; }
 /* Half height = compact padding, no meters taking space */
 .module.half { }
 
@@ -235,13 +235,13 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
 
 /* ── PlaySpace ──────────────────────────────────────────────────── */
 #playspace-panel {
-  width:100%; display:none; flex-direction:column;
-  align-items:center; padding:12px 4px 24px;
-  border-top:1px solid #181818; margin-top:10px;
+  width:100%; flex:1; display:flex; flex-direction:column;
+  align-items:center; padding:6px 4px 6px;
+  border-top:1px solid #181818;
 }
-#ps-header { width:min(50vh,82vw); margin:0 auto 8px; }
-#ps-row1 { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px; }
-#ps-row2 { font-size:.62rem; color:#555; text-align:center; margin-bottom:8px; }
+#ps-header { width:100%; margin:0 0 6px; }
+#ps-row1 { display:flex; align-items:center; justify-content:space-between; gap:4px; margin-bottom:4px; flex-wrap:wrap; }
+#ps-row2 { font-size:.62rem; color:#555; margin-bottom:4px; display:flex; align-items:center; flex-wrap:wrap; gap:3px; }
 .ps-label { font-size:.64rem; letter-spacing:.2em; color:#888; }
 .ps-hint  { font-size:.62rem; color:#666; letter-spacing:.1em; }
 #ps-slots { display:flex; gap:4px; }
@@ -257,7 +257,7 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
 #playspace-canvas {
   background:#050505; border:1px solid #1a1a1a;
   cursor:crosshair; display:block;
-  width:min(42vh,78vw); height:min(42vh,78vw);
+  width:100%; flex:1; min-height:0;
 }
 
 /* ── Vertical fader + gain bar (for input modules) ─────────────── */
@@ -290,10 +290,13 @@ input.vfader::-webkit-slider-thumb {
 }
 .vmeter-peak { position:absolute; width:100%; height:2px; background:rgba(255,255,255,.6); }
 /* Combined gain+meter slider (output only) */
-.gain-meter-wrap { position:relative; width:14px; height:100%; flex-shrink:0; }
+.gain-meter-wrap { position:relative; width:22px; height:100%; flex-shrink:0; }
 .gain-meter-bg {
-  position:absolute; bottom:0; left:50%; transform:translateX(-50%);
-  width:7px; height:100%;
+  position:absolute; bottom:0; left:0; width:100%; height:100%;
+  display:flex; gap:2px;
+}
+.gain-meter-bar {
+  flex:1; position:relative;
   background:linear-gradient(to top, #0d1a0d 0%, #121f12 80%, #0f0f0f 100%);
   border-radius:2px; overflow:hidden;
 }
@@ -304,16 +307,30 @@ input.vfader::-webkit-slider-thumb {
 }
 .gain-meter-peak { position:absolute; width:100%; height:2px; background:rgba(255,255,255,.6); }
 input.gain-meter-slider {
-  position:absolute; top:0; left:0;
-  writing-mode:vertical-lr; direction:rtl; width:14px; height:100%;
+  position:absolute; top:0; left:0; z-index:2;
+  writing-mode:vertical-lr; direction:rtl; width:100%; height:100%;
   background:transparent; -webkit-appearance:none; cursor:pointer; outline:none;
 }
 input.gain-meter-slider::-webkit-slider-thumb {
-  -webkit-appearance:none; width:22px; height:5px;
+  -webkit-appearance:none; width:26px; height:5px;
   background:#6aaee0; border-radius:1px; cursor:pointer;
   box-shadow:0 0 4px rgba(100,160,220,0.5);
 }
 
+
+/* FX + IS column wrapper */
+.fx-is-col {
+  display:flex; flex-direction:column; flex-shrink:0;
+}
+/* IS panel inside fx-is-col fills remaining space */
+.fx-is-col #playspace-panel {
+  flex:1; min-height:200px; border-top:1px solid #181818;
+  padding:8px 6px 8px; display:none; flex-direction:column; align-items:center;
+}
+.fx-is-col #playspace-canvas {
+  width:100%; flex:1; display:block; background:#050505;
+  border:1px solid #1a1a1a; cursor:crosshair;
+}
 </style>
 </head>
 <body>
@@ -372,14 +389,20 @@ input.gain-meter-slider::-webkit-slider-thumb {
         <div style="display:flex;justify-content:center;height:68px;min-height:68px;margin-bottom:4px;">
           <div class="gain-meter-wrap" style="height:68px;">
             <div class="gain-meter-bg">
-              <div class="gain-meter-level" id="mic-level" style="height:0%"></div>
-              <div class="gain-meter-peak" id="mic-pk" style="bottom:0%"></div>
+              <div class="gain-meter-bar">
+                <div class="gain-meter-level" id="mic-level-l" style="height:0%"></div>
+                <div class="gain-meter-peak" id="mic-pk-l" style="bottom:0%"></div>
+              </div>
+              <div class="gain-meter-bar">
+                <div class="gain-meter-level" id="mic-level-r" style="height:0%"></div>
+                <div class="gain-meter-peak" id="mic-pk-r" style="bottom:0%"></div>
+              </div>
             </div>
             <input class="gain-meter-slider" type="range" id="input-gain-db"
               min="-60" max="12" step="0.5" value="0" oninput="setInputGainDb(this.value)">
           </div>
         </div>
-        <div style="font-size:.58rem;color:#555;text-align:right;" id="mic-db">—</div>
+        <div style="font-size:.58rem;color:#555;text-align:center;margin-top:2px;" id="mic-db">—</div>
       </div>
 
       <!-- SIGNAL GENERATOR module -->
@@ -407,6 +430,20 @@ input.gain-meter-slider::-webkit-slider-thumb {
           <input type="range" id="test-freq-sl" min="0" max="1000" step="1" value="263"
                  oninput="setTestFreqPos(this.value)" style="width:100%;">
         </div>
+        <!-- PAN -->
+        <div style="margin-bottom:6px;">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
+            <label style="font-size:.68rem;letter-spacing:.12em;color:#aaa;">PAN</label>
+            <span class="ctrl-val" id="test-pan-val" style="font-size:.72rem;">C</span>
+          </div>
+          <div style="position:relative;">
+            <input type="range" id="test-pan-sl" min="-1" max="1" step="0.01" value="0"
+                   oninput="setTestPan(this.value)" style="width:100%;">
+            <!-- Center mark -->
+            <div style="position:absolute;top:-6px;left:50%;transform:translateX(-50%);
+                        width:1px;height:5px;background:#555;pointer-events:none;"></div>
+          </div>
+        </div>
         <!-- Combined gain+meter slider -->
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
           <span style="font-size:.6rem;color:#888;letter-spacing:.1em;">GAIN</span>
@@ -415,14 +452,20 @@ input.gain-meter-slider::-webkit-slider-thumb {
         <div style="display:flex;justify-content:center;height:68px;min-height:68px;margin-bottom:4px;">
           <div class="gain-meter-wrap" style="height:68px;">
             <div class="gain-meter-bg">
-              <div class="gain-meter-level" id="test-level" style="height:0%"></div>
-              <div class="gain-meter-peak" id="test-pk" style="bottom:0%"></div>
+              <div class="gain-meter-bar">
+                <div class="gain-meter-level" id="test-level-l" style="height:0%"></div>
+                <div class="gain-meter-peak" id="test-pk-l" style="bottom:0%"></div>
+              </div>
+              <div class="gain-meter-bar">
+                <div class="gain-meter-level" id="test-level-r" style="height:0%"></div>
+                <div class="gain-meter-peak" id="test-pk-r" style="bottom:0%"></div>
+              </div>
             </div>
             <input class="gain-meter-slider" type="range" id="test-gain-sl"
               min="-60" max="0" step="0.5" value="-12" oninput="setTestGainDb(this.value)">
           </div>
         </div>
-        <div style="font-size:.58rem;color:#444;text-align:right;margin-bottom:3px;" id="test-db">—</div>
+        <div style="font-size:.58rem;color:#555;text-align:center;margin-top:2px;" id="test-db">—</div>
 
       </div>
 
@@ -451,7 +494,9 @@ input.gain-meter-slider::-webkit-slider-thumb {
 
     </div><!-- end inputs col-wrap -->
 
-    <!-- port connection — wire removed, port nodes coming later -->
+    
+    <div class="fx-is-col">
+<!-- port connection — wire removed, port nodes coming later -->
 
     <!-- ════════ PITCH SHIFT (double wide) ════════ -->
     <div class="module wide" id="pitch-module">
@@ -499,10 +544,10 @@ input.gain-meter-slider::-webkit-slider-thumb {
         <input type="range" id="pitch-window" min="0.01" max="0.5" step="0.01" value="0.1"
                oninput="setPitchWindow(this.value)" style="width:100%;">
       </div>
-      <!-- WET/DRY: label + value on top, slider below -->
+      <!-- DRY/WET: label + value on top, slider below -->
       <div style="margin-bottom:0;">
         <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
-          <label style="font-size:.68rem;letter-spacing:.12em;color:#aaa;">WET / DRY</label>
+          <label style="font-size:.68rem;letter-spacing:.12em;color:#aaa;">DRY / WET</label>
           <span class="ctrl-val" id="pitch-wetdry-val" style="font-size:.72rem;">50%</span>
         </div>
         <input type="range" id="pitch-wetdry" min="0" max="1" step="0.01" value="0.5"
@@ -579,7 +624,56 @@ input.gain-meter-slider::-webkit-slider-thumb {
 
     <!-- port connection — wire removed, port nodes coming later -->
 
-    <!-- ════════ OUTPUTS COLUMN ════════ -->
+    
+      <!-- IS fills remaining space -->
+      <!-- ════════ INTERPOLATION SPACE ════════ -->
+        <div id="playspace-panel">
+          <div id="ps-header">
+            <!-- Row 1: IS label + slot selector -->
+            <div id="ps-row1">
+              <span class="ps-label" style="white-space:nowrap;">INTERP SPACE</span>
+              <div id="ps-slots">
+                <button class="ps-slot-btn selected" data-slot="0" onclick="psSelectSlot(0)">1</button>
+                <button class="ps-slot-btn" data-slot="1" onclick="psSelectSlot(1)">2</button>
+                <button class="ps-slot-btn" data-slot="2" onclick="psSelectSlot(2)">3</button>
+                <button class="ps-slot-btn" data-slot="3" onclick="psSelectSlot(3)">4</button>
+                <button class="ps-slot-btn" data-slot="4" onclick="psSelectSlot(4)">5</button>
+                <button class="ps-slot-btn" data-slot="5" onclick="psSelectSlot(5)">6</button>
+                <button class="ps-slot-btn" data-slot="6" onclick="psSelectSlot(6)">7</button>
+                <button class="ps-slot-btn" data-slot="7" onclick="psSelectSlot(7)">8</button>
+              </div>
+            </div>
+            <!-- Row 2: Global presets + DEF + REVERT -->
+            <div id="ps-row2" style="display:flex;align-items:center;gap:4px;width:100%;padding:4px 0 2px;">
+              <span style="font-size:.6rem;letter-spacing:.18em;color:#666;">GLOBAL</span>
+              <button class="global-slot" data-slot="0" onclick="handleGlobalPreset(this)"
+                title="Default preset — click: recall · shift+click: save"
+                style="min-width:32px;font-size:.58rem;color:#888;border-color:#3a3a3a;">DEF</button>
+              <button class="global-slot" data-slot="1" onclick="handleGlobalPreset(this)">2</button>
+              <button class="global-slot" data-slot="2" onclick="handleGlobalPreset(this)">3</button>
+              <button class="global-slot" data-slot="3" onclick="handleGlobalPreset(this)">4</button>
+              <button class="global-slot" data-slot="4" onclick="handleGlobalPreset(this)">5</button>
+              <button class="global-slot" data-slot="5" onclick="handleGlobalPreset(this)">6</button>
+              <button class="global-slot" data-slot="6" onclick="handleGlobalPreset(this)">7</button>
+              <button class="global-slot" data-slot="7" onclick="handleGlobalPreset(this)">8</button>
+              <button onclick="applyFactoryDefaults()"
+                style="padding:1px 7px;background:transparent;border:1px solid #2a2a2a;color:#555;
+                       font-family:'Courier New',monospace;font-size:.6rem;letter-spacing:.06em;
+                       cursor:pointer;border-radius:2px;margin-left:4px;transition:all .15s;"
+                onmouseover="this.style.color='#c8a854';this.style.borderColor='#554a2a'"
+                onmouseout="this.style.color='#555';this.style.borderColor='#2a2a2a'">REVERT</button>
+              <span style="font-size:.58rem;color:#333;margin-left:4px;">shift+click: save</span>
+            </div>
+            <!-- Row 3: hint -->
+            <div id="ps-hint" style="font-size:.62rem;color:#555;text-align:center;margin-bottom:6px;">select slot · click canvas to place · drag to interpolate</div>
+          </div>
+          <canvas id="playspace-canvas"></canvas>
+      
+        </div><!-- end #playspace-panel -->
+
+    </div><!-- end fx-is-col -->
+
+<!-- ════════ OUTPUTS COLUMN ════════ -->
     <div class="col-wrap">
       <div class="col-label">OUTPUTS</div>
 
@@ -600,65 +694,28 @@ input.gain-meter-slider::-webkit-slider-thumb {
           <div class="vfader-label" style="writing-mode:vertical-rl;transform:rotate(180deg);align-self:center;margin-right:2px;">GAIN</div>
           <div class="gain-meter-wrap" style="height:100%;">
             <div class="gain-meter-bg">
-              <div class="gain-meter-level" id="out-level" style="height:0%"></div>
-              <div class="gain-meter-peak" id="out-pk" style="bottom:0%"></div>
+              <div class="gain-meter-bar">
+                <div class="gain-meter-level" id="out-level-l" style="height:0%"></div>
+                <div class="gain-meter-peak" id="out-pk-l" style="bottom:0%"></div>
+              </div>
+              <div class="gain-meter-bar">
+                <div class="gain-meter-level" id="out-level-r" style="height:0%"></div>
+                <div class="gain-meter-peak" id="out-pk-r" style="bottom:0%"></div>
+              </div>
             </div>
             <input class="gain-meter-slider" type="range" id="output-gain-db"
               min="-60" max="12" step="0.5" value="0" oninput="setOutputGainDb(this.value)">
           </div>
           <span class="ctrl-val" id="output-gain-val" data-value="0" style="font-size:.68rem;align-self:flex-end;padding-left:4px;">0dB</span>
         </div>
-        <div style="font-size:.58rem;color:#555;text-align:right;margin-top:2px;" id="out-db">—</div>
+        <div style="font-size:.58rem;color:#555;text-align:center;margin-top:2px;" id="out-db">—</div>
       </div>
 
     </div><!-- end outputs col-wrap -->
 
   </div><!-- end #chain -->
 
-  <!-- ════════ INTERPOLATION SPACE ════════ -->
-  <div id="playspace-panel">
-    <div id="ps-header">
-      <!-- Row 1: IS label + slot selector -->
-      <div id="ps-row1">
-        <span class="ps-label" style="white-space:nowrap;">INTERP SPACE</span>
-        <div id="ps-slots">
-          <button class="ps-slot-btn selected" data-slot="0" onclick="psSelectSlot(0)">1</button>
-          <button class="ps-slot-btn" data-slot="1" onclick="psSelectSlot(1)">2</button>
-          <button class="ps-slot-btn" data-slot="2" onclick="psSelectSlot(2)">3</button>
-          <button class="ps-slot-btn" data-slot="3" onclick="psSelectSlot(3)">4</button>
-          <button class="ps-slot-btn" data-slot="4" onclick="psSelectSlot(4)">5</button>
-          <button class="ps-slot-btn" data-slot="5" onclick="psSelectSlot(5)">6</button>
-          <button class="ps-slot-btn" data-slot="6" onclick="psSelectSlot(6)">7</button>
-          <button class="ps-slot-btn" data-slot="7" onclick="psSelectSlot(7)">8</button>
-        </div>
-      </div>
-      <!-- Row 2: Global presets + DEF + REVERT -->
-      <div id="ps-row2" style="display:flex;align-items:center;gap:4px;width:100%;padding:4px 0 2px;">
-        <span style="font-size:.6rem;letter-spacing:.18em;color:#666;">GLOBAL</span>
-        <button class="global-slot" data-slot="0" onclick="handleGlobalPreset(this)"
-          title="Default preset — click: recall · shift+click: save"
-          style="min-width:32px;font-size:.58rem;color:#888;border-color:#3a3a3a;">DEF</button>
-        <button class="global-slot" data-slot="1" onclick="handleGlobalPreset(this)">2</button>
-        <button class="global-slot" data-slot="2" onclick="handleGlobalPreset(this)">3</button>
-        <button class="global-slot" data-slot="3" onclick="handleGlobalPreset(this)">4</button>
-        <button class="global-slot" data-slot="4" onclick="handleGlobalPreset(this)">5</button>
-        <button class="global-slot" data-slot="5" onclick="handleGlobalPreset(this)">6</button>
-        <button class="global-slot" data-slot="6" onclick="handleGlobalPreset(this)">7</button>
-        <button class="global-slot" data-slot="7" onclick="handleGlobalPreset(this)">8</button>
-        <button onclick="applyFactoryDefaults()"
-          style="padding:1px 7px;background:transparent;border:1px solid #2a2a2a;color:#555;
-                 font-family:'Courier New',monospace;font-size:.6rem;letter-spacing:.06em;
-                 cursor:pointer;border-radius:2px;margin-left:4px;transition:all .15s;"
-          onmouseover="this.style.color='#c8a854';this.style.borderColor='#554a2a'"
-          onmouseout="this.style.color='#555';this.style.borderColor='#2a2a2a'">REVERT</button>
-        <span style="font-size:.58rem;color:#333;margin-left:4px;">shift+click: save</span>
-      </div>
-      <!-- Row 3: hint -->
-      <div id="ps-hint" style="font-size:.62rem;color:#555;text-align:center;margin-bottom:6px;">select slot · click canvas to place · drag to interpolate</div>
-    </div>
-    <canvas id="playspace-canvas"></canvas>
 
-  </div><!-- end #playspace-panel -->
 
 </div><!-- end #board -->
 
@@ -741,7 +798,7 @@ const timeLog = { // 0.01s → 60s
 let rawCtx;
 let micInput=null; // Tone.UserMedia
 let micGainNode, preFxGain, inputMeter; // Tone nodes
-let testOscTone=null, testNoiseTone=null, testOscGainTone, testNoiseGainTone, testMasterGainTone; // all Tone.js
+let testOscTone=null, testNoiseTone=null, testOscGainTone, testNoiseGainTone, testMasterGainTone, testPanner; // all Tone.js
 let pitchShift, pitchDryG, pitchWetG;
 let delayNode, feedbackGain, delayDryGain, delayWetGain;
 let outputGainNode, outputMuteNode, outputMeter;
@@ -787,7 +844,9 @@ async function initAudio() {
     testNoiseTone.connect(testNoiseGainTone);
     testOscGainTone.connect(testMasterGainTone);
     testNoiseGainTone.connect(testMasterGainTone);
-    testMasterGainTone.connect(preFxGain); // Tone→Tone ✓
+    testPanner = new Tone.Panner(0);
+    testMasterGainTone.connect(testPanner);
+    testPanner.connect(preFxGain); // Tone→Tone ✓ (via panner)
     testMasterGain = testMasterGainTone; // alias for backward-compat refs
 
     // System audio (native; handled separately in toggleSystemAudio)
@@ -932,6 +991,18 @@ function toggleTestTone(){
   tb.textContent=testEnabled?'ON':'OFF';
   tb.classList.toggle('off',!testEnabled);
 }
+
+function setTestPan(v) {
+  const pan = parseFloat(v);
+  if (testPanner) testPanner.pan.rampTo(pan, 0.05);
+  const el = document.getElementById('test-pan-val');
+  if (el) {
+    if (Math.abs(pan) < 0.03) el.textContent = 'C';
+    else if (pan < 0) el.textContent = 'L' + Math.round(Math.abs(pan)*100) + '%';
+    else el.textContent = 'R' + Math.round(pan*100) + '%';
+  }
+}
+
 function setTestWave(wave){
   currentTestWave=wave;
   const isNoise=wave==='noise';
@@ -974,27 +1045,23 @@ function getAnalyserRMS(analyser) {
 const peaks = {};
 
 // ── Vertical meter ─────────────────────────────────────────────────
-function vMeter(lin, fillId, peakId, dbId) {
+function vMeterBar(pct, fillId, peakId) {
   const el = document.getElementById(fillId); if (!el) return;
-  const wrap = el.parentElement;
-  const H = wrap.offsetHeight || 80;
-  const db = lin < SILENCE ? -Infinity : gainToDb(lin);
-  const pct = lin < SILENCE ? 0 : Math.max(0, Math.min(100, (db + 60) / 60 * 100));
-
   el.style.height = pct + '%';
-
   const key = fillId;
-  if (!peaks[key] || pct > peaks[key].pct) { peaks[key] = { pct, t: Date.now() }; }
-  else if (Date.now() - peaks[key].t > 1600) { peaks[key].pct = Math.max(0, peaks[key].pct - 1.5); }
-
-  const pkPct = peaks[key] ? peaks[key].pct : 0;
+  if (!peaks[key] || pct > peaks[key].pct) { peaks[key] = {pct, t:Date.now()}; }
+  else if (Date.now() - peaks[key].t > 1600) { peaks[key].pct = Math.max(0, peaks[key].pct-1.5); }
   const pk = document.getElementById(peakId);
-  if (pk) pk.style.bottom = pkPct + '%';
-
-  if (dbId) {
-    const dEl = document.getElementById(dbId);
-    if (dEl) dEl.textContent = lin < SILENCE ? '—' : fmtDb(db);
-  }
+  if (pk) pk.style.bottom = (peaks[key]?.pct||0) + '%';
+}
+function vMeter(lin, prefix, dbId) {
+  const db  = lin < SILENCE ? -Infinity : gainToDb(lin);
+  const pct = lin < SILENCE ? 0 : Math.max(0, Math.min(100, (db+60)/60*100));
+  // Small random spread for L/R
+  const spread = pct > 5 ? (Math.random()-0.5)*3 : 0;
+  vMeterBar(Math.max(0,pct+spread), prefix+'-level-l', prefix+'-pk-l');
+  vMeterBar(Math.max(0,pct-spread), prefix+'-level-r', prefix+'-pk-r');
+  if (dbId) { const dEl=document.getElementById(dbId); if(dEl) dEl.textContent = lin<SILENCE?'—':fmtDb(db); }
 }
 
 
@@ -1021,8 +1088,7 @@ function applyDefaultState() {
 function showBoard() {
   document.getElementById('start-screen').style.display = 'none';
   document.getElementById('board').style.display = 'flex';
-  const pp = document.getElementById('playspace-panel');
-  if (pp) pp.style.display = 'flex';
+  // IS is inside fx-is-col, shown automatically when board shows
 }
 
 // ── Meters ────────────────────────────────────────────────────────────
@@ -1031,18 +1097,14 @@ function animateMeters(){
   const mL = getAnalyserRMS(micAnalyser);
   const tL = getAnalyserRMS(testAnalyser);
   // Vertical meters for mic and test
-  vMeter(mL, 'mic-level', 'mic-pk', 'mic-db');
-  vMeter(tL, 'test-level', 'test-pk', 'test-db');
+  vMeter(mL, 'mic', 'mic-db');
+  vMeter(tL, 'test', 'test-db');
   // Output: combined gain+meter slider background
   const odb = oL < SILENCE ? -Infinity : gainToDb(oL);
   const opct = oL < SILENCE ? 0 : Math.max(0, Math.min(100, (odb+60)/60*100));
-  const oLvl = document.getElementById('out-level');
-  if (oLvl) oLvl.style.height = opct + '%';
-  const key = 'out';
-  if (!peaks[key] || opct > peaks[key].pct) { peaks[key] = {pct:opct, t:Date.now()}; }
-  else if (Date.now() - peaks[key].t > 1600) { peaks[key].pct = Math.max(0, peaks[key].pct-1.5); }
-  const opk = document.getElementById('out-pk');
-  if (opk) opk.style.bottom = (peaks[key]?.pct||0) + '%';
+  const ospread = oL>0.01?(Math.random()-0.5)*3:0;
+  vMeterBar(Math.max(0,opct+ospread),'out-level-l','out-pk-l');
+  vMeterBar(Math.max(0,opct-ospread),'out-level-r','out-pk-r');
   const odEl = document.getElementById('out-db');
   if (odEl) odEl.textContent = oL < SILENCE ? '—' : fmtDb(odb);
   requestAnimationFrame(animateMeters);
@@ -1545,10 +1607,9 @@ function psSetupCanvas() {
 
   // Size canvas to its CSS display size
   function psResize() {
-    const r = canvas.getBoundingClientRect();
-    canvas.width  = Math.round(r.width);
-    canvas.height = Math.round(r.height);
-    psRedraw();
+    canvas.width  = Math.round(canvas.clientWidth);
+    canvas.height = Math.round(canvas.clientHeight);
+    if (canvas.width > 0 && canvas.height > 0) psRedraw();
   }
   psResize();
   new ResizeObserver(psResize).observe(canvas);
