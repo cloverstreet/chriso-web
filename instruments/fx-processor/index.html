@@ -235,7 +235,7 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
 
 /* ── PlaySpace ──────────────────────────────────────────────────── */
 #playspace-panel {
-  width:100%; display:flex; flex-direction:column;
+  width:100%; display:none; flex-direction:column;
   align-items:center; padding:12px 4px 24px;
   border-top:1px solid #181818; margin-top:10px;
 }
@@ -348,6 +348,26 @@ input.gain-meter-slider::-webkit-slider-thumb {
     <span class="bar-label" style="margin-left:6px;color:#333">shift+click: save</span>
   </div>
 
+  <!-- ════════ INTERPOLATION SPACE ════════ -->
+  <div id="playspace-panel">
+    <div id="ps-header">
+      <div id="ps-row1">
+        <span class="ps-label">INTERPOLATION SPACE</span>
+        <div id="ps-slots">
+          <button class="ps-slot-btn selected" data-slot="0" onclick="psSelectSlot(0)">1</button>
+          <button class="ps-slot-btn" data-slot="1" onclick="psSelectSlot(1)">2</button>
+          <button class="ps-slot-btn" data-slot="2" onclick="psSelectSlot(2)">3</button>
+          <button class="ps-slot-btn" data-slot="3" onclick="psSelectSlot(3)">4</button>
+          <button class="ps-slot-btn" data-slot="4" onclick="psSelectSlot(4)">5</button>
+          <button class="ps-slot-btn" data-slot="5" onclick="psSelectSlot(5)">6</button>
+          <button class="ps-slot-btn" data-slot="6" onclick="psSelectSlot(6)">7</button>
+          <button class="ps-slot-btn" data-slot="7" onclick="psSelectSlot(7)">8</button>
+        </div>
+      </div>
+      <div id="ps-hint">select slot → click canvas to place · drag to interpolate</div>
+    </div>
+    <canvas id="playspace-canvas"></canvas>
+
   <!-- ── Main chain row ─────────────────────────────────────────── -->
   <div id="chain">
 
@@ -381,17 +401,12 @@ input.gain-meter-slider::-webkit-slider-thumb {
             <input class="vfader" type="range" id="input-gain-db" min="-60" max="12" step="0.5" value="0" oninput="setInputGainDb(this.value)">
             <span class="vfader-val" id="input-gain-val" data-value="0">0dB</span>
           </div>
-          <div class="vgainbar" id="mic-vbar">
-            <div class="vgainbar-fill" id="mic-vbar-fill" style="height:0%"></div>
+          <div class="vmeter">
+            <div class="vmeter-fill" id="mic-m" style="height:0%"></div>
+            <div class="vmeter-peak" id="mic-pk" style="bottom:0%"></div>
           </div>
         </div>
-        <div class="mini-hmeter-wrap" id="mic-meter">
-          <div class="mini-hmeter-l" id="mic-m-l" style="width:0%"></div>
-          <div class="mini-hmeter-r" id="mic-m-r" style="width:0%"></div>
-          <div class="mini-hmeter-peak-l" id="mic-pk-l" style="left:0"></div>
-          <div class="mini-hmeter-peak-r" id="mic-pk-r" style="left:0"></div>
-        </div>
-        <div class="mini-hmeter-db" id="mic-db">—</div>
+        <div style="font-size:.58rem;color:#555;text-align:right;" id="mic-db">—</div>
       </div>
 
       <!-- SIGNAL GENERATOR module -->
@@ -605,7 +620,6 @@ input.gain-meter-slider::-webkit-slider-thumb {
           </div>
           <div class="vfader-val" id="output-gain-val" data-value="0" style="writing-mode:vertical-rl;transform:rotate(180deg);font-size:.6rem;">0dB</div>
         </div>
-        <div style="font-size:.58rem;color:#444;text-align:right;margin-bottom:3px;" id="out-db">—</div>
         </div>
         <div style="font-size:.58rem;color:#555;text-align:right;margin-top:2px;" id="out-db">—</div>
       </div>
@@ -615,25 +629,6 @@ input.gain-meter-slider::-webkit-slider-thumb {
   </div><!-- end #chain -->
 
 
-  <!-- ════════ INTERPOLATION SPACE ════════ -->
-  <div id="playspace-panel">
-    <div id="ps-header">
-      <div id="ps-row1">
-        <span class="ps-label">INTERPOLATION SPACE</span>
-        <div id="ps-slots">
-          <button class="ps-slot-btn selected" data-slot="0" onclick="psSelectSlot(0)">1</button>
-          <button class="ps-slot-btn" data-slot="1" onclick="psSelectSlot(1)">2</button>
-          <button class="ps-slot-btn" data-slot="2" onclick="psSelectSlot(2)">3</button>
-          <button class="ps-slot-btn" data-slot="3" onclick="psSelectSlot(3)">4</button>
-          <button class="ps-slot-btn" data-slot="4" onclick="psSelectSlot(4)">5</button>
-          <button class="ps-slot-btn" data-slot="5" onclick="psSelectSlot(5)">6</button>
-          <button class="ps-slot-btn" data-slot="6" onclick="psSelectSlot(6)">7</button>
-          <button class="ps-slot-btn" data-slot="7" onclick="psSelectSlot(7)">8</button>
-        </div>
-      </div>
-      <div id="ps-hint">select slot → click canvas to place · drag to interpolate</div>
-    </div>
-    <canvas id="playspace-canvas"></canvas>
   </div>
 
 </div><!-- end #board -->
@@ -948,6 +943,8 @@ function vMeter(lin, fillId, peakId, dbId) {
 function showBoard() {
   document.getElementById('start-screen').style.display = 'none';
   document.getElementById('board').style.display = 'flex';
+  const pp = document.getElementById('playspace-panel');
+  if (pp) pp.style.display = 'flex';
 }
 
 // ── Meters ────────────────────────────────────────────────────────────
@@ -1194,8 +1191,11 @@ function psInit() {
     }
   }
   psUpdateSlotBtns();
-  psSetupCanvas();
-  psRedraw();
+  // Double rAF: ensures canvas has layout dimensions before sizing
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    psSetupCanvas();
+    psRedraw();
+  }));
 }
 
 // ── Slot selection ──────────────────────────────────────────────────────
@@ -1464,6 +1464,7 @@ function psSetupCanvas() {
       // It was a click — place selected preset here
       const pos = psCanvasPos(e, canvas);
       const W = canvas.width, H = canvas.height;
+      if (!W || !H) return; // canvas not sized yet
       // Save current state + position to selected slot
       const state = getGlobalState();
       state.x = pos.x / W;
