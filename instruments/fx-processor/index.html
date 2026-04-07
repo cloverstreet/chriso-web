@@ -699,7 +699,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
         </div>
         <div style="display:flex;gap:5px;height:80px;min-height:68px;align-items:stretch;margin-bottom:4px;">
           <!-- Combined gain+meter slider: thumb=gain, track fill=level -->
-          <div class="vfader-label" style="writing-mode:vertical-rl;transform:rotate(180deg);align-self:center;margin-right:2px;">GAIN</div>
+
           <div class="gain-meter-wrap" style="height:100%;">
             <div class="gain-meter-bg">
               <div class="gain-meter-bar">
@@ -714,7 +714,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
             <input class="gain-meter-slider" type="range" id="output-gain-db"
               min="-60" max="12" step="0.5" value="0" oninput="setOutputGainDb(this.value)">
           </div>
-          <span class="ctrl-val" id="output-gain-val" data-value="0" style="font-size:.68rem;align-self:flex-end;padding-left:4px;">0dB</span>
+
         </div>
         <div style="font-size:.58rem;color:#555;text-align:center;margin-top:2px;" id="out-db">—</div>
       </div>
