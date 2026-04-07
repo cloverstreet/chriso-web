@@ -318,15 +318,19 @@ input.gain-meter-slider::-webkit-slider-thumb {
 }
 
 
-/* FX + IS column wrapper */
+/* FX + IS column wrapper — column: [FX row] then [IS] */
 .fx-is-col {
   display:flex; flex-direction:column; flex-shrink:0;
   align-self:stretch;
 }
-/* IS panel inside fx-is-col fills remaining space */
+/* Inner row for the FX modules side by side */
+.fx-row {
+  display:flex; flex-direction:row; flex-shrink:0;
+}
+/* IS panel fills remaining space in the column */
 .fx-is-col #playspace-panel {
-  flex:1; min-height:200px; border-top:1px solid #181818;
-  padding:8px 6px 8px; display:none; flex-direction:column; align-items:center;
+  flex:1; min-height:160px; border-top:1px solid #181818;
+  padding:6px; display:flex; flex-direction:column; align-items:center;
 }
 .fx-is-col #playspace-canvas {
   width:100%; flex:1; display:block; background:#050505;
@@ -497,7 +501,8 @@ input.gain-meter-slider::-webkit-slider-thumb {
 
     
     <div class="fx-is-col">
-<!-- port connection — wire removed, port nodes coming later -->
+      <div class="fx-row">
+    <!-- port connection — wire removed, port nodes coming later -->
 
     <!-- ════════ PITCH SHIFT (double wide) ════════ -->
     <div class="module wide" id="pitch-module">
@@ -626,6 +631,8 @@ input.gain-meter-slider::-webkit-slider-thumb {
     <!-- port connection — wire removed, port nodes coming later -->
 
     
+      </div><!-- end fx-row -->
+
       <!-- IS fills remaining space -->
       <!-- ════════ INTERPOLATION SPACE ════════ -->
         <div id="playspace-panel">
@@ -873,12 +880,20 @@ async function initAudio() {
     micInput = new Tone.UserMedia();
     try {
       await micInput.open();
-      micInput.connect(micGainNode); // Tone.UserMedia→Tone.Gain ✓
-      micGainNode.connect(micAnalyser); // Tone.Gain→native analyser ✓
+      micInput.connect(micGainNode);
+      micGainNode.connect(micAnalyser);
+      // Populate channel selector from stream
+      const stream = micInput.mediaStream;
+      if (stream) {
+        const nCh = stream.getAudioTracks()[0]?.getSettings?.()?.channelCount || 1;
+        const chanSel = document.getElementById('input-channel');
+        chanSel.innerHTML = `<option value="mix">Mix (${nCh}ch)</option>`;
+        for (let i=0;i<nCh;i++){const o=document.createElement('option');o.value=i;o.textContent=`Ch ${i+1}`;chanSel.appendChild(o);}
+        document.getElementById('ch-note').textContent = nCh+' ch detected';
+      }
     } catch(e) {
       document.getElementById('start-status').textContent = 'mic error: ' + e.message;
     }
-    // (mic already opened and connected in try block above)
     await enumerateDevices();
     buildPresetSlots();
     loadPresetUI();
@@ -1089,7 +1104,9 @@ function applyDefaultState() {
 function showBoard() {
   document.getElementById('start-screen').style.display = 'none';
   document.getElementById('board').style.display = 'flex';
-  // IS is inside fx-is-col, shown automatically when board shows
+  // IS is inside fx-is-col — CSS sets display:flex already, but showBoard ensures it
+  const pp = document.getElementById('playspace-panel');
+  if (pp) pp.style.display = 'flex';
 }
 
 // ── Meters ────────────────────────────────────────────────────────────
