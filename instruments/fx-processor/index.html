@@ -925,6 +925,13 @@ function vMeter(lin, fillId, peakId, dbId) {
   }
 }
 
+
+// ── Board display ─────────────────────────────────────────────────
+function showBoard() {
+  document.getElementById('start-screen').style.display = 'none';
+  document.getElementById('board').style.display = 'flex';
+}
+
 // ── Meters ────────────────────────────────────────────────────────────
 function animateMeters(){
   const oL = Math.max(0, outputMeter.getValue()||0);
