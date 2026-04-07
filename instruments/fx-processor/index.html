@@ -607,19 +607,34 @@ input.gain-meter-slider::-webkit-slider-thumb {
         </div>
         <div style="font-size:.58rem;color:#444;text-align:right;margin-bottom:3px;" id="out-db">—</div>
         </div>
-        <div class="hmeter-wrap" id="out-meter">
-          <div class="hmeter-l" id="out-m-l" style="width:0%"></div>
-          <div class="hmeter-r" id="out-m-r" style="width:0%"></div>
-          <div class="hmeter-peak-l" id="out-pk-l" style="left:0"></div>
-          <div class="hmeter-peak-r" id="out-pk-r" style="left:0"></div>
-          <div class="hmeter-clip" id="out-clip"></div>
-        </div>
-        <div class="hmeter-db" id="out-db">—</div>
+        <div style="font-size:.58rem;color:#555;text-align:right;margin-top:2px;" id="out-db">—</div>
       </div>
 
     </div><!-- end outputs col-wrap -->
 
   </div><!-- end #chain -->
+
+
+  <!-- ════════ INTERPOLATION SPACE ════════ -->
+  <div id="playspace-panel">
+    <div id="ps-header">
+      <div id="ps-row1">
+        <span class="ps-label">INTERPOLATION SPACE</span>
+        <div id="ps-slots">
+          <button class="ps-slot-btn selected" data-slot="0" onclick="psSelectSlot(0)">1</button>
+          <button class="ps-slot-btn" data-slot="1" onclick="psSelectSlot(1)">2</button>
+          <button class="ps-slot-btn" data-slot="2" onclick="psSelectSlot(2)">3</button>
+          <button class="ps-slot-btn" data-slot="3" onclick="psSelectSlot(3)">4</button>
+          <button class="ps-slot-btn" data-slot="4" onclick="psSelectSlot(4)">5</button>
+          <button class="ps-slot-btn" data-slot="5" onclick="psSelectSlot(5)">6</button>
+          <button class="ps-slot-btn" data-slot="6" onclick="psSelectSlot(6)">7</button>
+          <button class="ps-slot-btn" data-slot="7" onclick="psSelectSlot(7)">8</button>
+        </div>
+      </div>
+      <div id="ps-hint">select slot → click canvas to place · drag to interpolate</div>
+    </div>
+    <canvas id="playspace-canvas"></canvas>
+  </div>
 
 </div><!-- end #board -->
 
