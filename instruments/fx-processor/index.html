@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+// Hi Claude, can you hear me?
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -239,11 +240,10 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
   align-items:center; padding:12px 4px 24px;
   border-top:1px solid #181818; margin-top:10px;
 }
-#ps-header {
-  display:flex; align-items:center; gap:8px;
-  margin-bottom:10px; flex-wrap:wrap; justify-content:center;
-}
-.ps-label { font-size:.64rem; letter-spacing:.25em; color:#888; }
+#ps-header { width:min(50vh,82vw); margin:0 auto 8px; }
+#ps-row1 { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px; }
+#ps-row2 { font-size:.62rem; color:#555; text-align:center; margin-bottom:8px; }
+.ps-label { font-size:.64rem; letter-spacing:.2em; color:#888; }
 .ps-hint  { font-size:.62rem; color:#666; letter-spacing:.1em; }
 #ps-slots { display:flex; gap:4px; }
 .ps-slot-btn {
@@ -258,14 +258,10 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
 #playspace-canvas {
   background:#050505; border:1px solid #1a1a1a;
   cursor:crosshair; display:block;
-  width:min(40vh,72vw); height:min(40vh,72vw);
+  width:min(50vh,82vw); height:min(50vh,82vw);
 }
 
 /* ── Vertical fader + gain bar (for input modules) ─────────────── */
-.vfader-wrap {
-  display:flex; gap:4px; align-items:flex-end;
-  height:70px; flex-shrink:0;
-}
 .vfader-track {
   display:flex; flex-direction:column; align-items:center;
   height:100%; gap:2px;
@@ -274,25 +270,46 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
 .vfader-val { font-size:.68rem; color:#c8a854; text-align:center; min-width:32px; }
 input.vfader {
   -webkit-appearance:none; writing-mode:vertical-lr; direction:rtl;
-  width:14px; flex:1; background:#2a2a2a; outline:none;
+  width:14px; flex:1; background:#222; outline:none;
   border-radius:2px; cursor:pointer;
 }
 input.vfader::-webkit-slider-thumb {
   -webkit-appearance:none; width:22px; height:8px;
   background:#c8a854; border-radius:2px; cursor:pointer;
+  box-shadow:0 0 4px rgba(200,168,84,0.3);
 }
-/* Vertical gain bar (mirror of horizontal meter, but vertical) */
-.vgainbar {
-  width:5px; height:100%; background:#111;
-  border-radius:2px; overflow:hidden;
-  display:flex; flex-direction:column; justify-content:flex-end;
+/* Vertical signal meter — post-gain, beside fader */
+.vmeter {
+  width:7px; height:100%; background:#0d0d0d;
+  border-radius:2px; overflow:hidden; position:relative; flex-shrink:0;
 }
-.vgainbar-fill {
-  width:100%; background:linear-gradient(to top,#2a7a2a,#7ab02a,#c8a854);
-  transition:height .06s; border-radius:2px 2px 0 0;
+.vmeter-fill {
+  position:absolute; bottom:0; left:0; width:100%;
+  background:linear-gradient(to top, #1a6a1a 0%,#3aaa2a 72%,#c0b020 83%,#d06020 89%,#d02020 94%,#ff2020 100%);
+  transition:height .04s;
 }
-.vgainbar-peak {
-  position:relative; width:5px; background:transparent;
+.vmeter-peak { position:absolute; width:100%; height:2px; background:rgba(255,255,255,.6); }
+/* Combined gain+meter slider (output only) */
+.gain-meter-wrap { position:relative; width:14px; height:100%; flex-shrink:0; }
+.gain-meter-bg {
+  position:absolute; bottom:0; left:50%; transform:translateX(-50%);
+  width:7px; height:100%; background:#0d0d0d; border-radius:2px; overflow:hidden;
+}
+.gain-meter-level {
+  position:absolute; bottom:0; left:0; width:100%;
+  background:linear-gradient(to top, #1a6a1a 0%,#3aaa2a 72%,#c0b020 83%,#d06020 89%,#d02020 94%,#ff2020 100%);
+  transition:height .04s;
+}
+.gain-meter-peak { position:absolute; width:100%; height:2px; background:rgba(255,255,255,.6); }
+input.gain-meter-slider {
+  position:absolute; top:0; left:0;
+  writing-mode:vertical-lr; direction:rtl; width:14px; height:100%;
+  background:transparent; -webkit-appearance:none; cursor:pointer; outline:none;
+}
+input.gain-meter-slider::-webkit-slider-thumb {
+  -webkit-appearance:none; width:22px; height:8px;
+  background:#6aaee0; border-radius:2px; cursor:pointer;
+  box-shadow:0 0 5px rgba(100,160,220,0.45);
 }
 
 </style>
@@ -401,21 +418,18 @@ input.vfader::-webkit-slider-thumb {
           <input type="range" id="test-freq-sl" min="0" max="1000" step="1" value="263"
                  oninput="setTestFreqPos(this.value)" style="width:100%;">
         </div>
-        <div style="display:flex;gap:6px;align-items:flex-end;height:80px;margin-bottom:6px;">
+        <div style="display:flex;gap:5px;height:80px;align-items:stretch;margin-bottom:4px;">
           <div class="vfader-track">
             <span class="vfader-label">GAIN</span>
             <input class="vfader" type="range" id="test-gain-sl" min="-60" max="0" step="0.5" value="-12" oninput="setTestGainDb(this.value)">
             <span class="vfader-val" id="test-gain-val" data-value="-12">-12dB</span>
           </div>
-          <div class="vgainbar" id="test-vbar"><div class="vgainbar-fill" id="test-vbar-fill" style="height:0%"></div></div>
+          <div class="vmeter" id="test-meter">
+            <div class="vmeter-fill" id="test-m" style="height:0%"></div>
+            <div class="vmeter-peak" id="test-pk" style="bottom:0%"></div>
+          </div>
         </div>
-        <div class="mini-hmeter-wrap" id="test-meter">
-          <div class="mini-hmeter-l" id="test-m-l" style="width:0%"></div>
-          <div class="mini-hmeter-r" id="test-m-r" style="width:0%"></div>
-          <div class="mini-hmeter-peak-l" id="test-pk-l" style="left:0"></div>
-          <div class="mini-hmeter-peak-r" id="test-pk-r" style="left:0"></div>
-        </div>
-        <div class="mini-hmeter-db" id="test-db">—</div>
+        <div style="font-size:.58rem;color:#444;text-align:right;margin-bottom:3px;" id="test-db">—</div>
 
       </div>
 
@@ -486,7 +500,7 @@ input.vfader::-webkit-slider-thumb {
       <!-- WINDOW: label + value on top, slider below -->
       <div style="margin-bottom:9px;">
         <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
-          <label style="font-size:.68rem;letter-spacing:.12em;color:#aaa;">WINDOW (latency)</label>
+          <label style="font-size:.68rem;letter-spacing:.12em;color:#aaa;" id="pitch-window-label">FFT WINDOW</label>
           <span class="ctrl-val" id="pitch-window-val" data-value="0.1" style="font-size:.72rem;">0.10s</span>
         </div>
         <input type="range" id="pitch-window" min="0.01" max="0.5" step="0.01" value="0.1"
@@ -503,10 +517,7 @@ input.vfader::-webkit-slider-thumb {
       </div>
     </div>
 
-    <!-- wire: pitch → delay -->
-    <svg class="wire-svg" width="22" height="60" viewBox="0 0 22 60" style="align-self:center;">
-      <path d="M0,33 C8,33 14,30 22,30" stroke="#c8a854" stroke-width="2" fill="none" stroke-linecap="round"/>
-    </svg>
+    <!-- port node: pitch→delay — wire coming when port system built -->
 
     <!-- ════════ DELAY (double wide) ════════ -->
     <div class="module wide" id="delay-module">
@@ -580,15 +591,20 @@ input.vfader::-webkit-slider-thumb {
             <option value="">Default (System)</option>
           </select>
         </div>
-        <div style="display:flex;gap:6px;align-items:flex-end;height:80px;margin-bottom:6px;">
-          <div class="vfader-track">
-            <span class="vfader-label">GAIN</span>
-            <input class="vfader" type="range" id="output-gain-db" min="-60" max="12" step="0.5" value="0" oninput="setOutputGainDb(this.value)">
-            <span class="vfader-val" id="output-gain-val" data-value="0">0dB</span>
+        <div style="display:flex;gap:5px;height:80px;align-items:stretch;margin-bottom:4px;">
+          <!-- Combined gain+meter slider: thumb=gain, track fill=level -->
+          <div class="vfader-label" style="writing-mode:vertical-rl;transform:rotate(180deg);align-self:center;margin-right:2px;">GAIN</div>
+          <div class="gain-meter-wrap">
+            <div class="gain-meter-bg">
+              <div class="gain-meter-level" id="out-level" style="height:0%"></div>
+              <div class="gain-meter-peak" id="out-pk" style="bottom:0%"></div>
+            </div>
+            <input class="gain-meter-slider" type="range" id="output-gain-db"
+              min="-60" max="12" step="0.5" value="0" oninput="setOutputGainDb(this.value)">
           </div>
-          <div class="vgainbar" id="out-vbar"><div class="vgainbar-fill" id="out-vbar-fill" style="height:0%"></div></div>
+          <div class="vfader-val" id="output-gain-val" data-value="0" style="writing-mode:vertical-rl;transform:rotate(180deg);font-size:.6rem;">0dB</div>
         </div>
-        
+        <div style="font-size:.58rem;color:#444;text-align:right;margin-bottom:3px;" id="out-db">—</div>
         </div>
         <div class="hmeter-wrap" id="out-meter">
           <div class="hmeter-l" id="out-m-l" style="width:0%"></div>
@@ -603,25 +619,6 @@ input.vfader::-webkit-slider-thumb {
     </div><!-- end outputs col-wrap -->
 
   </div><!-- end #chain -->
-
-  <!-- ════════ PLAY SPACE ════════ -->
-  <div id="playspace-panel">
-    <div id="ps-header">
-      <span class="ps-label">PLAY SPACE</span>
-      <div id="ps-slots">
-        <button class="ps-slot-btn selected" data-slot="0" onclick="psSelectSlot(0)">1</button>
-        <button class="ps-slot-btn" data-slot="1" onclick="psSelectSlot(1)">2</button>
-        <button class="ps-slot-btn" data-slot="2" onclick="psSelectSlot(2)">3</button>
-        <button class="ps-slot-btn" data-slot="3" onclick="psSelectSlot(3)">4</button>
-        <button class="ps-slot-btn" data-slot="4" onclick="psSelectSlot(4)">5</button>
-        <button class="ps-slot-btn" data-slot="5" onclick="psSelectSlot(5)">6</button>
-        <button class="ps-slot-btn" data-slot="6" onclick="psSelectSlot(6)">7</button>
-        <button class="ps-slot-btn" data-slot="7" onclick="psSelectSlot(7)">8</button>
-      </div>
-      <span class="ps-hint" id="ps-hint">select slot → click to place · drag to interpolate</span>
-    </div>
-    <canvas id="playspace-canvas"></canvas>
-  </div>
 
 </div><!-- end #board -->
 
@@ -891,10 +888,8 @@ function setTestFreqSemi(st){setTestFreqHz(semiToHz(parseFloat(st)));}
 function setTestGainDb(db){
   const v=parseFloat(db);
   if(testEnabled && testMasterGainTone) testMasterGainTone.gain.rampTo(dbToGain(v),0.05);
-  const tpct=Math.max(0,Math.min(100,(v+60)/72*100));
   document.getElementById('test-gain-val').textContent=Math.round(v)+'dB';
   document.getElementById('test-gain-val').dataset.value=v;
-  const tvb=document.getElementById('test-vbar-fill'); if(tvb)tvb.style.height=tpct+'%';
 }
 
 // ── Analyser RMS helper ──────────────────────────────────────────────
@@ -906,36 +901,50 @@ function getAnalyserRMS(analyser) {
   return Math.sqrt(s / d.length);
 }
 
-// ── UI ────────────────────────────────────────────────────────────
-function showBoard(){document.getElementById('start-screen').style.display='none'; document.getElementById('board').style.display='flex';}
-
-// Peak hold state
-const peaks = {};
-function hMeter(lin, idL, idR, pkL, pkR, dbEl, clipEl) {
-  const el = document.getElementById(idL); if (!el) return;
-  const W = el.parentElement.offsetWidth || 100;
+// ── Vertical meter ─────────────────────────────────────────────────
+function vMeter(lin, fillId, peakId, dbId) {
+  const el = document.getElementById(fillId); if (!el) return;
+  const wrap = el.parentElement;
+  const H = wrap.offsetHeight || 80;
   const db = lin < SILENCE ? -Infinity : gainToDb(lin);
   const pct = lin < SILENCE ? 0 : Math.max(0, Math.min(100, (db + 60) / 60 * 100));
-  const j = pct > 2 ? (Math.random() - 0.5) * 1.5 : 0;
-  el.style.width = Math.max(0, pct + j) + '%';
-  document.getElementById(idR).style.width = Math.max(0, pct - j) + '%';
-  // Peak hold: rise fast, fall slow
-  const key = idL;
+
+  el.style.height = pct + '%';
+
+  const key = fillId;
   if (!peaks[key] || pct > peaks[key].pct) { peaks[key] = { pct, t: Date.now() }; }
-  else if (Date.now() - peaks[key].t > 1600) { peaks[key].pct = Math.max(0, peaks[key].pct - 1.2); }
-  const px = Math.round((peaks[key].pct / 100) * W);
-  if (document.getElementById(pkL)) document.getElementById(pkL).style.left = px + 'px';
-  if (document.getElementById(pkR)) document.getElementById(pkR).style.left = px + 'px';
-  if (dbEl && document.getElementById(dbEl)) document.getElementById(dbEl).textContent = lin < SILENCE ? '—' : fmtDb(db);
-  if (clipEl && document.getElementById(clipEl)) document.getElementById(clipEl).classList.toggle('show', lin > 0.98);
+  else if (Date.now() - peaks[key].t > 1600) { peaks[key].pct = Math.max(0, peaks[key].pct - 1.5); }
+
+  const pkPct = peaks[key] ? peaks[key].pct : 0;
+  const pk = document.getElementById(peakId);
+  if (pk) pk.style.bottom = pkPct + '%';
+
+  if (dbId) {
+    const dEl = document.getElementById(dbId);
+    if (dEl) dEl.textContent = lin < SILENCE ? '—' : fmtDb(db);
+  }
 }
+
+// ── Meters ────────────────────────────────────────────────────────────
 function animateMeters(){
   const oL = Math.max(0, outputMeter.getValue()||0);
   const mL = getAnalyserRMS(micAnalyser);
   const tL = getAnalyserRMS(testAnalyser);
-  hMeter(oL, 'out-m-l','out-m-r','out-pk-l','out-pk-r','out-db','out-clip');
-  hMeter(mL, 'mic-m-l','mic-m-r','mic-pk-l','mic-pk-r','mic-db', null);
-  hMeter(tL, 'test-m-l','test-m-r','test-pk-l','test-pk-r','test-db', null);
+  // Vertical meters for mic and test
+  vMeter(mL, 'mic-m',  'mic-pk',  'mic-db');
+  vMeter(tL, 'test-m', 'test-pk', 'test-db');
+  // Output: combined gain+meter slider background
+  const odb = oL < SILENCE ? -Infinity : gainToDb(oL);
+  const opct = oL < SILENCE ? 0 : Math.max(0, Math.min(100, (odb+60)/60*100));
+  const oLvl = document.getElementById('out-level');
+  if (oLvl) oLvl.style.height = opct + '%';
+  const key = 'out';
+  if (!peaks[key] || opct > peaks[key].pct) { peaks[key] = {pct:opct, t:Date.now()}; }
+  else if (Date.now() - peaks[key].t > 1600) { peaks[key].pct = Math.max(0, peaks[key].pct-1.5); }
+  const opk = document.getElementById('out-pk');
+  if (opk) opk.style.bottom = (peaks[key]?.pct||0) + '%';
+  const odEl = document.getElementById('out-db');
+  if (odEl) odEl.textContent = oL < SILENCE ? '—' : fmtDb(odb);
   requestAnimationFrame(animateMeters);
 }
 
@@ -965,8 +974,8 @@ function toggleFxBypass(fx){
 }
 
 // ── Parameter setters ─────────────────────────────────────────────
-function setInputGainDb(db){if(micGainNode)micGainNode.gain.rampTo(dbToGain(parseFloat(db)),0.05); const v=parseFloat(db); const pct=Math.max(0,Math.min(100,(v+60)/72*100)); const el=document.getElementById('input-gain-val'); el.textContent=Math.round(v)+'dB'; el.dataset.value=v; const vb=document.getElementById('mic-vbar-fill'); if(vb)vb.style.height=pct+'%';}
-function setOutputGainDb(db){if(outputGainNode)outputGainNode.gain.rampTo(dbToGain(parseFloat(db)),0.05); const v=parseFloat(db); const pct=Math.max(0,Math.min(100,(v+60)/72*100)); const el=document.getElementById('output-gain-val'); el.textContent=Math.round(v)+'dB'; el.dataset.value=v; const vb=document.getElementById('out-vbar-fill'); if(vb)vb.style.height=pct+'%';}
+function setInputGainDb(db){if(micGainNode)micGainNode.gain.rampTo(dbToGain(parseFloat(db)),0.05); const v=parseFloat(db); const el=document.getElementById('input-gain-val'); el.textContent=Math.round(v)+'dB'; el.dataset.value=v;}
+function setOutputGainDb(db){if(outputGainNode)outputGainNode.gain.rampTo(dbToGain(parseFloat(db)),0.05); const v=parseFloat(db); const el=document.getElementById('output-gain-val'); el.textContent=Math.round(v)+'dB'; el.dataset.value=v;}
 
 function setPitchSemi(v){
   const st=parseFloat(v); if(pitchShift)pitchShift.pitch=st;
@@ -977,7 +986,7 @@ function setPitchSemi(v){
   document.getElementById('pitch-semi-val').dataset.value=st;
 }
 function setPitchHz(hz){const st=Math.max(-36,Math.min(36,hzToSemi(Math.max(1,parseFloat(hz))))); document.getElementById('pitch-semi').value=st; setPitchSemi(st);}
-function setPitchWindow(v){if(pitchShift)pitchShift.windowSize=parseFloat(v); document.getElementById('pitch-window-val').textContent=parseFloat(v).toFixed(2)+'s';}
+function setPitchWindow(v){if(pitchShift)pitchShift.windowSize=parseFloat(v); const ms=Math.round(parseFloat(v)*1000); document.getElementById('pitch-window-val').textContent=parseFloat(v).toFixed(2)+'s (~'+ms+'ms lat.)';}
 function setPitchType(v){document.getElementById('pitch-window').value=v; setPitchWindow(v);}
 function setPitchWetDry(v){
   const wd=parseFloat(v);
@@ -1135,7 +1144,7 @@ function setupEditables(){
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// PLAY SPACE — 2D interpolation space for global presets
+// INTERPOLATION SPACE — 2D interpolation space for global presets
 // ═══════════════════════════════════════════════════════════════════════
 
 const PS_SLOTS     = 8;
