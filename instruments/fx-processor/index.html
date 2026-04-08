@@ -435,7 +435,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
         <div style="margin-bottom:6px;">
           <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
             <label style="font-size:.68rem;letter-spacing:.12em;color:#aaa;">PAN</label>
-            <span class="ctrl-val" id="test-pan-val" style="font-size:.72rem;">C</span>
+            <span class="ctrl-val" id="test-pan-val" data-value="0" style="font-size:.72rem;">C</span>
           </div>
           <div style="position:relative;">
             <input type="range" id="test-pan-sl" min="-1" max="1" step="0.01" value="0"
@@ -546,7 +546,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
       <div style="margin-bottom:0;">
         <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
           <label style="font-size:.68rem;letter-spacing:.12em;color:#aaa;">DRY / WET</label>
-          <span class="ctrl-val" id="pitch-wetdry-val" style="font-size:.72rem;">50%</span>
+          <span class="ctrl-val" id="pitch-wetdry-val" data-value="0.5" style="font-size:.72rem;">50%</span>
         </div>
         <input type="range" id="pitch-wetdry" min="0" max="1" step="0.01" value="0.5"
                oninput="setPitchWetDry(this.value)" style="width:100%;">
@@ -583,7 +583,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
       <div style="margin-bottom:9px;">
         <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
           <label style="font-size:.68rem;letter-spacing:.12em;color:#aaa;">FEEDBACK</label>
-          <span class="ctrl-val" id="delay-fb-val" style="font-size:.72rem;">30%</span>
+          <span class="ctrl-val" id="delay-fb-val" data-value="0.3" style="font-size:.72rem;">30%</span>
         </div>
         <!-- Slider with 100%/unity tick at 66.7% of track width -->
         <div style="position:relative;">
@@ -604,7 +604,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
       <div style="margin-bottom:9px;">
         <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
           <label style="font-size:.68rem;letter-spacing:.12em;color:#aaa;">DRY MIX</label>
-          <span class="ctrl-val" id="delay-dry-val" style="font-size:.72rem;">100%</span>
+          <span class="ctrl-val" id="delay-dry-val" data-value="1" style="font-size:.72rem;">0.0 dB</span>
         </div>
         <input type="range" id="delay-dry" min="0" max="1" step="0.01" value="1"
                oninput="setDelayDry(this.value)" style="width:100%;">
@@ -613,7 +613,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
       <div style="margin-bottom:0;">
         <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
           <label style="font-size:.68rem;letter-spacing:.12em;color:#aaa;">WET MIX</label>
-          <span class="ctrl-val" id="delay-wet-val" style="font-size:.72rem;">40%</span>
+          <span class="ctrl-val" id="delay-wet-val" data-value="0.4" style="font-size:.72rem;">-8.0 dB</span>
         </div>
         <input type="range" id="delay-wet" min="0" max="1" step="0.01" value="0.4"
                oninput="setDelayWet(this.value)" style="width:100%;">
@@ -634,24 +634,39 @@ input.gain-meter-slider::-webkit-slider-thumb {
               <span class="ps-label">Interpolation Space</span>
               <span style="font-size:.54rem;color:#444;letter-spacing:.07em;">shift+click · WASD · 1-8</span>
             </div>
-            <!-- Preset slots + REVERT -->
-            <div id="ps-row2" style="display:flex;align-items:center;gap:4px;width:100%;padding:2px 0 2px;">
+            <!-- Preset slots 0-8 + layout save/load -->
+            <div id="ps-row2" style="display:flex;align-items:center;gap:3px;width:100%;padding:2px 0 2px;flex-wrap:wrap;">
               <button class="global-slot" data-slot="0" onclick="handleGlobalPreset(this)"
-                title="DEF — click: recall · shift+click: save"
-                style="min-width:32px;font-size:.58rem;color:#888;border-color:#3a3a3a;">DEF</button>
-              <button class="global-slot" data-slot="1" onclick="handleGlobalPreset(this)">2</button>
-              <button class="global-slot" data-slot="2" onclick="handleGlobalPreset(this)">3</button>
-              <button class="global-slot" data-slot="3" onclick="handleGlobalPreset(this)">4</button>
-              <button class="global-slot" data-slot="4" onclick="handleGlobalPreset(this)">5</button>
-              <button class="global-slot" data-slot="5" onclick="handleGlobalPreset(this)">6</button>
-              <button class="global-slot" data-slot="6" onclick="handleGlobalPreset(this)">7</button>
-              <button class="global-slot" data-slot="7" onclick="handleGlobalPreset(this)">8</button>
-              <button onclick="applyFactoryDefaults()"
-                style="padding:1px 7px;background:transparent;border:1px solid #2a2a2a;color:#555;
-                       font-family:'Courier New',monospace;font-size:.6rem;letter-spacing:.06em;
-                       cursor:pointer;border-radius:2px;margin-left:4px;transition:all .15s;"
+                title="Slot 0 — Home (click: recall · shift+click: revert factory defaults)"
+                style="min-width:26px;font-size:.62rem;color:#5a9aaa;border-color:#2a4a5a;">0</button>
+              <button class="global-slot" data-slot="1" onclick="handleGlobalPreset(this)">1</button>
+              <button class="global-slot" data-slot="2" onclick="handleGlobalPreset(this)">2</button>
+              <button class="global-slot" data-slot="3" onclick="handleGlobalPreset(this)">3</button>
+              <button class="global-slot" data-slot="4" onclick="handleGlobalPreset(this)">4</button>
+              <button class="global-slot" data-slot="5" onclick="handleGlobalPreset(this)">5</button>
+              <button class="global-slot" data-slot="6" onclick="handleGlobalPreset(this)">6</button>
+              <button class="global-slot" data-slot="7" onclick="handleGlobalPreset(this)">7</button>
+              <button class="global-slot" data-slot="8" onclick="handleGlobalPreset(this)">8</button>
+              <span style="flex:1;min-width:4px;"></span>
+              <select id="ps-layout-sel" onchange="psLoadLayout(this.value)"
+                style="background:#0d0d0d;border:1px solid #252525;color:#666;font-family:'Courier New',monospace;
+                       font-size:.58rem;padding:1px 3px;cursor:pointer;max-width:88px;">
+                <option value="">— layout —</option>
+              </select>
+              <button onclick="psSaveLayout()"
+                title="Save current IS preset layout as named set"
+                style="padding:1px 5px;background:transparent;border:1px solid #252525;color:#555;
+                       font-family:'Courier New',monospace;font-size:.6rem;cursor:pointer;
+                       border-radius:2px;transition:all .12s;"
                 onmouseover="this.style.color='#c8a854';this.style.borderColor='#554a2a'"
-                onmouseout="this.style.color='#555';this.style.borderColor='#2a2a2a'">REVERT</button>
+                onmouseout="this.style.color='#555';this.style.borderColor='#252525'">SAVE</button>
+              <button onclick="psDeleteLayout()"
+                title="Delete selected layout"
+                style="padding:1px 4px;background:transparent;border:1px solid #252525;color:#444;
+                       font-family:'Courier New',monospace;font-size:.6rem;cursor:pointer;
+                       border-radius:2px;transition:all .12s;"
+                onmouseover="this.style.color='#e05050';this.style.borderColor='#5a2a2a'"
+                onmouseout="this.style.color='#444';this.style.borderColor='#252525'">✕</button>
             </div>
             <!-- Hint -->
             <div id="ps-hint" style="font-size:.59rem;color:#555;text-align:center;margin-bottom:4px;">click preset to select · drag preset to reposition · drag ⊕ to navigate</div>
@@ -771,6 +786,7 @@ const fmtDb    = db => isFinite(db) ? db.toFixed(1) + ' dB' : '< −60';
 const hzToSemi = hz => 12 * Math.log2(Math.max(hz, 1) / 440);
 const semiToHz = st => 440 * Math.pow(2, st / 12);
 const SILENCE  = 0.001;
+let paramRampTime = 0.03; // elevated to 0.25 during arrow-key slider use
 
 // Logarithmic slider utilities
 const freqLog = { // 0.5Hz → 20kHz (allow sub-bass and near-zero)
@@ -879,6 +895,7 @@ async function initAudio() {
     loadPresetUI();
     setupEditables();
     setupDblClick();
+    setupSliderSlew();
     showBoard();
     if (!psKeyboardSetup) { psSetupKeyboard(); psKeyboardSetup = true; }
     applyDefaultState(); // apply safe defaults
@@ -997,6 +1014,7 @@ function setTestPan(v) {
     if (Math.abs(pan) < 0.03) el.textContent = 'C';
     else if (pan < 0) el.textContent = 'L' + Math.round(Math.abs(pan)*100) + '%';
     else el.textContent = 'R' + Math.round(pan*100) + '%';
+    el.dataset.value = pan;
   }
 }
 
@@ -1024,7 +1042,7 @@ function setTestFreqHz(hz){
 function setTestFreqSemi(st){setTestFreqHz(semiToHz(parseFloat(st)));}
 function setTestGainDb(db){
   const v=parseFloat(db);
-  if(testEnabled && testMasterGainTone) testMasterGainTone.gain.rampTo(dbToGain(v),0.05);
+  if(testEnabled && testMasterGainTone) testMasterGainTone.gain.rampTo(dbToGain(v),paramRampTime);
   document.getElementById('test-gain-val').textContent=Math.round(v)+'dB';
   document.getElementById('test-gain-val').dataset.value=v;
 }
@@ -1135,8 +1153,8 @@ function toggleFxBypass(fx){
 }
 
 // ── Parameter setters ─────────────────────────────────────────────
-function setInputGainDb(db){if(micGainNode)micGainNode.gain.rampTo(dbToGain(parseFloat(db)),0.05); const v=parseFloat(db); const el=document.getElementById('input-gain-val'); el.textContent=Math.round(v)+'dB'; el.dataset.value=v;}
-function setOutputGainDb(db){if(outputGainNode)outputGainNode.gain.rampTo(dbToGain(parseFloat(db)),0.05); const v=parseFloat(db); const el=document.getElementById('output-gain-val'); el.textContent=Math.round(v)+'dB'; el.dataset.value=v;}
+function setInputGainDb(db){if(micGainNode)micGainNode.gain.rampTo(dbToGain(parseFloat(db)),paramRampTime); const v=parseFloat(db); const el=document.getElementById('input-gain-val'); el.textContent=Math.round(v)+'dB'; el.dataset.value=v;}
+function setOutputGainDb(db){if(outputGainNode)outputGainNode.gain.rampTo(dbToGain(parseFloat(db)),paramRampTime); const v=parseFloat(db); const el=document.getElementById('output-gain-val'); el.textContent=Math.round(v)+'dB'; el.dataset.value=v;}
 
 function setPitchSemi(v){
   const st=parseFloat(v); if(pitchShift)pitchShift.pitch=st;
@@ -1151,12 +1169,11 @@ function setPitchWindow(v){if(pitchShift)pitchShift.windowSize=parseFloat(v); co
 function setPitchType(v){document.getElementById('pitch-window').value=v; setPitchWindow(v);}
 function setPitchWetDry(v){
   const wd=parseFloat(v);
-  // Equal-power crossfade (sin/cos curve) — equal perceived energy at all positions
-  const wetG = Math.sin(wd * Math.PI / 2);
-  const dryG = Math.cos(wd * Math.PI / 2);
-  if(!pitchBypassed){pitchWetG.gain.rampTo(wetG,0.05); pitchDryG.gain.rampTo(dryG,0.05);}
+  const wetG=Math.sin(wd*Math.PI/2), dryG=Math.cos(wd*Math.PI/2);
+  if(!pitchBypassed){pitchWetG.gain.rampTo(wetG,paramRampTime); pitchDryG.gain.rampTo(dryG,paramRampTime);}
   const pct=Math.round(wd*100);
-  document.getElementById('pitch-wetdry-val').textContent=wd>=0.5?`WET ${pct}%`:`DRY ${100-pct}%`;
+  const pwEl=document.getElementById('pitch-wetdry-val');
+  pwEl.textContent=wd>=0.5?`WET ${pct}%`:`DRY ${100-pct}%`; pwEl.dataset.value=wd;
 }
 
 function setDelayTimePos(pos){
@@ -1165,14 +1182,14 @@ function setDelayTimePos(pos){
 }
 function setDelayTimeSec(t){document.getElementById('delay-time').value=timeLog.toPos(t); setDelayTimePos(timeLog.toPos(t));}
 function setFeedback(v){
-  const f=parseFloat(v); if(feedbackGain)feedbackGain.gain.rampTo(f,0.05);
-  const isDanger=f>=1; document.getElementById('delay-fb-val').textContent=Math.round(f*100)+'%';
+  const f=parseFloat(v); if(feedbackGain)feedbackGain.gain.rampTo(f,paramRampTime);
+  const isDanger=f>=1; const fbEl=document.getElementById('delay-fb-val'); fbEl.textContent=Math.round(f*100)+'%'; fbEl.dataset.value=f;
   document.getElementById('delay-fb-val').classList.toggle('danger',isDanger);
   document.getElementById('fb-danger').classList.toggle('show',isDanger);
   document.getElementById('delay-fb').classList.toggle('danger-range',isDanger);
 }
-function setDelayDry(v){if(!delayBypassed&&delayDryGain)delayDryGain.gain.rampTo(parseFloat(v),0.05); const dv=parseFloat(v); document.getElementById('delay-dry-val').textContent=dv<0.001?'-inf':fmtDb(gainToDb(dv));}
-function setDelayWet(v){if(!delayBypassed&&delayWetGain)delayWetGain.gain.rampTo(parseFloat(v),0.05); const wv=parseFloat(v); document.getElementById('delay-wet-val').textContent=wv<0.001?'-inf':fmtDb(gainToDb(wv));}
+function setDelayDry(v){if(!delayBypassed&&delayDryGain)delayDryGain.gain.rampTo(parseFloat(v),paramRampTime); const dv=parseFloat(v); const dEl=document.getElementById('delay-dry-val'); dEl.textContent=dv<0.001?'-inf':fmtDb(gainToDb(dv)); dEl.dataset.value=dv;}
+function setDelayWet(v){if(!delayBypassed&&delayWetGain)delayWetGain.gain.rampTo(parseFloat(v),paramRampTime); const wv=parseFloat(v); const wEl=document.getElementById('delay-wet-val'); wEl.textContent=wv<0.001?'-inf':fmtDb(gainToDb(wv)); wEl.dataset.value=wv;}
 
 // ── Preset system ─────────────────────────────────────────────────
 function buildPresetSlots(){
@@ -1233,8 +1250,22 @@ function applyGlobalState(s){
 }
 function handleGlobalPreset(btn){
   const slot=parseInt(btn.dataset.slot);
-  if(event.shiftKey){localStorage.setItem('fx_global_'+slot,JSON.stringify(getGlobalState())); loadPresetUI();}
-  else{const s=localStorage.getItem('fx_global_'+slot); if(s)applyGlobalState(JSON.parse(s));}
+  psSelectSlot(slot);
+  const canvas=document.getElementById('playspace-canvas');
+  if(event.shiftKey){
+    if(slot===0){applyFactoryDefaults();return;}
+    const state=getGlobalState();
+    if(psCursor&&canvas&&canvas.width){state.x=psCursor.x/canvas.width;state.y=psCursor.y/canvas.height;}
+    else if(psData[slot]&&psData[slot].x!==undefined){state.x=psData[slot].x;state.y=psData[slot].y;}
+    psData[slot]=state; localStorage.setItem('fx_global_'+slot,JSON.stringify(state));
+    psUpdateSlotBtns(); loadPresetUI(); psRedraw();
+    const hint=document.getElementById('ps-hint'); if(hint)hint.textContent=`slot ${slot} saved`;
+  } else {
+    const s=localStorage.getItem('fx_global_'+slot);
+    if(s){const d=JSON.parse(s); applyGlobalState(d);
+      if(d.x!==undefined&&canvas&&canvas.width) psCursor={x:d.x*canvas.width,y:d.y*canvas.height};
+      psRedraw();}
+  }
 }
 function loadPresetUI(){
   ['pitch','delay'].forEach(fx=>{
@@ -1303,6 +1334,16 @@ function setupDblClick(){
   });
 }
 
+function setupSliderSlew(){
+  let slewTimer=null;
+  document.querySelectorAll('input[type="range"]').forEach(sl=>{
+    sl.addEventListener('keydown',e=>{
+      if(e.key==='ArrowUp'||e.key==='ArrowDown'||e.key==='ArrowLeft'||e.key==='ArrowRight'){
+        paramRampTime=0.25; clearTimeout(slewTimer); slewTimer=setTimeout(()=>{paramRampTime=0.03;},350);
+      }
+    });
+  });
+}
 function makeEditableSafe(el,opts){ if(el) makeEditable(el,opts); }
 function setupEditables(){
   makeEditableSafe(document.getElementById('input-gain-val'),{min:-60,max:12,slider:document.getElementById('input-gain-db'),format:v=>v.toFixed(1)+' dB',parse:s=>parseFloat(s),onSet:setInputGainDb});
@@ -1310,13 +1351,20 @@ function setupEditables(){
   makeEditableSafe(document.getElementById('delay-time-val'),{min:0.001,max:60,format:v=>v>=1?v.toFixed(2)+'s':v.toFixed(3)+'s',parse:s=>parseFloat(s.replace('s','')),onSet:setDelayTimeSec});
   makeEditableSafe(document.getElementById('pitch-semi-val'),{min:-24,max:24,slider:document.getElementById('pitch-semi'),format:v=>(v>=0?'+':'')+v.toFixed(1),parse:s=>parseFloat(s),onSet:setPitchSemi});
   makeEditableSafe(document.getElementById('test-freq-val'),{min:20,max:20000,format:v=>Math.round(v)+' Hz',parse:s=>parseFloat(s.replace(' Hz','')),onSet:setTestFreqHz});
+  makeEditableSafe(document.getElementById('pitch-wetdry-val'),{min:0,max:1,slider:document.getElementById('pitch-wetdry'),format:v=>{const p=Math.round(v*100);return v>=0.5?'WET '+p+'%':'DRY '+(100-p)+'%';},parse:s=>{const m=s.match(/(\d+)/);return m?parseFloat(m[1])/100:parseFloat(s);},onSet:v=>{document.getElementById('pitch-wetdry').value=v;setPitchWetDry(v);}});
+  makeEditableSafe(document.getElementById('pitch-window-val'),{min:0.01,max:0.5,slider:document.getElementById('pitch-window'),format:v=>v.toFixed(3)+'s',parse:s=>parseFloat(s),onSet:v=>{document.getElementById('pitch-window').value=v;setPitchWindow(v);}});
+  makeEditableSafe(document.getElementById('delay-fb-val'),{min:0,max:1.5,slider:document.getElementById('delay-fb'),format:v=>Math.round(v*100)+'%',parse:s=>parseFloat(s)/100,onSet:v=>{document.getElementById('delay-fb').value=v;setFeedback(v);}});
+  makeEditableSafe(document.getElementById('delay-dry-val'),{min:0,max:1,slider:document.getElementById('delay-dry'),format:v=>v<0.001?'-inf':fmtDb(gainToDb(v)),parse:s=>s.trim()==='-inf'?0:dbToGain(parseFloat(s)),onSet:v=>{document.getElementById('delay-dry').value=v;setDelayDry(v);}});
+  makeEditableSafe(document.getElementById('delay-wet-val'),{min:0,max:1,slider:document.getElementById('delay-wet'),format:v=>v<0.001?'-inf':fmtDb(gainToDb(v)),parse:s=>s.trim()==='-inf'?0:dbToGain(parseFloat(s)),onSet:v=>{document.getElementById('delay-wet').value=v;setDelayWet(v);}});
+  makeEditableSafe(document.getElementById('test-pan-val'),{min:-1,max:1,slider:document.getElementById('test-pan-sl'),format:v=>Math.abs(v)<0.03?'C':(v<0?'L':'R')+Math.round(Math.abs(v)*100)+'%',parse:s=>{if(s.trim()==='C')return 0;const m=s.match(/([LR])(\d+)/i);if(m)return m[1].toUpperCase()==='L'?-m[2]/100:m[2]/100;return parseFloat(s);},onSet:v=>{document.getElementById('test-pan-sl').value=v;setTestPan(v);}});
+  makeEditableSafe(document.getElementById('test-gain-val'),{min:-60,max:0,slider:document.getElementById('test-gain-sl'),format:v=>Math.round(v)+'dB',parse:s=>parseFloat(s),onSet:v=>{document.getElementById('test-gain-sl').value=v;setTestGainDb(v);}});
 }
 
 // ═══════════════════════════════════════════════════════════════════════
 // INTERPOLATION SPACE — 2D interpolation space for global presets
 // ═══════════════════════════════════════════════════════════════════════
 
-const PS_SLOTS     = 8;
+const PS_SLOTS     = 9;
 const PS_R         = 20;          // preset circle radius (canvas px)
 const PS_IDW_POWER = 2;           // inverse distance weighting exponent
 
@@ -1344,6 +1392,7 @@ function psInit() {
     }
   }
   psUpdateSlotBtns();
+  psPopulateLayoutSel();
   // Double rAF: ensures canvas has layout dimensions before sizing
   requestAnimationFrame(() => requestAnimationFrame(() => {
     psSetupCanvas();
@@ -1733,17 +1782,19 @@ function psSetupCanvas() {
 }
 
 // ── WASD continuous movement loop ───────────────────────────────────────
-const PS_WASD_SPD = 3; // pixels per frame at 60fps
+const PS_WASD_SLOW=0.4; // px/frame normal
+const PS_WASD_FAST=4.0;  // px/frame with Shift
 
 function psWasdLoop() {
   if (!psCanvasActive || !psCursor) { psWasdRAF = null; return; }
   if (!(psKeys.w || psKeys.a || psKeys.s || psKeys.d)) { psWasdRAF = null; return; }
   const canvas = document.getElementById('playspace-canvas');
   if (!canvas || !canvas.width) { psWasdRAF = null; return; }
-  if (psKeys.w) psCursor.y = Math.max(0, psCursor.y - PS_WASD_SPD);
-  if (psKeys.s) psCursor.y = Math.min(canvas.height, psCursor.y + PS_WASD_SPD);
-  if (psKeys.a) psCursor.x = Math.max(0, psCursor.x - PS_WASD_SPD);
-  if (psKeys.d) psCursor.x = Math.min(canvas.width,  psCursor.x + PS_WASD_SPD);
+  const spd=psKeys.shift?PS_WASD_FAST:PS_WASD_SLOW;
+  if(psKeys.w)psCursor.y=Math.max(0,psCursor.y-spd);
+  if(psKeys.s)psCursor.y=Math.min(canvas.height,psCursor.y+spd);
+  if(psKeys.a)psCursor.x=Math.max(0,psCursor.x-spd);
+  if(psKeys.d)psCursor.x=Math.min(canvas.width,psCursor.x+spd);
   if (rawCtx) psInterpolate(psCursor.x, psCursor.y, canvas.width, canvas.height, psDefaultPositions(canvas.width, canvas.height));
   psRedraw();
   psWasdRAF = requestAnimationFrame(psWasdLoop);
@@ -1757,6 +1808,7 @@ function psSetupKeyboard() {
     if (!board || board.style.display === 'none') return;
 
     const k = e.key.toLowerCase();
+    psKeys.shift = e.shiftKey;
 
     // WASD: only when canvas is active
     if (['w','a','s','d'].includes(k) && psCanvasActive) {
@@ -1766,36 +1818,40 @@ function psSetupKeyboard() {
       return;
     }
 
-    // Number keys 1-8
-    const num = parseInt(e.key);
-    if (num >= 1 && num <= 8) {
-      const idx = num - 1;
-      const canvas = document.getElementById('playspace-canvas');
-      if (!canvas) return;
-      const hint = document.getElementById('ps-hint');
-      if (e.shiftKey) {
-        // Shift+N → save current FX at listener position → slot idx
-        if (!psCursor) return;
-        const state = getGlobalState();
-        state.x = psCursor.x / canvas.width;
-        state.y = psCursor.y / canvas.height;
-        psData[idx] = state;
-        localStorage.setItem('fx_global_' + idx, JSON.stringify(state));
-        psSelectSlot(idx);
-        loadPresetUI(); psUpdateSlotBtns();
-        if (hint) hint.textContent = `slot ${num} saved at listener`;
-        psRedraw();
-      } else {
-        // N → teleport listener to that preset (or just arm if empty)
-        if (psData[idx] && psData[idx].x !== undefined) {
-          psCursor = { x: psData[idx].x * canvas.width, y: psData[idx].y * canvas.height };
-          psSelectSlot(idx);
-          applyGlobalState(psData[idx]);
-          if (hint) hint.textContent = `→ slot ${num}`;
+    // Number keys 0-8 — use e.code to be shift-safe (e.key gives ! @ # etc with shift)
+    const codeM = e.code.match(/^Digit(\d)$/);
+    if (codeM) {
+      const num = parseInt(codeM[1]);
+      if (num >= 0 && num <= 8) {
+        e.preventDefault();
+        const idx = num; // slot 0=home, 1-8=user
+        const canvas = document.getElementById('playspace-canvas');
+        if (!canvas) return;
+        const hint = document.getElementById('ps-hint');
+        if (e.shiftKey) {
+          // Shift+N → save current FX at listener position → slot idx
+          const state = getGlobalState();
+          if (psCursor && canvas.width) {
+            state.x = psCursor.x / canvas.width;
+            state.y = psCursor.y / canvas.height;
+          } else if (psData[idx] && psData[idx].x !== undefined) {
+            state.x = psData[idx].x; state.y = psData[idx].y;
+          }
+          psData[idx] = state;
+          localStorage.setItem('fx_global_' + idx, JSON.stringify(state));
+          psSelectSlot(idx); loadPresetUI(); psUpdateSlotBtns();
+          if (hint) hint.textContent = `slot ${num} saved`;
           psRedraw();
         } else {
-          psSelectSlot(idx);
-          if (hint) hint.textContent = `slot ${num} armed (empty)`;
+          // N → teleport listener to that preset
+          if (psData[idx] && psData[idx].x !== undefined) {
+            psCursor = { x: psData[idx].x * canvas.width, y: psData[idx].y * canvas.height };
+            psSelectSlot(idx); applyGlobalState(psData[idx]);
+            if (hint) hint.textContent = `→ ${num}`; psRedraw();
+          } else {
+            psSelectSlot(idx);
+            if (hint) hint.textContent = `slot ${num} empty`;
+          }
         }
       }
     }
@@ -1803,6 +1859,7 @@ function psSetupKeyboard() {
 
   document.addEventListener('keyup', e => {
     const k = e.key.toLowerCase();
+    psKeys.shift = e.shiftKey;
     if (['w','a','s','d'].includes(k)) psKeys[k] = false;
   });
 }
@@ -1816,6 +1873,54 @@ function psCanvasPos(e, canvas) {
 // (The existing function saves without x/y — we keep it for backward compat
 //  PlaySpace adds x/y on top when saving via canvas click)
 
+// ── IS Layout save / load ──────────────────────────────────────────────
+const PS_LAYOUT_KEY='fx_is_layouts';
+function psGetLayouts(){try{return JSON.parse(localStorage.getItem(PS_LAYOUT_KEY)||'[]');}catch(e){return [];}}
+function psPopulateLayoutSel(){
+  const sel=document.getElementById('ps-layout-sel'); if(!sel)return;
+  const layouts=psGetLayouts();
+  sel.innerHTML='<option value="">— layout —</option><option value="__defaults__">defaults</option>'+
+    layouts.map((l,i)=>`<option value="${i}">${l.name}</option>`).join('');
+}
+function psSaveLayout(){
+  const name=prompt('Name this layout:'); if(!name||!name.trim())return;
+  const layouts=psGetLayouts();
+  layouts.push({name:name.trim(),data:psData.map(d=>d?{...d}:null)});
+  localStorage.setItem(PS_LAYOUT_KEY,JSON.stringify(layouts)); psPopulateLayoutSel();
+  const hint=document.getElementById('ps-hint'); if(hint)hint.textContent=`layout "${name.trim()}" saved`;
+}
+function psLoadLayout(val){
+  if(!val)return;
+  const canvas=document.getElementById('playspace-canvas');
+  const W=canvas?canvas.width:1,H=canvas?canvas.height:1;
+  if(val==='__defaults__'){
+    psData=Array(PS_SLOTS).fill(null);
+    const home=getGlobalState(); home.x=0.5; home.y=0.5; psData[0]=home;
+    for(let i=1;i<PS_SLOTS;i++) localStorage.removeItem('fx_global_'+i);
+    localStorage.setItem('fx_global_0',JSON.stringify(home));
+    if(canvas&&W) psCursor={x:W/2,y:H/2};
+    applyFactoryDefaults();
+  } else {
+    const layouts=psGetLayouts(); const idx=parseInt(val);
+    if(isNaN(idx)||!layouts[idx])return;
+    psData=layouts[idx].data.map(d=>d?{...d}:null);
+    for(let i=0;i<PS_SLOTS;i++){
+      if(psData[i]) localStorage.setItem('fx_global_'+i,JSON.stringify(psData[i]));
+      else localStorage.removeItem('fx_global_'+i);
+    }
+  }
+  psUpdateSlotBtns(); loadPresetUI(); psRedraw();
+  document.getElementById('ps-layout-sel').value='';
+}
+function psDeleteLayout(){
+  const sel=document.getElementById('ps-layout-sel');
+  if(!sel||!sel.value||sel.value==='__defaults__')return;
+  const idx=parseInt(sel.value); const layouts=psGetLayouts();
+  const name=layouts[idx]?layouts[idx].name:'';
+  if(!name||!confirm(`Delete layout "${name}"?`))return;
+  layouts.splice(idx,1); localStorage.setItem(PS_LAYOUT_KEY,JSON.stringify(layouts));
+  psPopulateLayoutSel();
+}
 // psInit() is called from initAudio() after showBoard()
 
 
