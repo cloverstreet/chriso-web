@@ -60,6 +60,10 @@ body {
 .global-slot.saved { border-color:#4a6a4a; color:#7ba; }
 .global-slot:hover { border-color:#555; color:#999; }
 .global-slot.saved:hover { border-color:#5a5; }
+/* Slot 0 — home — always blue-lit */
+.global-slot[data-slot="0"] { border-color:#2a5a7a; color:#5a9aaa; }
+.global-slot[data-slot="0"].saved { border-color:#3a7aaa; color:#6aaee0; }
+.global-slot[data-slot="0"]:hover { border-color:#5a9aaa; color:#8acce0; }
 </style>
 
 <style>
@@ -100,8 +104,10 @@ body {
   border-bottom:1px solid #1e1e1e;
 }
 .mod-title {
-  font-size:.72rem; letter-spacing:.16em; color:#bbb;
-  text-transform:uppercase; flex-shrink:0;
+  font-size:.72rem; letter-spacing:.12em; color:#bbb;
+  text-transform:uppercase;
+  flex:1 1 auto; min-width:0;
+  white-space:normal; word-break:break-word; line-height:1.25;
 }
 /* Bypass button — left of title */
 .byp-btn {
@@ -127,6 +133,7 @@ body {
 }
 /* Preset slots row in header */
 .head-presets {
+  flex-shrink:0;
   display:flex; gap:2px; margin-left:auto; flex-shrink:0;
 }
 .head-preset-slot {
@@ -783,6 +790,7 @@ function togglePitchFine() {
 const dbToGain = db => db <= -60 ? 0 : Math.pow(10, db / 20);
 const gainToDb = g  => g < 0.0001 ? -Infinity : 20 * Math.log10(g);
 const fmtDb    = db => isFinite(db) ? db.toFixed(1) + ' dB' : '< −60';
+const fmtHz    = hz => hz >= 1000 ? Math.round(hz) + ' Hz' : hz < 100 ? hz.toFixed(2) + ' Hz' : hz.toFixed(1) + ' Hz';
 const hzToSemi = hz => 12 * Math.log2(Math.max(hz, 1) / 440);
 const semiToHz = st => 440 * Math.pow(2, st / 12);
 const SILENCE  = 0.001;
@@ -836,7 +844,7 @@ async function initAudio() {
     delayWetGain   = new Tone.Gain(0.4);
     outputGainNode = new Tone.Gain(1);
     outputMuteNode = new Tone.Gain(1);
-    outputMeter    = new Tone.Meter({ normalRange:true, smoothing:0.85 });
+    outputMeter    = new Tone.Meter({ normalRange:true, smoothing:0.85, channels:2 });
 
     // Test tone: all Tone.js (eliminates native→Tone connection issues)
     testOscGainTone    = new Tone.Gain(1);
@@ -1031,7 +1039,7 @@ function setTestFreqPos(pos){
   const hz=freqLog.toVal(parseFloat(pos));
   if(testOscTone) testOscTone.frequency.rampTo(Math.max(hz,0.5),0.01);
   const st=hzToSemi(hz); const exact=Math.abs(st-Math.round(st))<0.05;
-  document.getElementById('test-freq-val').textContent=Math.round(hz)+' Hz';
+  document.getElementById('test-freq-val').textContent=fmtHz(hz);
   document.getElementById('test-freq-val').dataset.value=hz;
   const noteEl=document.getElementById('test-note-val'); if(noteEl) noteEl.textContent=hzToNoteName(hz);
 }
@@ -1110,20 +1118,35 @@ function showBoard() {
 
 // ── Meters ────────────────────────────────────────────────────────────
 function animateMeters(){
-  const oL = Math.max(0, outputMeter.getValue()||0);
+  // Output meter — stereo (channels:2)
+  const oVals = outputMeter.getValue();
+  const oLin_l = Math.max(0, Array.isArray(oVals) ? (oVals[0]||0) : (oVals||0));
+  const oLin_r = Math.max(0, Array.isArray(oVals) ? (oVals[1]||0) : (oVals||0));
+  const tMono = getAnalyserRMS(testAnalyser);
+  // Sig gen meter — pan-aware equal-power L/R
+  const tPan = (testPanner ? testPanner.pan.value : 0);
+  const tTheta = (tPan + 1) / 2 * Math.PI / 2;
+  const tL_l = tMono * Math.cos(tTheta);
+  const tL_r = tMono * Math.sin(tTheta);
   const mL = getAnalyserRMS(micAnalyser);
-  const tL = getAnalyserRMS(testAnalyser);
-  // Vertical meters for mic and test
   vMeter(mL, 'mic', 'mic-db');
-  vMeter(tL, 'test', 'test-db');
-  // Output: combined gain+meter slider background
-  const odb = oL < SILENCE ? -Infinity : gainToDb(oL);
-  const opct = oL < SILENCE ? 0 : Math.max(0, Math.min(100, (odb+60)/60*100));
-  const ospread = oL>0.01?(Math.random()-0.5)*3:0;
-  vMeterBar(Math.max(0,opct+ospread),'out-level-l','out-pk-l');
-  vMeterBar(Math.max(0,opct-ospread),'out-level-r','out-pk-r');
+  // Sig gen: separate L/R (no symmetric spread — actual pan)
+  const tDb = tMono < SILENCE ? -Infinity : gainToDb(tMono);
+  const tPct_l = tL_l < SILENCE ? 0 : Math.max(0, Math.min(100, (gainToDb(tL_l)+60)/60*100));
+  const tPct_r = tL_r < SILENCE ? 0 : Math.max(0, Math.min(100, (gainToDb(tL_r)+60)/60*100));
+  vMeterBar(tPct_l, 'test-level-l', 'test-pk-l');
+  vMeterBar(tPct_r, 'test-level-r', 'test-pk-r');
+  const tdEl = document.getElementById('test-gain-val'); // gain val doubles as db display when not editing
+  // Output L/R from stereo meter
+  const odb_l = oLin_l < SILENCE ? -Infinity : gainToDb(oLin_l);
+  const odb_r = oLin_r < SILENCE ? -Infinity : gainToDb(oLin_r);
+  const opct_l = oLin_l < SILENCE ? 0 : Math.max(0, Math.min(100, (odb_l+60)/60*100));
+  const opct_r = oLin_r < SILENCE ? 0 : Math.max(0, Math.min(100, (odb_r+60)/60*100));
+  vMeterBar(opct_l,'out-level-l','out-pk-l');
+  vMeterBar(opct_r,'out-level-r','out-pk-r');
   const odEl = document.getElementById('out-db');
-  if (odEl) odEl.textContent = oL < SILENCE ? '—' : fmtDb(odb);
+  const oLinMix = Math.max(oLin_l, oLin_r);
+  if (odEl) odEl.textContent = oLinMix < SILENCE ? '—' : fmtDb(gainToDb(oLinMix));
   requestAnimationFrame(animateMeters);
 }
 
@@ -1350,7 +1373,7 @@ function setupEditables(){
   makeEditableSafe(document.getElementById('output-gain-val'),{min:-60,max:12,slider:document.getElementById('output-gain-db'),format:v=>v.toFixed(1)+' dB',parse:s=>parseFloat(s),onSet:setOutputGainDb});
   makeEditableSafe(document.getElementById('delay-time-val'),{min:0.001,max:60,format:v=>v>=1?v.toFixed(2)+'s':v.toFixed(3)+'s',parse:s=>parseFloat(s.replace('s','')),onSet:setDelayTimeSec});
   makeEditableSafe(document.getElementById('pitch-semi-val'),{min:-24,max:24,slider:document.getElementById('pitch-semi'),format:v=>(v>=0?'+':'')+v.toFixed(1),parse:s=>parseFloat(s),onSet:setPitchSemi});
-  makeEditableSafe(document.getElementById('test-freq-val'),{min:20,max:20000,format:v=>Math.round(v)+' Hz',parse:s=>parseFloat(s.replace(' Hz','')),onSet:setTestFreqHz});
+  makeEditableSafe(document.getElementById('test-freq-val'),{min:20,max:20000,format:v=>fmtHz(v),parse:s=>parseFloat(s.replace(' Hz','')),onSet:setTestFreqHz});
   makeEditableSafe(document.getElementById('pitch-wetdry-val'),{min:0,max:1,slider:document.getElementById('pitch-wetdry'),format:v=>{const p=Math.round(v*100);return v>=0.5?'WET '+p+'%':'DRY '+(100-p)+'%';},parse:s=>{const m=s.match(/(\d+)/);return m?parseFloat(m[1])/100:parseFloat(s);},onSet:v=>{document.getElementById('pitch-wetdry').value=v;setPitchWetDry(v);}});
   makeEditableSafe(document.getElementById('pitch-window-val'),{min:0.01,max:0.5,slider:document.getElementById('pitch-window'),format:v=>v.toFixed(3)+'s',parse:s=>parseFloat(s),onSet:v=>{document.getElementById('pitch-window').value=v;setPitchWindow(v);}});
   makeEditableSafe(document.getElementById('delay-fb-val'),{min:0,max:1.5,slider:document.getElementById('delay-fb'),format:v=>Math.round(v*100)+'%',parse:s=>parseFloat(s)/100,onSet:v=>{document.getElementById('delay-fb').value=v;setFeedback(v);}});
@@ -1380,6 +1403,7 @@ let psCanvasActive  = false;  // true when mouse is inside the canvas
 let psKeys          = {};     // WASD key state {w,a,s,d:bool}
 let psWasdRAF       = null;   // rAF handle for WASD loop
 let psKeyboardSetup = false;  // guard against double-registration
+let psSprintStart   = 0;      // timestamp when sprint began
 
 // ── Load from localStorage ──────────────────────────────────────────────
 function psInit() {
@@ -1787,10 +1811,15 @@ const PS_WASD_FAST=4.0;  // px/frame with Shift
 
 function psWasdLoop() {
   if (!psCanvasActive || !psCursor) { psWasdRAF = null; return; }
-  if (!(psKeys.w || psKeys.a || psKeys.s || psKeys.d)) { psWasdRAF = null; return; }
+  if (!(psKeys.w || psKeys.a || psKeys.s || psKeys.d)) { psWasdRAF = null; psSprintStart = 0; return; }
   const canvas = document.getElementById('playspace-canvas');
   if (!canvas || !canvas.width) { psWasdRAF = null; return; }
-  const spd=psKeys.shift?PS_WASD_FAST:PS_WASD_SLOW;
+  let spd;
+  if (psKeys.shift) {
+    if (!psSprintStart) psSprintStart = Date.now();
+    const t = Math.min((Date.now() - psSprintStart) / 2000, 1);
+    spd = PS_WASD_SLOW + (PS_WASD_FAST - PS_WASD_SLOW) * t * t; // ease-in
+  } else { psSprintStart = 0; spd = PS_WASD_SLOW; }
   if(psKeys.w)psCursor.y=Math.max(0,psCursor.y-spd);
   if(psKeys.s)psCursor.y=Math.min(canvas.height,psCursor.y+spd);
   if(psKeys.a)psCursor.x=Math.max(0,psCursor.x-spd);
