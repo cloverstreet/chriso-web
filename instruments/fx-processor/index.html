@@ -629,25 +629,15 @@ input.gain-meter-slider::-webkit-slider-thumb {
       <!-- ════════ INTERPOLATION SPACE ════════ -->
         <div id="playspace-panel">
           <div id="ps-header">
-            <!-- Row 1: IS label + slot selector -->
-            <div id="ps-row1">
-              <span class="ps-label" style="white-space:nowrap;">INTERP SPACE</span>
-              <div id="ps-slots">
-                <button class="ps-slot-btn selected" data-slot="0" onclick="psSelectSlot(0)">1</button>
-                <button class="ps-slot-btn" data-slot="1" onclick="psSelectSlot(1)">2</button>
-                <button class="ps-slot-btn" data-slot="2" onclick="psSelectSlot(2)">3</button>
-                <button class="ps-slot-btn" data-slot="3" onclick="psSelectSlot(3)">4</button>
-                <button class="ps-slot-btn" data-slot="4" onclick="psSelectSlot(4)">5</button>
-                <button class="ps-slot-btn" data-slot="5" onclick="psSelectSlot(5)">6</button>
-                <button class="ps-slot-btn" data-slot="6" onclick="psSelectSlot(6)">7</button>
-                <button class="ps-slot-btn" data-slot="7" onclick="psSelectSlot(7)">8</button>
-              </div>
+            <!-- Title -->
+            <div style="display:flex;align-items:baseline;justify-content:space-between;padding:0 0 3px;">
+              <span class="ps-label">Interpolation Space</span>
+              <span style="font-size:.54rem;color:#444;letter-spacing:.07em;">shift+click · WASD · 1-8</span>
             </div>
-            <!-- Row 2: Global presets + DEF + REVERT -->
-            <div id="ps-row2" style="display:flex;align-items:center;gap:4px;width:100%;padding:4px 0 2px;">
-              <span style="font-size:.6rem;letter-spacing:.18em;color:#666;">GLOBAL</span>
+            <!-- Preset slots + REVERT -->
+            <div id="ps-row2" style="display:flex;align-items:center;gap:4px;width:100%;padding:2px 0 2px;">
               <button class="global-slot" data-slot="0" onclick="handleGlobalPreset(this)"
-                title="Default preset — click: recall · shift+click: save"
+                title="DEF — click: recall · shift+click: save"
                 style="min-width:32px;font-size:.58rem;color:#888;border-color:#3a3a3a;">DEF</button>
               <button class="global-slot" data-slot="1" onclick="handleGlobalPreset(this)">2</button>
               <button class="global-slot" data-slot="2" onclick="handleGlobalPreset(this)">3</button>
@@ -662,10 +652,9 @@ input.gain-meter-slider::-webkit-slider-thumb {
                        cursor:pointer;border-radius:2px;margin-left:4px;transition:all .15s;"
                 onmouseover="this.style.color='#c8a854';this.style.borderColor='#554a2a'"
                 onmouseout="this.style.color='#555';this.style.borderColor='#2a2a2a'">REVERT</button>
-              <span style="font-size:.58rem;color:#333;margin-left:4px;">shift+click: save</span>
             </div>
-            <!-- Row 3: hint -->
-            <div id="ps-hint" style="font-size:.62rem;color:#555;text-align:center;margin-bottom:6px;">select slot · click canvas to place · drag to interpolate</div>
+            <!-- Hint -->
+            <div id="ps-hint" style="font-size:.59rem;color:#555;text-align:center;margin-bottom:4px;">click preset to select · drag preset to reposition · drag ⊕ to navigate</div>
           </div>
           <canvas id="playspace-canvas"></canvas>
       
@@ -891,6 +880,7 @@ async function initAudio() {
     setupEditables();
     setupDblClick();
     showBoard();
+    if (!psKeyboardSetup) { psSetupKeyboard(); psKeyboardSetup = true; }
     applyDefaultState(); // apply safe defaults
     // Slot 0 = permanent home preset at center (always reset to default state)
     requestAnimationFrame(() => {
@@ -1333,9 +1323,15 @@ const PS_IDW_POWER = 2;           // inverse distance weighting exponent
 let psData       = Array(PS_SLOTS).fill(null); // {state, x, y} or null
 let psCursor     = null;          // {x,y} canvas pixels, null = not placed
 let psSelected   = 0;             // which slot is armed for placement
-let psDragging   = false;
-let psDragMoved  = false;
-let psRAF        = null;
+let psDragging      = false;
+let psDragMoved     = false;
+let psRAF           = null;
+let psDragPresetIdx = null;   // index of preset being dragged, or null
+let psDragListener  = false;  // true when dragging the listener
+let psCanvasActive  = false;  // true when mouse is inside the canvas
+let psKeys          = {};     // WASD key state {w,a,s,d:bool}
+let psWasdRAF       = null;   // rAF handle for WASD loop
+let psKeyboardSetup = false;  // guard against double-registration
 
 // ── Load from localStorage ──────────────────────────────────────────────
 function psInit() {
@@ -1613,9 +1609,7 @@ function psRedraw() {
 function psSetupCanvas() {
   const canvas = document.getElementById('playspace-canvas');
   if (!canvas) return;
-  let psDragStartX = 0, psDragStartY = 0;
 
-  // Size canvas to its CSS display size
   function psResize() {
     canvas.width  = Math.round(canvas.clientWidth);
     canvas.height = Math.round(canvas.clientHeight);
@@ -1624,46 +1618,192 @@ function psSetupCanvas() {
   psResize();
   new ResizeObserver(psResize).observe(canvas);
 
+  let dragPresetIdx = null;  // which preset index is being dragged
+  let dragListener  = false; // whether we're dragging the listener
+  let dragMoved     = false;
+  let dragStartX = 0, dragStartY = 0;
+
+  // Canvas active = WASD enabled
+  canvas.addEventListener('mouseenter', () => {
+    psCanvasActive = true;
+    canvas.style.outline = '1px solid rgba(80,180,255,0.18)';
+  });
+  canvas.addEventListener('mouseleave', () => {
+    psCanvasActive = false;
+    canvas.style.outline = '';
+    if (psDragging) {
+      if (dragPresetIdx !== null && dragMoved) {
+        localStorage.setItem('fx_global_' + dragPresetIdx, JSON.stringify(psData[dragPresetIdx]));
+      }
+      psDragging = false; dragPresetIdx = null; dragListener = false; dragMoved = false;
+      psRedraw();
+    }
+  });
+
   canvas.addEventListener('mousedown', e => {
-    psDragging = true; psDragMoved = false;
+    e.preventDefault();
     const pos = psCanvasPos(e, canvas);
-    psDragStartX = pos.x; psDragStartY = pos.y;
-    psCursor = pos;
-    psRedraw();
+    const W = canvas.width, H = canvas.height;
+    if (!W || !H) return;
+
+    // shift+click = store current FX at click position → selected slot
+    if (e.shiftKey) {
+      const state = getGlobalState();
+      state.x = pos.x / W; state.y = pos.y / H;
+      psData[psSelected] = state;
+      localStorage.setItem('fx_global_' + psSelected, JSON.stringify(state));
+      loadPresetUI(); psUpdateSlotBtns();
+      const next = psData.findIndex((d, i) => i > psSelected && (!d || d.x === undefined));
+      if (next >= 0) psSelectSlot(next);
+      const hint = document.getElementById('ps-hint');
+      if (hint) hint.textContent = `slot ${psSelected} saved`;
+      psRedraw();
+      return;
+    }
+
+    dragMoved = false; dragStartX = pos.x; dragStartY = pos.y;
+
+    // Check if clicking on a placed preset circle
+    for (let i = 0; i < PS_SLOTS; i++) {
+      if (!psData[i] || psData[i].x === undefined) continue;
+      const px = psData[i].x * W, py = psData[i].y * H;
+      if (Math.sqrt((pos.x-px)**2 + (pos.y-py)**2) <= PS_R + 6) {
+        dragPresetIdx = i;
+        psDragging = true;
+        psSelectSlot(i);
+        return;
+      }
+    }
+
+    // Check if clicking on the listener (navigator)
+    if (psCursor) {
+      const dist = Math.sqrt((pos.x-psCursor.x)**2 + (pos.y-psCursor.y)**2);
+      if (dist <= 18) {
+        dragListener = true;
+        psDragging = true;
+        return;
+      }
+    }
+    // Empty space click — no action (listener only moves via WASD or drag)
   });
 
   window.addEventListener('mousemove', e => {
     if (!psDragging) return;
-    psCursor = psCanvasPos(e, canvas);
-    // Only flag as drag after 6px movement (prevents click-as-drag)
-    const dx = psCursor.x - psDragStartX, dy = psCursor.y - psDragStartY;
-    if (Math.sqrt(dx*dx + dy*dy) > 6) psDragMoved = true;
+    const pos = psCanvasPos(e, canvas);
+    const dx = pos.x - dragStartX, dy = pos.y - dragStartY;
+    if (Math.sqrt(dx*dx + dy*dy) > 5) dragMoved = true;
+    const W = canvas.width, H = canvas.height;
+
+    if (dragPresetIdx !== null && dragMoved) {
+      // Move the preset pin
+      psData[dragPresetIdx].x = Math.max(0, Math.min(1, pos.x / W));
+      psData[dragPresetIdx].y = Math.max(0, Math.min(1, pos.y / H));
+      // Interpolate at listener's fixed position as preset moves
+      if (psCursor && rawCtx) psInterpolate(psCursor.x, psCursor.y, W, H, psDefaultPositions(W, H));
+    } else if (dragListener) {
+      psCursor = { x: Math.max(0, Math.min(W, pos.x)), y: Math.max(0, Math.min(H, pos.y)) };
+      if (dragMoved && rawCtx) psInterpolate(psCursor.x, psCursor.y, W, H, psDefaultPositions(W, H));
+    }
     psRedraw();
-    if (psDragMoved && rawCtx) psInterpolate(psCursor.x, psCursor.y, canvas.width, canvas.height, psDefaultPositions(canvas.width, canvas.height));
   });
 
   window.addEventListener('mouseup', e => {
     if (!psDragging) return;
-    psDragging = false;
-    if (!psDragMoved) {
-      // It was a click — place selected preset here
-      const pos = psCanvasPos(e, canvas);
-      const W = canvas.width, H = canvas.height;
-      if (!W || !H) return; // canvas not sized yet
-      // Save current state + position to selected slot
-      const state = getGlobalState();
-      state.x = pos.x / W;
-      state.y = pos.y / H;
-      psData[psSelected] = state;
-      localStorage.setItem('fx_global_' + psSelected, JSON.stringify(state));
-      loadPresetUI(); // update existing preset bar
-      psUpdateSlotBtns();
-      // Auto-advance to next empty slot
-      const next = psData.findIndex((d, i) => i > psSelected && !d);
-      if (next >= 0) psSelectSlot(next);
-      document.getElementById('ps-hint').textContent = `slot ${psSelected+1} placed!`;
+    const pos = psCanvasPos(e, canvas);
+    const W = canvas.width, H = canvas.height;
+
+    if (dragPresetIdx !== null) {
+      if (dragMoved) {
+        // Save repositioned preset
+        psData[dragPresetIdx].x = Math.max(0, Math.min(1, pos.x / W));
+        psData[dragPresetIdx].y = Math.max(0, Math.min(1, pos.y / H));
+        localStorage.setItem('fx_global_' + dragPresetIdx, JSON.stringify(psData[dragPresetIdx]));
+      } else {
+        // Tap (no drag) → load preset + teleport listener
+        applyGlobalState(psData[dragPresetIdx]);
+        psCursor = { x: psData[dragPresetIdx].x * W, y: psData[dragPresetIdx].y * H };
+      }
+    } else if (dragListener && psCursor && rawCtx) {
+      psInterpolate(psCursor.x, psCursor.y, W, H, psDefaultPositions(W, H));
     }
+
+    psDragging = false; dragPresetIdx = null; dragListener = false; dragMoved = false;
     psRedraw();
+  });
+}
+
+// ── WASD continuous movement loop ───────────────────────────────────────
+const PS_WASD_SPD = 3; // pixels per frame at 60fps
+
+function psWasdLoop() {
+  if (!psCanvasActive || !psCursor) { psWasdRAF = null; return; }
+  if (!(psKeys.w || psKeys.a || psKeys.s || psKeys.d)) { psWasdRAF = null; return; }
+  const canvas = document.getElementById('playspace-canvas');
+  if (!canvas || !canvas.width) { psWasdRAF = null; return; }
+  if (psKeys.w) psCursor.y = Math.max(0, psCursor.y - PS_WASD_SPD);
+  if (psKeys.s) psCursor.y = Math.min(canvas.height, psCursor.y + PS_WASD_SPD);
+  if (psKeys.a) psCursor.x = Math.max(0, psCursor.x - PS_WASD_SPD);
+  if (psKeys.d) psCursor.x = Math.min(canvas.width,  psCursor.x + PS_WASD_SPD);
+  if (rawCtx) psInterpolate(psCursor.x, psCursor.y, canvas.width, canvas.height, psDefaultPositions(canvas.width, canvas.height));
+  psRedraw();
+  psWasdRAF = requestAnimationFrame(psWasdLoop);
+}
+
+// ── Keyboard: WASD + number key preset navigation ───────────────────────
+function psSetupKeyboard() {
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    const board = document.getElementById('board');
+    if (!board || board.style.display === 'none') return;
+
+    const k = e.key.toLowerCase();
+
+    // WASD: only when canvas is active
+    if (['w','a','s','d'].includes(k) && psCanvasActive) {
+      e.preventDefault();
+      psKeys[k] = true;
+      if (!psWasdRAF) psWasdRAF = requestAnimationFrame(psWasdLoop);
+      return;
+    }
+
+    // Number keys 1-8
+    const num = parseInt(e.key);
+    if (num >= 1 && num <= 8) {
+      const idx = num - 1;
+      const canvas = document.getElementById('playspace-canvas');
+      if (!canvas) return;
+      const hint = document.getElementById('ps-hint');
+      if (e.shiftKey) {
+        // Shift+N → save current FX at listener position → slot idx
+        if (!psCursor) return;
+        const state = getGlobalState();
+        state.x = psCursor.x / canvas.width;
+        state.y = psCursor.y / canvas.height;
+        psData[idx] = state;
+        localStorage.setItem('fx_global_' + idx, JSON.stringify(state));
+        psSelectSlot(idx);
+        loadPresetUI(); psUpdateSlotBtns();
+        if (hint) hint.textContent = `slot ${num} saved at listener`;
+        psRedraw();
+      } else {
+        // N → teleport listener to that preset (or just arm if empty)
+        if (psData[idx] && psData[idx].x !== undefined) {
+          psCursor = { x: psData[idx].x * canvas.width, y: psData[idx].y * canvas.height };
+          psSelectSlot(idx);
+          applyGlobalState(psData[idx]);
+          if (hint) hint.textContent = `→ slot ${num}`;
+          psRedraw();
+        } else {
+          psSelectSlot(idx);
+          if (hint) hint.textContent = `slot ${num} armed (empty)`;
+        }
+      }
+    }
+  });
+
+  document.addEventListener('keyup', e => {
+    const k = e.key.toLowerCase();
+    if (['w','a','s','d'].includes(k)) psKeys[k] = false;
   });
 }
 
