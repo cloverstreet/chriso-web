@@ -387,10 +387,6 @@ input.gain-meter-slider::-webkit-slider-thumb {
           <div class="ch-note" id="ch-note"></div>
         </div>
         <!-- Combined gain+meter slider -->
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
-          <span style="font-size:.6rem;color:#888;letter-spacing:.1em;">GAIN</span>
-          <span class="ctrl-val" id="input-gain-val" style="font-size:.68rem;">0dB</span>
-        </div>
         <div style="display:flex;justify-content:center;height:68px;min-height:68px;margin-bottom:4px;">
           <div class="gain-meter-wrap" style="height:68px;">
             <div class="gain-meter-bg">
@@ -407,7 +403,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
               min="-60" max="12" step="0.5" value="0" oninput="setInputGainDb(this.value)">
           </div>
         </div>
-        <div style="font-size:.58rem;color:#555;text-align:center;margin-top:2px;" id="mic-db">—</div>
+        <div style="text-align:center;margin-top:3px;"><span class="ctrl-val" id="input-gain-val" data-value="0" style="font-size:.68rem;">0dB</span></div>
       </div>
 
       <!-- SIGNAL GENERATOR module -->
@@ -450,10 +446,6 @@ input.gain-meter-slider::-webkit-slider-thumb {
           </div>
         </div>
         <!-- Combined gain+meter slider -->
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
-          <span style="font-size:.6rem;color:#888;letter-spacing:.1em;">GAIN</span>
-          <span class="ctrl-val" id="test-gain-val" style="font-size:.68rem;">-12dB</span>
-        </div>
         <div style="display:flex;justify-content:center;height:68px;min-height:68px;margin-bottom:4px;">
           <div class="gain-meter-wrap" style="height:68px;">
             <div class="gain-meter-bg">
@@ -470,7 +462,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
               min="-60" max="0" step="0.5" value="-12" oninput="setTestGainDb(this.value)">
           </div>
         </div>
-        <div style="font-size:.58rem;color:#555;text-align:center;margin-top:2px;" id="test-db">—</div>
+        <div style="text-align:center;margin-top:3px;"><span class="ctrl-val" id="test-gain-val" data-value="-12" style="font-size:.68rem;">-12dB</span></div>
 
       </div>
 
@@ -697,10 +689,6 @@ input.gain-meter-slider::-webkit-slider-thumb {
             <option value="">Default (System)</option>
           </select>
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
-          <span style="font-size:.6rem;color:#888;letter-spacing:.1em;">GAIN</span>
-          <span class="ctrl-val" id="output-gain-val" data-value="0" style="font-size:.68rem;">0dB</span>
-        </div>
         <div style="display:flex;justify-content:center;height:68px;min-height:68px;margin-bottom:4px;">
           <!-- Combined gain+meter slider -->
           <div class="gain-meter-wrap" style="height:68px;">
@@ -719,7 +707,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
           </div>
 
         </div>
-        <div style="font-size:.58rem;color:#555;text-align:center;margin-top:2px;" id="out-db">—</div>
+        <div style="text-align:center;margin-top:3px;"><span class="ctrl-val" id="output-gain-val" data-value="0" style="font-size:.68rem;">0dB</span></div>
       </div>
 
     </div><!-- end outputs col-wrap -->
