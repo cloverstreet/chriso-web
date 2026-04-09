@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>about — chriso.org</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#081818; width:100vw; height:100vh; overflow:hidden; }
+  canvas { display:block; position:fixed; top:0; left:0; }
+  #back {
+    position:fixed; top:24px; left:28px;
+    font-family:'Courier New',monospace; font-size:.72rem;
+    letter-spacing:.14em; color:#333; text-decoration:none;
+    text-transform:lowercase; transition:color .25s;
+  }
+  #back:hover { color:#888; }
+  #label {
+    position:fixed; bottom:32px; left:50%; transform:translateX(-50%);
+    font-family:'Courier New',monospace; font-size:.68rem;
+    letter-spacing:.22em; color:#222; text-transform:lowercase;
+    pointer-events:none;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<a id="back" href="/glitchpage/">← chriso.org</a>
+<div id="label">coming soon</div>
+<script>
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const off    = document.createElement('canvas');
+const octx   = off.getContext('2d');
+
+function resize() {
+  canvas.width = off.width  = window.innerWidth;
+  canvas.height= off.height = window.innerHeight;
+  renderText();
+}
+
+function renderText() {
+  octx.clearRect(0, 0, off.width, off.height);
+  const fs = Math.min(off.width * 0.11, 110);
+  octx.font = `900 ${fs}px 'Courier New', monospace`;
+  octx.textAlign = 'center';
+  octx.textBaseline = 'middle';
+  octx.fillStyle = '#f0f0f0';
+  octx.fillText('about me', off.width / 2, off.height / 2);
+}
+resize();
+window.addEventListener('resize', resize);
+
+let energy = 0, mx = 0, my = 0, lx = 0, ly = 0;
+document.addEventListener('mousemove', e => { mx=e.clientX; my=e.clientY; });
+
+let frame = 0;
+function loop() {
+  requestAnimationFrame(loop);
+  const vx = mx-lx, vy = my-ly; lx=mx; ly=my;
+  energy = Math.min(1, energy*0.92 + Math.sqrt(vx*vx+vy*vy)*0.004);
+  frame++;
+
+  const W = canvas.width, H = canvas.height;
+  ctx.fillStyle = 'rgba(8,24,24,0.18)';
+  ctx.fillRect(0,0,W,H);
+
+  const slices = Math.floor(energy * 10);
+  for (let i=0; i<slices; i++) {
+    const sy = Math.random()*H;
+    const sh = 2 + Math.random()*12;
+    const sx = (Math.random()-0.5) * energy * 60;
+    ctx.drawImage(off, 0,sy,W,sh, sx,sy,W,sh);
+  }
+  // chromatic split
+  if (energy > 0.05) {
+    const ab = energy * 6;
+    ctx.globalCompositeOperation='screen';
+    ctx.globalAlpha = 0.15 * energy;
+    ctx.drawImage(off, -ab, 0);
+    ctx.drawImage(off,  ab, 0);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation='source-over';
+  }
+  ctx.drawImage(off, 0, 0);
+}
+loop();
+</script>
+</body>
+</html>

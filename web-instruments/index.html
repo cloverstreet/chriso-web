@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>hello worl</title>
+<title>web instruments — chriso.org</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -65,20 +65,32 @@
 
 <script>
 
-// ── Static nav links ──────────────────────────────────────────────────
+// ── Bootstrap nav from instruments list ──────────────────────────────
 const nav = document.getElementById('nav');
 
-[
-  { label: 'about',           href: '/about/' },
-  { label: 'web instruments', href: '/web-instruments/' },
-  { label: 'lessons',         href: '/lessons/' }
-].forEach(({label, href}) => {
-  const a = document.createElement('a');
-  a.href = href;
-  a.textContent = label;
-  nav.appendChild(a);
-});
-wireNavAudio();
+fetch('/web-instruments/list.php')
+  .then(r => r.json())
+  .then(items => {
+    items.forEach(item => {
+      const a = document.createElement('a');
+      a.href = item.href;
+      a.textContent = item.label;
+      nav.appendChild(a);
+    });
+    wireNavAudio();
+  })
+  .catch(() => {
+    // fallback static list
+    [
+      { label: 'fx processor',     href: '/web-instruments/fx-processor/' },
+      { label: 'luminous strings', href: '/web-instruments/luminous-strings.html' }
+    ].forEach(({label, href}) => {
+      const a = document.createElement('a');
+      a.href = href; a.textContent = label;
+      nav.appendChild(a);
+    });
+    wireNavAudio();
+  });
 
 // ── Show/hide nav based on mouse position ─────────────────────────────
 let navVisible  = false;
@@ -116,12 +128,12 @@ function resize() {
 
 function renderText() {
   octx.clearRect(0, 0, off.width, off.height);
-  const fs = Math.min(off.width * 0.13, 130);
+  const fs = Math.min(off.width * 0.085, 90);
   octx.font         = `900 ${fs}px 'Courier New', monospace`;
   octx.textAlign    = 'center';
   octx.textBaseline = 'middle';
   octx.fillStyle    = '#f0f0f0';
-  octx.fillText('ChristopherO!', off.width / 2, off.height / 2);
+  octx.fillText('web instruments', off.width / 2, off.height / 2);
 }
 
 resize();
