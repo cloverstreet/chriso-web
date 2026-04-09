@@ -62,6 +62,19 @@ body {
 .global-slot.saved:hover { border-color:#5a5; }
 /* Slot 0 — home — always blue-lit */
 .global-slot[data-slot="0"] { border-color:#2a5a7a; color:#5a9aaa; }
+/* Sig-gen mode toggle */
+.sgmode-btn {
+  flex:1; padding:3px 0; background:transparent; border:none;
+  color:#555; font-family:'Courier New',monospace; font-size:.58rem;
+  letter-spacing:.1em; cursor:pointer; transition:all .12s; text-transform:uppercase;
+}
+.sgmode-btn.sgmode-active { background:rgba(60,100,60,.35); color:#7ba; }
+.sgmode-btn:hover { color:#888; }
+/* ADSR rows */
+.adsr-row { display:flex; align-items:center; gap:3px; margin-bottom:3px; }
+.adsr-lbl { font-size:.6rem; color:#666; letter-spacing:.05em; min-width:16px; flex-shrink:0; }
+.adsr-sl  { flex:1; min-width:0; height:14px; cursor:pointer; }
+.adsr-val { font-size:.58rem; min-width:32px; text-align:right; cursor:text; }
 .global-slot[data-slot="0"].saved { border-color:#3a7aaa; color:#6aaee0; }
 .global-slot[data-slot="0"]:hover { border-color:#5a9aaa; color:#8acce0; }
 </style>
@@ -416,10 +429,24 @@ input.gain-meter-slider::-webkit-slider-thumb {
       <!-- SIGNAL GENERATOR module -->
       <div class="module half" id="siggen-module">
         <div class="mod-head">
+          <div class="head-presets" id="siggen-head-presets">
+            <button class="head-preset-slot" data-slot="0" data-fx="siggen" onclick="handleHeadPreset(this)">1</button>
+            <button class="head-preset-slot" data-slot="1" data-fx="siggen" onclick="handleHeadPreset(this)">2</button>
+            <button class="head-preset-slot" data-slot="2" data-fx="siggen" onclick="handleHeadPreset(this)">3</button>
+            <button class="head-preset-slot" data-slot="3" data-fx="siggen" onclick="handleHeadPreset(this)">4</button>
+            <button class="head-preset-slot" data-slot="4" data-fx="siggen" onclick="handleHeadPreset(this)">5</button>
+            <button class="head-preset-slot" data-slot="5" data-fx="siggen" onclick="handleHeadPreset(this)">6</button>
+          </div>
           <span class="mod-title">SIG GEN</span>
           <button class="byp-btn off" id="test-enable-btn" onclick="toggleTestTone()">OFF</button>
         </div>
-        <div class="ctrl">
+        <!-- Mode selector -->
+        <div style="display:flex;gap:0;margin-bottom:7px;border:1px solid #1e1e1e;border-radius:2px;overflow:hidden;">
+          <button class="sgmode-btn sgmode-active" id="sgmode-steady" onclick="setSigGenMode('steady')">STEADY</button>
+          <button class="sgmode-btn" id="sgmode-pulsed" onclick="setSigGenMode('pulsed')">PULSED</button>
+        </div>
+        <!-- Waveform -->
+        <div class="ctrl" style="margin-bottom:6px;">
           <label>WAVEFORM</label>
           <select id="test-wave" onchange="setTestWave(this.value)">
             <option value="sine">Sine</option>
@@ -429,47 +456,81 @@ input.gain-meter-slider::-webkit-slider-thumb {
             <option value="noise">White Noise</option>
           </select>
         </div>
-        <div id="test-freq-ctrl" style="margin-bottom:8px;">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
-            <label style="font-size:.68rem;letter-spacing:.12em;color:#aaa;">FREQ (log)</label>
-            <span class="editable-val" id="test-freq-val" data-value="110" style="margin-left:auto;">110 Hz</span>
-            <span style="color:#888;font-size:.66rem;font-style:italic;" id="test-note-val">~A2</span>
+        <!-- Freq -->
+        <div id="test-freq-ctrl" style="margin-bottom:6px;">
+          <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px;">
+            <label style="font-size:.65rem;letter-spacing:.1em;color:#888;">FREQ</label>
+            <span class="ctrl-val" id="test-freq-val" data-value="110" style="font-size:.68rem;margin-left:auto;">110 Hz</span>
+            <span style="color:#666;font-size:.62rem;font-style:italic;" id="test-note-val">~A2</span>
           </div>
           <input type="range" id="test-freq-sl" min="0" max="1000" step="1" value="263"
                  oninput="setTestFreqPos(this.value)" style="width:100%;">
         </div>
-        <!-- PAN -->
-        <div style="margin-bottom:6px;">
-          <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
-            <label style="font-size:.68rem;letter-spacing:.12em;color:#aaa;">PAN</label>
-            <span class="ctrl-val" id="test-pan-val" data-value="0" style="font-size:.72rem;">C</span>
-          </div>
-          <div style="position:relative;">
-            <input type="range" id="test-pan-sl" min="-1" max="1" step="0.01" value="0"
-                   oninput="setTestPan(this.value)" style="width:100%;">
-            <!-- Center mark -->
-            <div style="position:absolute;top:-6px;left:50%;transform:translateX(-50%);
-                        width:1px;height:5px;background:#555;pointer-events:none;"></div>
+        <!-- Pan (compact) -->
+        <div style="margin-bottom:5px;">
+          <div style="display:flex;align-items:center;gap:3px;margin-bottom:1px;">
+            <label style="font-size:.62rem;letter-spacing:.1em;color:#888;">PAN</label>
+            <div style="position:relative;flex:1;">
+              <input type="range" id="test-pan-sl" min="-1" max="1" step="0.01" value="0"
+                     oninput="setTestPan(this.value)" style="width:100%;">
+              <div style="position:absolute;top:-5px;left:50%;transform:translateX(-50%);
+                          width:1px;height:4px;background:#444;pointer-events:none;"></div>
+            </div>
+            <span class="ctrl-val" id="test-pan-val" data-value="0" style="font-size:.65rem;min-width:24px;text-align:right;">C</span>
           </div>
         </div>
-        <!-- Combined gain+meter slider -->
-        <div style="display:flex;justify-content:center;height:68px;min-height:68px;margin-bottom:4px;">
-          <div class="gain-meter-wrap" style="height:68px;">
-            <div class="gain-meter-bg">
-              <div class="gain-meter-bar">
-                <div class="gain-meter-level" id="test-level-l" style="height:0%"></div>
-                <div class="gain-meter-peak" id="test-pk-l" style="bottom:0%"></div>
-              </div>
-              <div class="gain-meter-bar">
-                <div class="gain-meter-level" id="test-level-r" style="height:0%"></div>
-                <div class="gain-meter-peak" id="test-pk-r" style="bottom:0%"></div>
+        <!-- ADSR + gain/meter side by side -->
+        <div style="display:flex;gap:5px;align-items:flex-start;">
+          <!-- ADSR panel (hidden in steady mode) -->
+          <div id="siggen-adsr" style="display:none;flex:1;min-width:0;">
+            <div style="font-size:.54rem;color:#444;letter-spacing:.12em;text-transform:uppercase;margin-bottom:4px;">Envelope</div>
+            <div class="adsr-row">
+              <span class="adsr-lbl">A</span>
+              <input type="range" class="adsr-sl" id="adsr-a-sl" min="1" max="2000" step="1" value="10" oninput="setAdsrA(this.value)">
+              <span class="adsr-val ctrl-val" id="adsr-a-val" data-value="10">10ms</span>
+            </div>
+            <div class="adsr-row">
+              <span class="adsr-lbl">D</span>
+              <input type="range" class="adsr-sl" id="adsr-d-sl" min="1" max="2000" step="1" value="30" oninput="setAdsrD(this.value)">
+              <span class="adsr-val ctrl-val" id="adsr-d-val" data-value="30">30ms</span>
+            </div>
+            <div class="adsr-row">
+              <span class="adsr-lbl">S</span>
+              <input type="range" class="adsr-sl" id="adsr-s-sl" min="10" max="5000" step="10" value="100" oninput="setAdsrS(this.value)">
+              <span class="adsr-val ctrl-val" id="adsr-s-val" data-value="100">100ms</span>
+            </div>
+            <div class="adsr-row">
+              <span class="adsr-lbl">R</span>
+              <input type="range" class="adsr-sl" id="adsr-r-sl" min="1" max="2000" step="1" value="50" oninput="setAdsrR(this.value)">
+              <span class="adsr-val ctrl-val" id="adsr-r-val" data-value="50">50ms</span>
+            </div>
+            <div class="adsr-row" style="margin-top:5px;padding-top:4px;border-top:1px solid #1a1a1a;">
+              <span class="adsr-lbl" title="Rate">♩</span>
+              <input type="range" class="adsr-sl" id="pulse-rate-sl" min="20" max="5000" step="10" value="1000" oninput="setPulseRate(this.value)">
+              <span class="adsr-val ctrl-val" id="pulse-rate-val" data-value="1000">1000</span>
+            </div>
+          </div>
+          <!-- Gain+meter -->
+          <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">
+            <div style="display:flex;justify-content:center;height:68px;min-height:68px;margin-bottom:3px;">
+              <div class="gain-meter-wrap" style="height:68px;">
+                <div class="gain-meter-bg">
+                  <div class="gain-meter-bar">
+                    <div class="gain-meter-level" id="test-level-l" style="height:0%"></div>
+                    <div class="gain-meter-peak" id="test-pk-l" style="bottom:0%"></div>
+                  </div>
+                  <div class="gain-meter-bar">
+                    <div class="gain-meter-level" id="test-level-r" style="height:0%"></div>
+                    <div class="gain-meter-peak" id="test-pk-r" style="bottom:0%"></div>
+                  </div>
+                </div>
+                <input class="gain-meter-slider" type="range" id="test-gain-sl"
+                  min="-60" max="0" step="0.5" value="-12" oninput="setTestGainDb(this.value)">
               </div>
             </div>
-            <input class="gain-meter-slider" type="range" id="test-gain-sl"
-              min="-60" max="0" step="0.5" value="-12" oninput="setTestGainDb(this.value)">
+            <span class="ctrl-val" id="test-gain-val" data-value="-12" style="font-size:.65rem;">-12dB</span>
           </div>
         </div>
-        <div style="text-align:center;margin-top:3px;"><span class="ctrl-val" id="test-gain-val" data-value="-12" style="font-size:.68rem;">-12dB</span></div>
 
       </div>
 
@@ -818,6 +879,11 @@ let systemStream=null, systemSource=null, sysNativeGain=null; // system audio (n
 let noiseBuffer=null; // kept for compat
 let testEnabled=false, currentTestWave='sine';
 let testMasterGain; // alias to testMasterGainTone.gain for compat
+let testEnvelope=null;      // Tone.AmplitudeEnvelope
+let testMode='steady';      // 'steady'|'pulsed'
+let pulseTimer=null;        // setInterval handle
+let pulseRateMs=1000;       // ms between pulses
+let adsrA=10, adsrD=30, adsrSMs=100, adsrR=50; // ADSR times in ms
 let currentDeviceId='', currentChannel='mix', numChannels=1;
 let inputMuted=false, outputMuted=false;
 let pitchBypassed=false, delayBypassed=false;
@@ -857,8 +923,11 @@ async function initAudio() {
     testOscGainTone.connect(testMasterGainTone);
     testNoiseGainTone.connect(testMasterGainTone);
     testPanner = new Tone.Panner(0);
-    testMasterGainTone.connect(testPanner);
+    testEnvelope = new Tone.AmplitudeEnvelope({attack:0.01,decay:0.03,sustain:0.75,release:0.05});
+    testMasterGainTone.connect(testEnvelope);
+    testEnvelope.connect(testPanner);
     testPanner.connect(preFxGain); // Tone→Tone ✓ (via panner)
+    testEnvelope.triggerAttack(); // open fully in steady mode
     testMasterGain = testMasterGainTone; // alias for backward-compat refs
 
     // System audio (native; handled separately in toggleSystemAudio)
@@ -867,7 +936,7 @@ async function initAudio() {
     // Analysers for per-source metering
     micAnalyser  = rawCtx.createAnalyser(); micAnalyser.fftSize=256; micAnalyser.smoothingTimeConstant=0.8;
     testAnalyser = rawCtx.createAnalyser(); testAnalyser.fftSize=256; testAnalyser.smoothingTimeConstant=0.8;
-    testMasterGainTone.connect(testAnalyser); // Tone→native analyser ✓
+    testEnvelope.connect(testAnalyser); // Tone→native analyser (post-envelope) ✓
 
     // ── Signal graph (Tone.js throughout) ──────────────────────
     micGainNode.connect(preFxGain);
@@ -1008,10 +1077,17 @@ async function changeOutputDevice(){
 // ── Test tone ────────────────────────────────────────────────────
 function toggleTestTone(){
   testEnabled=!testEnabled;
-  if(testMasterGainTone)testMasterGainTone.gain.rampTo(testEnabled?dbToGain(parseFloat(document.getElementById('test-gain-sl').value)):0,0.05);
-  const btn=document.getElementById('test-enable-btn'); const tb=document.getElementById('test-enable-btn');
-  tb.textContent=testEnabled?'ON':'OFF';
-  tb.classList.toggle('off',!testEnabled);
+  const tb=document.getElementById('test-enable-btn');
+  tb.textContent=testEnabled?'ON':'OFF'; tb.classList.toggle('off',!testEnabled);
+  if(testEnabled){
+    if(testMasterGainTone) testMasterGainTone.gain.rampTo(dbToGain(parseFloat(document.getElementById('test-gain-sl').value)),paramRampTime);
+    if(testMode==='pulsed') startPulse();
+    else if(testEnvelope) testEnvelope.triggerAttack();
+  } else {
+    stopPulse();
+    if(testEnvelope) testEnvelope.triggerRelease();
+    if(testMasterGainTone) testMasterGainTone.gain.rampTo(0,paramRampTime);
+  }
 }
 
 function setTestPan(v) {
@@ -1026,6 +1102,43 @@ function setTestPan(v) {
   }
 }
 
+function setSigGenMode(mode){
+  testMode=mode;
+  const adsr=document.getElementById('siggen-adsr');
+  const bs=document.getElementById('sgmode-steady'), bp=document.getElementById('sgmode-pulsed');
+  if(mode==='pulsed'){
+    if(adsr) adsr.style.display='flex';
+    bs.classList.remove('sgmode-active'); bp.classList.add('sgmode-active');
+    if(testEnabled) startPulse();
+  } else {
+    if(adsr) adsr.style.display='none';
+    bs.classList.add('sgmode-active'); bp.classList.remove('sgmode-active');
+    stopPulse();
+    if(testEnvelope) testEnvelope.triggerAttack();
+  }
+}
+function startPulse(){
+  stopPulse();
+  function fire(){
+    if(!testEnvelope||!testEnabled) return;
+    const dur=adsrA/1000+adsrD/1000+adsrSMs/1000;
+    testEnvelope.triggerAttackRelease(dur, Tone.now());
+  }
+  fire();
+  pulseTimer=setInterval(fire, pulseRateMs);
+}
+function stopPulse(){
+  if(pulseTimer){clearInterval(pulseTimer); pulseTimer=null;}
+}
+function setAdsrA(v){ adsrA=parseInt(v); if(testEnvelope)testEnvelope.attack=adsrA/1000; const el=document.getElementById('adsr-a-val'); if(el){el.textContent=adsrA+'ms'; el.dataset.value=adsrA;} }
+function setAdsrD(v){ adsrD=parseInt(v); if(testEnvelope)testEnvelope.decay=adsrD/1000; const el=document.getElementById('adsr-d-val'); if(el){el.textContent=adsrD+'ms'; el.dataset.value=adsrD;} }
+function setAdsrS(v){ adsrSMs=parseInt(v); const el=document.getElementById('adsr-s-val'); if(el){el.textContent=adsrSMs+'ms'; el.dataset.value=adsrSMs;} }
+function setAdsrR(v){ adsrR=parseInt(v); if(testEnvelope)testEnvelope.release=adsrR/1000; const el=document.getElementById('adsr-r-val'); if(el){el.textContent=adsrR+'ms'; el.dataset.value=adsrR;} }
+function setPulseRate(v){
+  pulseRateMs=parseInt(v);
+  const el=document.getElementById('pulse-rate-val'); if(el){el.textContent=pulseRateMs+'ms'; el.dataset.value=pulseRateMs;}
+  if(pulseTimer) startPulse(); // restart with new rate
+}
 function setTestWave(wave){
   currentTestWave=wave;
   const isNoise=wave==='noise';
@@ -1118,10 +1231,12 @@ function showBoard() {
 
 // ── Meters ────────────────────────────────────────────────────────────
 function animateMeters(){
-  // Output meter — stereo (channels:2)
-  const oVals = outputMeter.getValue();
-  const oLin_l = Math.max(0, Array.isArray(oVals) ? (oVals[0]||0) : (oVals||0));
-  const oLin_r = Math.max(0, Array.isArray(oVals) ? (oVals[1]||0) : (oVals||0));
+  // Output meter — mono signal, pan-compensated display
+  const oMono = Math.max(0, (() => { const v=outputMeter.getValue(); return Array.isArray(v)?Math.max(v[0]||0,v[1]||0):(v||0); })());
+  const oPan = testPanner ? testPanner.pan.value : 0;
+  const oTheta = (oPan+1)/2*Math.PI/2;
+  const oLin_l = oMono * Math.cos(oTheta);
+  const oLin_r = oMono * Math.sin(oTheta);
   const tMono = getAnalyserRMS(testAnalyser);
   // Sig gen meter — pan-aware equal-power L/R
   const tPan = (testPanner ? testPanner.pan.value : 0);
@@ -1158,6 +1273,19 @@ function toggleMute(which){
 // ── Per-FX bypass ─────────────────────────────────────────────────
 function toggleFxBypass(fx){
   const r=0.04;
+  if(fx==='siggen'){
+    setSigGenMode(s.mode||'steady');
+    document.getElementById('test-wave').value=s.wave; setTestWave(s.wave);
+    if(s.freqHz) setTestFreqHz(s.freqHz);
+    if(s.gainDb!==undefined){document.getElementById('test-gain-sl').value=s.gainDb; setTestGainDb(s.gainDb);}
+    if(s.pan!==undefined){document.getElementById('test-pan-sl').value=s.pan; setTestPan(s.pan);}
+    if(s.adsrA!==undefined){document.getElementById('adsr-a-sl').value=s.adsrA; setAdsrA(s.adsrA);}
+    if(s.adsrD!==undefined){document.getElementById('adsr-d-sl').value=s.adsrD; setAdsrD(s.adsrD);}
+    if(s.adsrSMs!==undefined){document.getElementById('adsr-s-sl').value=s.adsrSMs; setAdsrS(s.adsrSMs);}
+    if(s.adsrR!==undefined){document.getElementById('adsr-r-sl').value=s.adsrR; setAdsrR(s.adsrR);}
+    if(s.pulseRateMs!==undefined){document.getElementById('pulse-rate-sl').value=s.pulseRateMs; setPulseRate(s.pulseRateMs);}
+    return;
+  }
   if(fx==='pitch'){
     pitchBypassed=!pitchBypassed;
     if(pitchBypassed){pitchDryG.gain.rampTo(1,r);pitchWetG.gain.rampTo(0,r);}
@@ -1226,6 +1354,7 @@ function handleHeadPreset(btn) {
   else                { loadFxPreset(fx, slot); }
 }
 function getFxState(fx){
+  if(fx==='siggen') return {mode:testMode,wave:document.getElementById('test-wave').value,freqHz:freqLog.toVal(parseFloat(document.getElementById('test-freq-sl').value)),gainDb:parseFloat(document.getElementById('test-gain-sl').value),pan:parseFloat(document.getElementById('test-pan-sl').value),adsrA,adsrD,adsrSMs,adsrR,pulseRateMs};
   if(fx==='pitch') return {window:parseFloat(document.getElementById('pitch-window').value),semi:parseFloat(document.getElementById('pitch-semi').value),wetdry:parseFloat(document.getElementById('pitch-wetdry').value)};
   if(fx==='delay') return {time:parseFloat(document.getElementById('delay-time-val').dataset.value||0.5),fb:parseFloat(document.getElementById('delay-fb').value),dry:parseFloat(document.getElementById('delay-dry').value),wet:parseFloat(document.getElementById('delay-wet').value)};
 }
@@ -1291,7 +1420,7 @@ function handleGlobalPreset(btn){
   }
 }
 function loadPresetUI(){
-  ['pitch','delay'].forEach(fx=>{
+  ['pitch','delay','siggen'].forEach(fx=>{
     const slots=document.querySelectorAll(`#${fx}-head-presets .head-preset-slot`);
     slots.forEach((b,i)=>{b.classList.toggle('saved',!!localStorage.getItem(`fx_${fx}_${i}`));});
   });
@@ -1351,9 +1480,13 @@ function setupDblClick(){
   document.getElementById('delay-time').addEventListener('dblclick',e=>{
     e.preventDefault(); setDelayTimeSec(0.5);
   });
-  // Test freq: dblclick → reset to 440Hz
+  // Test freq: dblclick → reset to 110Hz
   document.getElementById('test-freq-sl').addEventListener('dblclick',e=>{
     e.preventDefault(); setTestFreqHz(110);
+  });
+  // Pan: dblclick → center
+  document.getElementById('test-pan-sl').addEventListener('dblclick',e=>{
+    e.preventDefault(); document.getElementById('test-pan-sl').value=0; setTestPan(0);
   });
 }
 
@@ -1381,6 +1514,11 @@ function setupEditables(){
   makeEditableSafe(document.getElementById('delay-wet-val'),{min:0,max:1,slider:document.getElementById('delay-wet'),format:v=>v<0.001?'-inf':fmtDb(gainToDb(v)),parse:s=>s.trim()==='-inf'?0:dbToGain(parseFloat(s)),onSet:v=>{document.getElementById('delay-wet').value=v;setDelayWet(v);}});
   makeEditableSafe(document.getElementById('test-pan-val'),{min:-1,max:1,slider:document.getElementById('test-pan-sl'),format:v=>Math.abs(v)<0.03?'C':(v<0?'L':'R')+Math.round(Math.abs(v)*100)+'%',parse:s=>{if(s.trim()==='C')return 0;const m=s.match(/([LR])(\d+)/i);if(m)return m[1].toUpperCase()==='L'?-m[2]/100:m[2]/100;return parseFloat(s);},onSet:v=>{document.getElementById('test-pan-sl').value=v;setTestPan(v);}});
   makeEditableSafe(document.getElementById('test-gain-val'),{min:-60,max:0,slider:document.getElementById('test-gain-sl'),format:v=>Math.round(v)+'dB',parse:s=>parseFloat(s),onSet:v=>{document.getElementById('test-gain-sl').value=v;setTestGainDb(v);}});
+  makeEditableSafe(document.getElementById('adsr-a-val'),{min:1,max:2000,slider:document.getElementById('adsr-a-sl'),format:v=>Math.round(v)+'ms',parse:s=>parseFloat(s),onSet:v=>{document.getElementById('adsr-a-sl').value=v;setAdsrA(v);}});
+  makeEditableSafe(document.getElementById('adsr-d-val'),{min:1,max:2000,slider:document.getElementById('adsr-d-sl'),format:v=>Math.round(v)+'ms',parse:s=>parseFloat(s),onSet:v=>{document.getElementById('adsr-d-sl').value=v;setAdsrD(v);}});
+  makeEditableSafe(document.getElementById('adsr-s-val'),{min:10,max:5000,slider:document.getElementById('adsr-s-sl'),format:v=>Math.round(v)+'ms',parse:s=>parseFloat(s),onSet:v=>{document.getElementById('adsr-s-sl').value=v;setAdsrS(v);}});
+  makeEditableSafe(document.getElementById('adsr-r-val'),{min:1,max:2000,slider:document.getElementById('adsr-r-sl'),format:v=>Math.round(v)+'ms',parse:s=>parseFloat(s),onSet:v=>{document.getElementById('adsr-r-sl').value=v;setAdsrR(v);}});
+  makeEditableSafe(document.getElementById('pulse-rate-val'),{min:20,max:5000,slider:document.getElementById('pulse-rate-sl'),format:v=>Math.round(v)+'ms',parse:s=>parseFloat(s),onSet:v=>{document.getElementById('pulse-rate-sl').value=v;setPulseRate(v);}});
 }
 
 // ═══════════════════════════════════════════════════════════════════════
