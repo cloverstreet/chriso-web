@@ -62,6 +62,11 @@ body {
 .global-slot.saved:hover { border-color:#5a5; }
 /* Slot 0 — home — always blue-lit */
 .global-slot[data-slot="0"] { border-color:#2a5a7a; color:#5a9aaa; }
+/* Capture source info rows */
+.cap-info { margin-bottom:5px; display:flex; flex-direction:column; gap:2px; }
+.cap-row  { display:flex; align-items:baseline; gap:3px; min-width:0; }
+.cap-key  { font-size:.58rem; color:#555; letter-spacing:.08em; text-transform:uppercase; flex-shrink:0; width:30px; }
+.cap-val  { font-size:.60rem; color:#888; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
 /* Sig-gen mode toggle */
 .sgmode-btn {
   flex:1; padding:3px 0; background:transparent; border:none;
@@ -541,20 +546,39 @@ input.gain-meter-slider::-webkit-slider-thumb {
           <span class="mod-title">TAB CAPTURE</span>
           <button class="byp-btn off" id="sys-audio-btn" onclick="toggleSystemAudio()">OFF</button>
         </div>
-        <div style="font-size:.65rem;color:#555;line-height:1.5;margin-bottom:8px;">
-          Capture audio from a browser tab or system output. On macOS, choose a Chrome Tab for audio.
-        </div>
+        <!-- Capture trigger button -->
         <button class="toggle-btn" id="sys-audio-label-btn" onclick="toggleSystemAudio()"
-          style="font-size:.58rem;letter-spacing:.04em;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-          SELECT SOURCE
+          style="font-size:.58rem;letter-spacing:.06em;width:100%;padding:5px 0;margin-bottom:6px;">
+          ▶ SELECT SOURCE
         </button>
-        <div class="mini-hmeter-wrap" id="sys-meter" style="margin-top:6px;">
-          <div class="mini-hmeter-l" id="sys-m-l" style="width:0%"></div>
-          <div class="mini-hmeter-r" id="sys-m-r" style="width:0%"></div>
-          <div class="mini-hmeter-peak-l" id="sys-pk-l" style="left:0"></div>
-          <div class="mini-hmeter-peak-r" id="sys-pk-r" style="left:0"></div>
+        <!-- Source info -->
+        <div class="cap-info">
+          <div class="cap-row"><span class="cap-key">LABEL</span><span class="cap-val" id="cap-label">—</span></div>
+          <div class="cap-row"><span class="cap-key">TYPE</span><span class="cap-val" id="cap-type">—</span></div>
+          <div class="cap-row" style="gap:2px;">
+            <span class="cap-key">CH</span><span class="cap-val" id="cap-ch" style="flex:0 0 auto;min-width:20px;">—</span>
+            <span class="cap-key" style="width:auto;margin-left:5px;">RATE</span><span class="cap-val" id="cap-rate">—</span>
+          </div>
+          <div class="cap-row"><span class="cap-key">DRM?</span><span class="cap-val" id="cap-drm">—</span></div>
         </div>
-        <div class="mini-hmeter-db" id="sys-db">—</div>
+        <!-- Gain + vertical meter (standard) -->
+        <div style="display:flex;justify-content:center;height:68px;min-height:68px;margin-bottom:4px;margin-top:5px;">
+          <div class="gain-meter-wrap" style="height:68px;">
+            <div class="gain-meter-bg">
+              <div class="gain-meter-bar">
+                <div class="gain-meter-level" id="sys-level-l" style="height:0%"></div>
+                <div class="gain-meter-peak" id="sys-pk-l" style="bottom:0%"></div>
+              </div>
+              <div class="gain-meter-bar">
+                <div class="gain-meter-level" id="sys-level-r" style="height:0%"></div>
+                <div class="gain-meter-peak" id="sys-pk-r" style="bottom:0%"></div>
+              </div>
+            </div>
+            <input class="gain-meter-slider" type="range" id="sys-gain-sl"
+              min="-60" max="12" step="0.5" value="0" oninput="setSysGainDb(this.value)">
+          </div>
+        </div>
+        <div style="text-align:center;margin-top:3px;"><span class="ctrl-val" id="sys-gain-val" data-value="0" style="font-size:.68rem;">0dB</span></div>
       </div>
 
     </div><!-- end inputs col-wrap -->
@@ -761,6 +785,16 @@ input.gain-meter-slider::-webkit-slider-thumb {
             <option value="">Default (System)</option>
           </select>
         </div>
+        <div class="ctrl" style="margin-bottom:3px;">
+          <label>CHANNELS</label>
+          <select id="output-channels" onchange="onOutChannelChange()">
+            <option value="0">Ch 1–2</option>
+          </select>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;padding:0 1px;">
+          <span style="font-size:.58rem;color:#555;letter-spacing:.1em;">MAX CH</span>
+          <span style="font-size:.60rem;color:#666;" id="out-maxch">—</span>
+        </div>
         <div style="display:flex;justify-content:center;height:68px;min-height:68px;margin-bottom:4px;">
           <!-- Combined gain+meter slider -->
           <div class="gain-meter-wrap" style="height:68px;">
@@ -875,7 +909,9 @@ let testOscTone=null, testNoiseTone=null, testOscGainTone, testNoiseGainTone, te
 let pitchShift, pitchDryG, pitchWetG;
 let delayNode, feedbackGain, delayDryGain, delayWetGain;
 let outputGainNode, outputMuteNode, outputMeter;
-let systemStream=null, systemSource=null, sysNativeGain=null; // system audio (native — getDisplayMedia)
+let systemStream=null, systemSource=null, sysNativeGain=null; // system audio
+let sysGainDb=0, sysAnalyserL=null, sysAnalyserR=null, sysSplit=null; // capture metering
+let outRouterSplit=null, outRouterMerge=null, selectedOutChPair=[0,1]; // output routing
 let noiseBuffer=null; // kept for compat
 let testEnabled=false, currentTestWave='sine';
 let testMasterGain; // alias to testMasterGainTone.gain for compat
@@ -1037,41 +1073,132 @@ async function changeInputDevice() {
 function changeInputChannel() {} // channel splitting limited by browser — no-op
 async function toggleSystemAudio(){
   const btn=document.getElementById('sys-audio-btn');
+  const capBtn=document.getElementById('sys-audio-label-btn');
   if(systemStream){
-    if(systemSource){try{systemSource.disconnect();}catch(e){}}
-    systemStream.getTracks().forEach(t=>t.stop());
-    systemStream=null; systemSource=null;
+    // stop
+    if(sysSplit){try{sysSplit.disconnect();}catch(e){}} sysSplit=null;
+    sysAnalyserL=null; sysAnalyserR=null;
+    if(systemSource){try{systemSource.disconnect();}catch(e){}} systemSource=null;
+    systemStream.getTracks().forEach(t=>t.stop()); systemStream=null;
     sysNativeGain.gain.setTargetAtTime(0,rawCtx.currentTime,0.02);
-    btn.textContent='OFF'; btn.classList.remove('on');
+    btn.textContent='OFF'; btn.classList.remove('on'); btn.classList.add('off');
+    capBtn.textContent='▶ SELECT SOURCE'; capBtn.style.borderColor='';
+    ['cap-label','cap-type','cap-ch','cap-rate','cap-drm'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent='—';});
+    const gl=document.getElementById('sys-level-l'), gr=document.getElementById('sys-level-r');
+    if(gl)gl.style.height='0%'; if(gr)gr.style.height='0%';
     return;
   }
-  btn.textContent='...'; btn.disabled=true;
+  btn.textContent='...'; btn.disabled=true; capBtn.textContent='⌛ selecting...';
   try {
     const ds=await navigator.mediaDevices.getDisplayMedia({audio:true, video:{width:1,height:1,frameRate:1}});
-    ds.getVideoTracks().forEach(t=>t.stop()); // discard video
+    ds.getVideoTracks().forEach(t=>t.stop());
     const aTracks=ds.getAudioTracks();
-    if(!aTracks.length){btn.textContent='NO AUDIO — share a tab/window with audio'; btn.disabled=false; return;}
+    if(!aTracks.length){
+      btn.textContent='OFF'; btn.disabled=false; capBtn.textContent='▶ SELECT SOURCE';
+      const d=document.getElementById('cap-type'); if(d)d.textContent='no audio — check "Share tab audio"';
+      return;
+    }
+    const track=aTracks[0], s=track.getSettings();
+    const label=track.label||'unknown source';
+    const lc=label.toLowerCase();
+    const srcType=lc.includes('tab')?'browser tab':lc.includes('window')?'window':lc.includes('screen')||lc.includes('display')?'screen/desktop':'unknown';
+    const chCount=s.channelCount||'?';
+    const rate=s.sampleRate?Math.round(s.sampleRate/100)/10+'k':'?';
+    const d=id=>document.getElementById(id);
+    if(d('cap-label')){d('cap-label').textContent=label; d('cap-label').title=label;}
+    if(d('cap-type')) d('cap-type').textContent=srcType;
+    if(d('cap-ch'))   d('cap-ch').textContent=chCount+'ch';
+    if(d('cap-rate')) d('cap-rate').textContent=rate+'Hz';
+    if(d('cap-drm'))  d('cap-drm').textContent='monitoring...';
     systemStream=new MediaStream(aTracks);
     systemSource=rawCtx.createMediaStreamSource(systemStream);
     systemSource.connect(sysNativeGain);
-    sysNativeGain.gain.setTargetAtTime(1,rawCtx.currentTime,0.02);
-    // Bridge native→Tone: connect to preFxGain's input node
-    try { sysNativeGain.connect(preFxGain.input); } catch(e) { console.warn('sys audio bridge:',e); }
-    btn.textContent='ON'; btn.classList.add('on'); btn.disabled=false;
-    aTracks[0].addEventListener('ended',()=>{
+    sysNativeGain.gain.setTargetAtTime(dbToGain(sysGainDb),rawCtx.currentTime,0.02);
+    // Set up stereo analysers for metering
+    sysSplit=rawCtx.createChannelSplitter(2);
+    sysAnalyserL=rawCtx.createAnalyser(); sysAnalyserL.fftSize=256; sysAnalyserL.smoothingTimeConstant=0.8;
+    sysAnalyserR=rawCtx.createAnalyser(); sysAnalyserR.fftSize=256; sysAnalyserR.smoothingTimeConstant=0.8;
+    sysNativeGain.connect(sysSplit);
+    sysSplit.connect(sysAnalyserL,0); sysSplit.connect(sysAnalyserR,1);
+    // Bridge to Tone.js FX chain
+    try { sysNativeGain.connect(preFxGain.input); } catch(e) { console.warn('sys bridge:',e); }
+    btn.textContent='ON'; btn.classList.remove('off'); btn.classList.add('on'); btn.disabled=false;
+    capBtn.textContent='■ STOP CAPTURE'; capBtn.style.borderColor='#4a9a4a';
+    // DRM detection interval
+    let drmChecks=0;
+    const drmTimer=setInterval(()=>{
+      if(!systemStream){clearInterval(drmTimer);return;}
+      const rmsL=getAnalyserRMS(sysAnalyserL), rmsR=getAnalyserRMS(sysAnalyserR);
+      drmChecks++;
+      const dEl=document.getElementById('cap-drm');
+      if(rmsL>0.0001||rmsR>0.0001){if(dEl)dEl.textContent='✓ signal OK'; clearInterval(drmTimer);}
+      else if(drmChecks>10){if(dEl)dEl.textContent='⚠ silent — DRM?'; clearInterval(drmTimer);}
+    },500);
+    track.addEventListener('ended',()=>{
       systemStream=null; systemSource=null;
       sysNativeGain.gain.setTargetAtTime(0,rawCtx.currentTime,0.02);
-      btn.textContent='OFF'; btn.classList.remove('on');
+      btn.textContent='OFF'; btn.classList.remove('on'); btn.classList.add('off');
+      capBtn.textContent='▶ SELECT SOURCE'; capBtn.style.borderColor='';
     });
   } catch(e){
-    btn.textContent='OFF'; btn.disabled=false;
-    setTimeout(()=>{btn.textContent='OFF';},2500);
+    btn.textContent='OFF'; btn.disabled=false; capBtn.textContent='▶ SELECT SOURCE';
+    setTimeout(()=>{btn.classList.remove('on');},200);
   }
 }
 
+function setSysGainDb(db){
+  sysGainDb=parseFloat(db);
+  if(sysNativeGain && rawCtx) sysNativeGain.gain.setTargetAtTime(systemStream?dbToGain(sysGainDb):0, rawCtx.currentTime, 0.03);
+  const v=Math.round(sysGainDb); const el=document.getElementById('sys-gain-val');
+  if(el){el.textContent=v+'dB'; el.dataset.value=sysGainDb;}
+}
+function populateOutChannelPairs(maxCh){
+  const sel=document.getElementById('output-channels'); if(!sel)return;
+  const prev=sel.value; sel.innerHTML='';
+  for(let i=0;i<maxCh;i+=2){
+    const o=document.createElement('option'); o.value=i;
+    o.textContent='Ch '+(i+1)+'–'+(i+2); sel.appendChild(o);
+  }
+  if(prev&&[...sel.options].some(o=>o.value===prev)) sel.value=prev;
+  const mc=document.getElementById('out-maxch'); if(mc)mc.textContent=maxCh+' ch';
+}
+function connectOutputRouting(){
+  if(!rawCtx||!outputMuteNode) return;
+  const maxCh=rawCtx.destination.maxChannelCount||2;
+  try{
+    rawCtx.destination.channelCount=Math.min(maxCh,rawCtx.destination.maxChannelCount);
+    rawCtx.destination.channelCountMode='explicit';
+    rawCtx.destination.channelInterpretation='discrete';
+  }catch(e){}
+  if(outRouterSplit){try{outRouterSplit.disconnect();}catch(e){}}
+  if(outRouterMerge){try{outRouterMerge.disconnect();}catch(e){}}
+  outRouterSplit=rawCtx.createChannelSplitter(2);
+  outRouterMerge=rawCtx.createChannelMerger(Math.max(2,selectedOutChPair[1]+1));
+  // Wire: outputMuteNode → splitter → merger → destination
+  try{
+    outputMuteNode.disconnect(); // detach from Tone.Destination
+    outputMuteNode.connect(outRouterSplit);
+  }catch(e){ console.warn('output routing:',e); return; }
+  outRouterSplit.connect(outRouterMerge,0,selectedOutChPair[0]);
+  outRouterSplit.connect(outRouterMerge,1,selectedOutChPair[1]);
+  outRouterMerge.connect(rawCtx.destination);
+}
+function onOutChannelChange(){
+  const v=parseInt(document.getElementById('output-channels').value);
+  selectedOutChPair=[v,v+1];
+  connectOutputRouting();
+}
 async function changeOutputDevice(){
   const id=document.getElementById('output-device').value;
-  if(rawCtx.setSinkId){try{await rawCtx.setSinkId(id);}catch(e){console.warn(e);}}
+  if(rawCtx&&rawCtx.setSinkId){
+    try{
+      await rawCtx.setSinkId(id);
+      const maxCh=rawCtx.destination.maxChannelCount||2;
+      populateOutChannelPairs(maxCh);
+      selectedOutChPair=[0,1]; document.getElementById('output-channels').value='0';
+      connectOutputRouting();
+    }catch(e){console.warn(e);}
+  }
 }
 
 // ── Test tone ────────────────────────────────────────────────────
@@ -1245,6 +1372,15 @@ function animateMeters(){
   const tL_r = tMono * Math.sin(tTheta);
   const mL = getAnalyserRMS(micAnalyser);
   vMeter(mL, 'mic', 'mic-db');
+  // Sys capture meter
+  if(sysAnalyserL && sysAnalyserR){
+    const sL=getAnalyserRMS(sysAnalyserL), sR=getAnalyserRMS(sysAnalyserR);
+    const sDb_l=sL<SILENCE?-Infinity:gainToDb(sL), sDb_r=sR<SILENCE?-Infinity:gainToDb(sR);
+    const sPct_l=sL<SILENCE?0:Math.max(0,Math.min(100,(sDb_l+60)/60*100));
+    const sPct_r=sR<SILENCE?0:Math.max(0,Math.min(100,(sDb_r+60)/60*100));
+    vMeterBar(sPct_l,'sys-level-l','sys-pk-l');
+    vMeterBar(sPct_r,'sys-level-r','sys-pk-r');
+  }
   // Sig gen: separate L/R (no symmetric spread — actual pan)
   const tDb = tMono < SILENCE ? -Infinity : gainToDb(tMono);
   const tPct_l = tL_l < SILENCE ? 0 : Math.max(0, Math.min(100, (gainToDb(tL_l)+60)/60*100));
@@ -1514,6 +1650,7 @@ function setupEditables(){
   makeEditableSafe(document.getElementById('delay-wet-val'),{min:0,max:1,slider:document.getElementById('delay-wet'),format:v=>v<0.001?'-inf':fmtDb(gainToDb(v)),parse:s=>s.trim()==='-inf'?0:dbToGain(parseFloat(s)),onSet:v=>{document.getElementById('delay-wet').value=v;setDelayWet(v);}});
   makeEditableSafe(document.getElementById('test-pan-val'),{min:-1,max:1,slider:document.getElementById('test-pan-sl'),format:v=>Math.abs(v)<0.03?'C':(v<0?'L':'R')+Math.round(Math.abs(v)*100)+'%',parse:s=>{if(s.trim()==='C')return 0;const m=s.match(/([LR])(\d+)/i);if(m)return m[1].toUpperCase()==='L'?-m[2]/100:m[2]/100;return parseFloat(s);},onSet:v=>{document.getElementById('test-pan-sl').value=v;setTestPan(v);}});
   makeEditableSafe(document.getElementById('test-gain-val'),{min:-60,max:0,slider:document.getElementById('test-gain-sl'),format:v=>Math.round(v)+'dB',parse:s=>parseFloat(s),onSet:v=>{document.getElementById('test-gain-sl').value=v;setTestGainDb(v);}});
+  makeEditableSafe(document.getElementById('sys-gain-val'),{min:-60,max:12,slider:document.getElementById('sys-gain-sl'),format:v=>Math.round(v)+'dB',parse:s=>parseFloat(s),onSet:v=>{document.getElementById('sys-gain-sl').value=v;setSysGainDb(v);}});
   makeEditableSafe(document.getElementById('adsr-a-val'),{min:1,max:2000,slider:document.getElementById('adsr-a-sl'),format:v=>Math.round(v)+'ms',parse:s=>parseFloat(s),onSet:v=>{document.getElementById('adsr-a-sl').value=v;setAdsrA(v);}});
   makeEditableSafe(document.getElementById('adsr-d-val'),{min:1,max:2000,slider:document.getElementById('adsr-d-sl'),format:v=>Math.round(v)+'ms',parse:s=>parseFloat(s),onSet:v=>{document.getElementById('adsr-d-sl').value=v;setAdsrD(v);}});
   makeEditableSafe(document.getElementById('adsr-s-val'),{min:10,max:5000,slider:document.getElementById('adsr-s-sl'),format:v=>Math.round(v)+'ms',parse:s=>parseFloat(s),onSet:v=>{document.getElementById('adsr-s-sl').value=v;setAdsrS(v);}});
