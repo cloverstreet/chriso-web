@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Audio Capture — Test Case 01</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0d0d0d;
+      color: #d0d0d0;
+      font-family: 'Courier New', monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 24px 16px;
+      gap: 6px;
+    }
+    .page-title {
+      font-size: .62rem; color: #666;
+      letter-spacing: .28em; text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    /* ── Module shell ─────────────────────────────────────────── */
+    .module {
+      background: #111;
+      border: 1px solid #242424;
+      width: 265px;
+      display: flex;
+      flex-direction: column;
+    }
+    /* ── Header ──────────────────────────────────────────────── */
+    .mod-head {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      padding: 5px 8px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .mod-title {
+      font-size: .72rem; color: #bbb;
+      letter-spacing: .16em; text-transform: uppercase;
+      flex: 1; text-align: center;
+    }
+    .bypass-btn {
+      font-family: 'Courier New', monospace;
+      font-size: .62rem; letter-spacing: .08em;
+      background: none; border: 1px solid;
+      padding: 2px 6px; cursor: pointer; transition: all .12s;
+    }
+    .bypass-btn.on  { border-color:#2a9a2a; color:#2a9a2a; box-shadow:0 0 4px #2a9a2a44; }
+    .bypass-btn.off { border-color:#e02020; color:#e02020; text-decoration:line-through; }
+    /* ── Body ────────────────────────────────────────────────── */
+    .mod-body { padding: 10px 10px 6px; display:flex; flex-direction:column; gap:7px; }
+    .capture-btn {
+      font-family:'Courier New',monospace; font-size:.68rem;
+      letter-spacing:.12em; text-transform:uppercase;
+      background:none; border:1px solid #c8a854;
+      color:#c8a854; padding:6px 10px; cursor:pointer;
+      width:100%; transition:all .12s;
+    }
+    .capture-btn:hover { border-color:#e8c874; color:#e8c874; box-shadow:0 0 6px #c8a85444; }
+    .capture-btn.active { border-color:#2a9a2a; color:#2a9a2a; box-shadow:0 0 4px #2a9a2a44; }
+    .stat-row { display:flex; align-items:center; gap:6px; }
+    .stat-lbl { font-size:.62rem; color:#555; letter-spacing:.1em; text-transform:uppercase; flex-shrink:0; width:36px; }
+    .stat-val { font-size:.62rem; color:#aaa; flex:1; text-align:right;
+      overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    /* ── Footer / Gain+Meter strip ───────────────────────────── */
+    .mod-footer { border-top:1px solid #1a1a1a; padding:6px 10px 8px; display:flex; flex-direction:column; gap:4px; }
+    .ctrl-row { display:flex; justify-content:space-between; align-items:baseline; }
+    .ctrl-lbl { font-size:.68rem; color:#aaa; letter-spacing:.12em; text-transform:uppercase; }
+    .ctrl-val { font-size:.72rem; color:#c8a854; }
+    /* meter strip row */
+    .meter-row { display:flex; align-items:flex-start; gap:8px; }
+    .meter-strip {
+      position:relative; width:22px; height:68px;
+      flex-shrink:0; cursor:ns-resize; user-select:none;
+    }
+    .meter-bars { position:absolute; inset:0; display:flex; gap:8px; }
+    .meter-bar  { flex:1; height:100%; background:#0d1a0d; position:relative; overflow:hidden; }
+    .meter-fill {
+      position:absolute; bottom:0; left:0; right:0; height:0%;
+      background: linear-gradient(to top,
+        #1a5a1a 0%, #2a9a2a 68%, #7ab020 78%,
+        #b89010 85%, #c06010 91%, #c83010 96%, #e02020 100%);
+    }
+    .meter-peak { position:absolute; left:0; right:0; height:2px; background:#fff; bottom:0; }
+    /* gain thumb — draggable, overlaid on bars */
+    .gain-thumb {
+      position:absolute; left:0; width:22px; height:5px;
+      background:#6aaee0; z-index:2; cursor:ns-resize;
+    }
+    .clip-dot {
+      width:6px; height:6px; border-radius:50%;
+      background:#1a1a1a; border:1px solid #333; flex-shrink:0; margin-top:2px;
+    }
+    .clip-dot.clip { background:#e02020; border-color:#ff4040; box-shadow:0 0 4px #e0202088; }
+    /* signal dB — centered below meter, not in the ctrl-row */
+    .db-readout { font-size:.62rem; color:#555; text-align:center; }
+    /* ── Notes panel ─────────────────────────────────────────── */
+    .notes { border:1px solid #1a1a1a; padding:10px; width:265px; margin-top:10px; }
+    .notes-title { font-size:.62rem; color:#555; letter-spacing:.16em; text-transform:uppercase; margin-bottom:6px; }
+    .notes p { font-size:.60rem; color:#444; line-height:1.7; }
+    .notes .hi { color:#c8a854; } .notes .ok { color:#2a9a2a; } .notes .warn { color:#c06010; }
+    #debug-log { font-size:.62rem; color:#c8a854; margin-top:6px; min-height:1em; }
+  </style>
+</head>
+<body>
+<div class="page-title">instruments / web audio capture — test case 01</div>
+
+<!-- ══ CAPTURE MODULE ═══════════════════════════════════════════ -->
+<div class="module">
+  <div class="mod-head">
+    <span class="mod-title">WEB CAPTURE</span>
+    <button class="bypass-btn off" id="cap-bypass" onclick="toggleCapBypass()">OFF</button>
+  </div>
+  <div class="mod-body">
+    <button class="capture-btn" id="capture-btn" onclick="toggleCapture()">▶ CAPTURE TAB / WINDOW</button>
+    <div class="stat-row"><span class="stat-lbl">SRC</span> <span class="stat-val" id="s-src">— none —</span></div>
+    <div class="stat-row"><span class="stat-lbl">CH</span>  <span class="stat-val" id="s-ch">—</span></div>
+    <div class="stat-row"><span class="stat-lbl">RATE</span><span class="stat-val" id="s-rate">—</span></div>
+  </div>
+  <div class="mod-footer">
+    <div class="ctrl-row">
+      <span class="ctrl-lbl">GAIN</span>
+      <span class="ctrl-val" id="cap-gain-val">0.0 dB</span>
+    </div>
+    <div class="meter-row">
+      <div class="meter-strip" id="cap-meter">
+        <div class="meter-bars">
+          <div class="meter-bar"><div class="meter-fill" id="cap-fl"></div><div class="meter-peak" id="cap-pl"></div></div>
+          <div class="meter-bar"><div class="meter-fill" id="cap-fr"></div><div class="meter-peak" id="cap-pr"></div></div>
+        </div>
+        <div class="gain-thumb" id="cap-thumb"></div>
+      </div>
+      <div class="clip-dot" id="cap-clip"></div>
+    </div>
+    <div class="db-readout" id="cap-db">— dB</div>
+  </div>
+</div>
+
+<!-- ══ OUTPUT MODULE ════════════════════════════════════════════ -->
+<div class="module">
+  <div class="mod-head">
+    <span class="mod-title">OUTPUT</span>
+    <button class="bypass-btn off" id="out-bypass" onclick="toggleOutBypass()">OFF</button>
+  </div>
+  <div class="mod-body">
+    <div class="stat-row"><span class="stat-lbl">DEV</span><span class="stat-val" id="out-dev">default</span></div>
+  </div>
+  <div class="mod-footer">
+    <div class="ctrl-row">
+      <span class="ctrl-lbl">GAIN</span>
+      <span class="ctrl-val" id="out-gain-val">−60 dB</span>
+    </div>
+    <div class="meter-row">
+      <div class="meter-strip" id="out-meter">
+        <div class="meter-bars">
+          <div class="meter-bar"><div class="meter-fill" id="out-fl"></div><div class="meter-peak" id="out-pl"></div></div>
+          <div class="meter-bar"><div class="meter-fill" id="out-fr"></div><div class="meter-peak" id="out-pr"></div></div>
+        </div>
+        <div class="gain-thumb" id="out-thumb"></div>
+      </div>
+      <div class="clip-dot" id="out-clip"></div>
+    </div>
+    <div class="db-readout" id="out-db">— dB</div>
+  </div>
+</div>
+<!-- ══ NOTES ═════════════════════════════════════════════════════ -->
+<div class="notes">
+  <div class="notes-title">debug</div>
+  <p><span class="hi">getDisplayMedia</span> — pick a <span class="hi">Tab</span> in the Chrome dialog, check <span class="hi">"Share tab audio"</span>.</p>
+  <p><span class="warn">YouTube / Spotify web:</span> DRM/EME may deliver silent audio track.</p>
+  <p><span class="hi">Tab capture is a copy</span> — original tab still plays to its normal output. To truly intercept audio (no pass-through), you need OS routing: <span class="hi">BlackHole</span>, Loopback, or TotalMix virtual bus.</p>
+  <p><span class="ok">Output starts muted</span> (−60 dB). Raise output gain slowly — no feedback if capturing a different tab.</p>
+  <div id="debug-log"></div>
+</div>
+
+<script>
+// ── Constants ──────────────────────────────────────────────────
+const METER_H    = 68;   // px, must match CSS height
+const GAIN_MIN   = -60;
+const GAIN_MAX   = 12;
+const PEAK_HOLD  = 1600; // ms
+
+// ── Audio graph state ──────────────────────────────────────────
+let actx       = null;
+let stream     = null;
+let srcNode    = null;
+let capGain    = null;   // capture gain node
+let outGain    = null;   // output gain node
+let capAnlL    = null, capAnlR = null;
+let outAnlL    = null, outAnlR = null;
+let animId     = null;
+
+// ── Module state ───────────────────────────────────────────────
+let capGainDb  = 0,   outGainDb = -60;
+let capBypassed = true, outBypassed = true;
+
+// ── Peak state ─────────────────────────────────────────────────
+let pkCapL=0,pkCapR=0,pkCapTL=0,pkCapTR=0,clipCapT=0;
+let pkOutL=0,pkOutR=0,pkOutTL=0,pkOutTR=0,clipOutT=0;
+
+// ── Helpers ────────────────────────────────────────────────────
+const db2lin = db  => Math.pow(10, db / 20);
+const lin2db = v   => v < 1e-6 ? -Infinity : 20 * Math.log10(v);
+const clamp  = (v,a,b) => Math.max(a, Math.min(b, v));
+const log    = msg => { document.getElementById('debug-log').textContent = msg; };
+
+// ── Gain thumb positioning ─────────────────────────────────────
+function gainToThumbPx(db) {
+  // maps GAIN_MIN..GAIN_MAX → 0..METER_H, bottom-anchored
+  return ((db - GAIN_MIN) / (GAIN_MAX - GAIN_MIN)) * METER_H;
+}
+function setThumbPos(thumbEl, db) {
+  const px = gainToThumbPx(db);
+  thumbEl.style.bottom = (px - 2.5).toFixed(1) + 'px'; // 2.5 = half thumb height
+}
+
+// ── Capture gain ───────────────────────────────────────────────
+function setCapGain(db) {
+  capGainDb = clamp(db, GAIN_MIN, GAIN_MAX);
+  document.getElementById('cap-gain-val').textContent =
+    (capGainDb >= 0 ? '+' : '') + capGainDb.toFixed(1) + ' dB';
+  setThumbPos(document.getElementById('cap-thumb'), capGainDb);
+  if (capGain && actx)
+    capGain.gain.setTargetAtTime(capBypassed ? 0 : db2lin(capGainDb), actx.currentTime, 0.02);
+}
+
+// ── Output gain ────────────────────────────────────────────────
+function setOutGain(db) {
+  outGainDb = clamp(db, GAIN_MIN, GAIN_MAX);
+  document.getElementById('out-gain-val').textContent =
+    (outGainDb > -59.9 ? (outGainDb >= 0 ? '+' : '') + outGainDb.toFixed(1) : '−60') + ' dB';
+  setThumbPos(document.getElementById('out-thumb'), outGainDb);
+  if (outGain && actx)
+    outGain.gain.setTargetAtTime(outBypassed ? 0 : db2lin(outGainDb), actx.currentTime, 0.02);
+}
+
+// ── Bypass ─────────────────────────────────────────────────────
+function toggleCapBypass() {
+  capBypassed = !capBypassed;
+  const btn = document.getElementById('cap-bypass');
+  btn.textContent = capBypassed ? 'OFF' : 'ON';
+  btn.className = 'bypass-btn ' + (capBypassed ? 'off' : 'on');
+  if (capGain && actx)
+    capGain.gain.setTargetAtTime(capBypassed ? 0 : db2lin(capGainDb), actx.currentTime, 0.02);
+}
+
+function toggleOutBypass() {
+  outBypassed = !outBypassed;
+  const btn = document.getElementById('out-bypass');
+  btn.textContent = outBypassed ? 'OFF' : 'ON';
+  btn.className = 'bypass-btn ' + (outBypassed ? 'off' : 'on');
+  if (outGain && actx)
+    outGain.gain.setTargetAtTime(outBypassed ? 0 : db2lin(outGainDb), actx.currentTime, 0.02);
+}
+
+// ── Draggable gain thumb ───────────────────────────────────────
+function makeDraggable(stripId, setGainFn, getDbFn) {
+  const strip = document.getElementById(stripId);
+  let dragging = false, startY = 0, startDb = 0;
+
+  strip.addEventListener('mousedown', e => {
+    dragging = true;
+    startY  = e.clientY;
+    startDb = getDbFn();
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const dy    = startY - e.clientY;           // up = positive = louder
+    const dbRng = GAIN_MAX - GAIN_MIN;          // 72 dB range
+    const ddb   = (dy / METER_H) * dbRng;
+    setGainFn(startDb + ddb);
+  });
+  document.addEventListener('mouseup', () => { dragging = false; });
+  // Double-click → reset to 0dB
+  strip.addEventListener('dblclick', () => setGainFn(0));
+}
+
+// ── Capture ────────────────────────────────────────────────────
+async function toggleCapture() {
+  if (stream) { stopCapture(); return; }
+  log('requesting getDisplayMedia…');
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      audio: { echoCancellation:false, noiseSuppression:false, autoGainControl:false },
+      video: true   // required by Chrome even for audio-only
+    });
+    stream.getVideoTracks().forEach(t => t.stop());
+
+    const aTracks = stream.getAudioTracks();
+    if (!aTracks.length) {
+      log('⚠ No audio track — check "Share tab audio" in the picker'); stream = null; return;
+    }
+    const track = aTracks[0], s = track.getSettings();
+    document.getElementById('s-src').textContent  = track.label || 'unknown';
+    document.getElementById('s-ch').textContent   = (s.channelCount || '?') + 'ch';
+    document.getElementById('s-rate').textContent = (s.sampleRate   || '?') + ' Hz';
+
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended') await actx.resume();
+
+    srcNode = actx.createMediaStreamSource(stream);
+    capGain = actx.createGain();
+    outGain = actx.createGain();
+    capGain.gain.value = capBypassed ? 0 : db2lin(capGainDb);
+    outGain.gain.value = outBypassed ? 0 : db2lin(outGainDb);
+
+    // Splitters for per-channel metering
+    const capSplit = actx.createChannelSplitter(2);
+    const outSplit = actx.createChannelSplitter(2);
+    [capAnlL, capAnlR, outAnlL, outAnlR].forEach((_, i) => {
+      const a = actx.createAnalyser(); a.fftSize = 512; a.smoothingTimeConstant = 0.6;
+      [capAnlL, capAnlR, outAnlL, outAnlR][i] = a;
+    });
+    // Re-assign (forEach closure doesn't reassign let)
+    capAnlL = actx.createAnalyser(); capAnlL.fftSize=512; capAnlL.smoothingTimeConstant=0.6;
+    capAnlR = actx.createAnalyser(); capAnlR.fftSize=512; capAnlR.smoothingTimeConstant=0.6;
+    outAnlL = actx.createAnalyser(); outAnlL.fftSize=512; outAnlL.smoothingTimeConstant=0.6;
+    outAnlR = actx.createAnalyser(); outAnlR.fftSize=512; outAnlR.smoothingTimeConstant=0.6;
+
+    srcNode.connect(capGain);
+    capGain.connect(capSplit);
+    capSplit.connect(capAnlL, 0); capSplit.connect(capAnlR, 1);
+
+    capGain.connect(outGain);
+    outGain.connect(outSplit);
+    outSplit.connect(outAnlL, 0); outSplit.connect(outAnlR, 1);
+    outGain.connect(actx.destination);
+
+    document.getElementById('capture-btn').textContent = '■ STOP CAPTURE';
+    document.getElementById('capture-btn').className   = 'capture-btn active';
+    track.addEventListener('ended', () => { log('stream ended'); stopCapture(); });
+    log('✓ ' + track.label);
+    startMeter();
+  } catch(err) { log('✗ ' + err.name + ': ' + err.message); stream = null; }
+}
+
+function stopCapture() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  [srcNode, capGain, outGain].forEach(n => { try { n?.disconnect(); } catch(e){} });
+  srcNode = capGain = outGain = capAnlL = capAnlR = outAnlL = outAnlR = null;
+  cancelAnimationFrame(animId); animId = null;
+  pkCapL=pkCapR=pkOutL=pkOutR=0;
+
+  document.getElementById('capture-btn').textContent = '▶ CAPTURE TAB / WINDOW';
+  document.getElementById('capture-btn').className   = 'capture-btn';
+  ['s-src','s-ch','s-rate'].forEach(id => document.getElementById(id).textContent = '—');
+  document.getElementById('s-src').textContent = '— none —';
+  ['cap-fl','cap-fr','out-fl','out-fr'].forEach(id => document.getElementById(id).style.height='0%');
+  ['cap-pl','cap-pr','out-pl','out-pr'].forEach(id => document.getElementById(id).style.bottom='0px');
+  ['cap-db','out-db'].forEach(id => document.getElementById(id).textContent = '— dB');
+  ['cap-clip','out-clip'].forEach(id => document.getElementById(id).classList.remove('clip'));
+  log('stopped');
+}
+
+// ── Meter loop ─────────────────────────────────────────────────
+function rms(anl) {
+  if (!anl) return 0;
+  const buf = new Float32Array(anl.fftSize);
+  anl.getFloatTimeDomainData(buf);
+  let s = 0; for (let i=0; i<buf.length; i++) s += buf[i]*buf[i];
+  return Math.sqrt(s / buf.length);
+}
+function dbPct(rmsVal) {
+  // −40dB floor → 0%, 0dB → 100%
+  return clamp((lin2db(rmsVal) + 40) / 40, 0, 1);
+}
+function updateMeter(prefix, anlL, anlR, pkLRef, pkRRef, pkTLRef, pkTRRef, clipTRef, ts) {
+  const vL = rms(anlL), vR = rms(anlR);
+  const pL = dbPct(vL), pR = dbPct(vR);
+  document.getElementById(prefix+'-fl').style.height = (pL*100).toFixed(1)+'%';
+  document.getElementById(prefix+'-fr').style.height = (pR*100).toFixed(1)+'%';
+
+  if (pL > pkLRef.v) { pkLRef.v=pL; pkTLRef.v=ts; }
+  else if (ts-pkTLRef.v > PEAK_HOLD) pkLRef.v = Math.max(0, pkLRef.v - 0.008);
+  if (pR > pkRRef.v) { pkRRef.v=pR; pkTRRef.v=ts; }
+  else if (ts-pkTRRef.v > PEAK_HOLD) pkRRef.v = Math.max(0, pkRRef.v - 0.008);
+  document.getElementById(prefix+'-pl').style.bottom = (pkLRef.v*100).toFixed(1)+'%';
+  document.getElementById(prefix+'-pr').style.bottom = (pkRRef.v*100).toFixed(1)+'%';
+
+  const avgDb = lin2db((vL+vR)/2);
+  document.getElementById(prefix+'-db').textContent =
+    isFinite(avgDb) ? avgDb.toFixed(1)+' dB' : '—∞ dB';
+
+  const clipping = pL>=0.98 || pR>=0.98;
+  const clipEl = document.getElementById(prefix+'-clip');
+  if (clipping) { clipEl.classList.add('clip'); clipTRef.v=ts; }
+  else if (ts-clipTRef.v>600) clipEl.classList.remove('clip');
+}
+
+function startMeter() {
+  const pkCL={v:0},pkCR={v:0},pkCTL={v:0},pkCTR={v:0},clipCT={v:0};
+  const pkOL={v:0},pkOR={v:0},pkOTL={v:0},pkOTR={v:0},clipOT={v:0};
+  function loop(ts) {
+    if (!capAnlL) return;
+    updateMeter('cap', capAnlL, capAnlR, pkCL, pkCR, pkCTL, pkCTR, clipCT, ts);
+    updateMeter('out', outAnlL, outAnlR, pkOL, pkOR, pkOTL, pkOTR, clipOT, ts);
+    animId = requestAnimationFrame(loop);
+  }
+  animId = requestAnimationFrame(loop);
+}
+
+// ── Init ───────────────────────────────────────────────────────
+makeDraggable('cap-meter', setCapGain, () => capGainDb);
+makeDraggable('out-meter', setOutGain, () => outGainDb);
+setCapGain(0);    // thumb at 0dB
+setOutGain(-60);  // output starts muted
+</script>
+</body>
+</html>
