@@ -104,9 +104,9 @@ body {
   position:relative; flex-shrink:0;
 }
 /* Standard width */
-.module { width:155px; }
+.module { width:172px; }
 /* Double wide for FX */
-.module.wide { width:265px; min-height:215px; }
+.module.wide { width:290px; min-height:215px; }
 /* Half height = compact padding, no meters taking space */
 .module.half { }
 
@@ -429,16 +429,16 @@ input.gain-meter-slider::-webkit-slider-thumb {
       <!-- SIGNAL GENERATOR module -->
       <div class="module half" id="siggen-module">
         <div class="mod-head">
-          <div class="head-presets" id="siggen-head-presets">
-            <button class="head-preset-slot" data-slot="0" data-fx="siggen" onclick="handleHeadPreset(this)">1</button>
-            <button class="head-preset-slot" data-slot="1" data-fx="siggen" onclick="handleHeadPreset(this)">2</button>
-            <button class="head-preset-slot" data-slot="2" data-fx="siggen" onclick="handleHeadPreset(this)">3</button>
-            <button class="head-preset-slot" data-slot="3" data-fx="siggen" onclick="handleHeadPreset(this)">4</button>
-            <button class="head-preset-slot" data-slot="4" data-fx="siggen" onclick="handleHeadPreset(this)">5</button>
-            <button class="head-preset-slot" data-slot="5" data-fx="siggen" onclick="handleHeadPreset(this)">6</button>
-          </div>
           <span class="mod-title">SIG GEN</span>
           <button class="byp-btn off" id="test-enable-btn" onclick="toggleTestTone()">OFF</button>
+        </div>
+        <div class="head-presets" id="siggen-head-presets" style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:7px;">
+          <button class="head-preset-slot" data-slot="0" data-fx="siggen" onclick="handleHeadPreset(this)">1</button>
+          <button class="head-preset-slot" data-slot="1" data-fx="siggen" onclick="handleHeadPreset(this)">2</button>
+          <button class="head-preset-slot" data-slot="2" data-fx="siggen" onclick="handleHeadPreset(this)">3</button>
+          <button class="head-preset-slot" data-slot="3" data-fx="siggen" onclick="handleHeadPreset(this)">4</button>
+          <button class="head-preset-slot" data-slot="4" data-fx="siggen" onclick="handleHeadPreset(this)">5</button>
+          <button class="head-preset-slot" data-slot="5" data-fx="siggen" onclick="handleHeadPreset(this)">6</button>
         </div>
         <!-- Mode selector -->
         <div style="display:flex;gap:0;margin-bottom:7px;border:1px solid #1e1e1e;border-radius:2px;overflow:hidden;">
@@ -482,7 +482,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
         <!-- ADSR + gain/meter side by side -->
         <div style="display:flex;gap:5px;align-items:flex-start;">
           <!-- ADSR panel (hidden in steady mode) -->
-          <div id="siggen-adsr" style="display:none;flex:1;min-width:0;">
+          <div id="siggen-adsr" style="display:none;flex:1;min-width:0;flex-direction:column;">
             <div style="font-size:.54rem;color:#444;letter-spacing:.12em;text-transform:uppercase;margin-bottom:4px;">Envelope</div>
             <div class="adsr-row">
               <span class="adsr-lbl">A</span>
@@ -545,8 +545,8 @@ input.gain-meter-slider::-webkit-slider-thumb {
           Capture audio from a browser tab or system output. On macOS, choose a Chrome Tab for audio.
         </div>
         <button class="toggle-btn" id="sys-audio-label-btn" onclick="toggleSystemAudio()"
-          style="font-size:.65rem;letter-spacing:.08em;">
-          CLICK TO SELECT SOURCE
+          style="font-size:.58rem;letter-spacing:.04em;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          SELECT SOURCE
         </button>
         <div class="mini-hmeter-wrap" id="sys-meter" style="margin-top:6px;">
           <div class="mini-hmeter-l" id="sys-m-l" style="width:0%"></div>
@@ -1107,7 +1107,7 @@ function setSigGenMode(mode){
   const adsr=document.getElementById('siggen-adsr');
   const bs=document.getElementById('sgmode-steady'), bp=document.getElementById('sgmode-pulsed');
   if(mode==='pulsed'){
-    if(adsr) adsr.style.display='flex';
+    if(adsr){ adsr.style.display='flex'; adsr.style.flexDirection='column'; }
     bs.classList.remove('sgmode-active'); bp.classList.add('sgmode-active');
     if(testEnabled) startPulse();
   } else {
@@ -1381,7 +1381,7 @@ function getGlobalState(){
   return {
     inputGainDb:parseFloat(document.getElementById('input-gain-db').value),
     outputGainDb:parseFloat(document.getElementById('output-gain-db').value),
-    inputMuted, testEnabled,
+    testEnabled,
     testWave:document.getElementById('test-wave').value,
     testFreqHz:freqLog.toVal(parseFloat(document.getElementById('test-freq-sl').value)),
     testGainDb:parseFloat(document.getElementById('test-gain-sl').value),
@@ -1395,7 +1395,7 @@ function applyGlobalState(s){
   document.getElementById('test-wave').value=s.testWave; setTestWave(s.testWave);
   setTestFreqHz(s.testFreqHz); document.getElementById('test-gain-sl').value=s.testGainDb; setTestGainDb(s.testGainDb);
   if(s.testEnabled!==testEnabled) toggleTestTone();
-  if(s.inputMuted!==undefined && s.inputMuted!==inputMuted) toggleMute('input');
+  // mic mute not restored from presets
   if(s.pitchBypassed!==undefined && s.pitchBypassed!==pitchBypassed) toggleFxBypass('pitch');
   if(s.delayBypassed!==undefined && s.delayBypassed!==delayBypassed) toggleFxBypass('delay');
   applyFxState('pitch',s.pitch); applyFxState('delay',s.delay);
