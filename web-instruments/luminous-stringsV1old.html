@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Luminous Strings</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box }
+  html, body { width: 100%; height: 100%; background: #06060e; overflow: hidden }
+  canvas { display: block; cursor: none; touch-action: none }
+  #invite {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 10; cursor: pointer;
+    background: rgba(6,6,14,0.85);
+    transition: opacity 1.2s ease-out;
+  }
+  #invite.gone { opacity: 0; pointer-events: none }
+  #invite span {
+    color: rgba(200,170,120,0.4);
+    font: 1rem Georgia, serif;
+    letter-spacing: .25em;
+  }
+</style>
+</head>
+<body>
+<div id="invite"><span>touch to begin</span></div>
+<canvas id="canvas"></canvas>
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════
+// LUMINOUS STRINGS — a bowed light instrument
+// Tuned to the harmonic series of A1 (55 Hz)
+// Partials 4–12, yielding natural consonance
+// ═══════════════════════════════════════════════════
+
+const FUNDAMENTAL = 55;
+const PARTIALS = [2, 3, 4,5,6,7, 8, 9, 10, 11, 12, 13, 14, 16, 18, 20,22, 24, 26,28,32,36,40,44,48,42,56];
+const NUM_STRINGS = PARTIALS.length;
+const PROXIMITY_THRESHOLD = 35;
+const ENERGY_DECAY = 0.911;
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W, H, bgGradient;
+
+// ─── Resize ────────────────────────────────────────
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  bgGradient = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.hypot(W, H) * 0.5);
+  bgGradient.addColorStop(0, '#0b0b16');
+  bgGradient.addColorStop(1, '#06060e');
+  const margin = H * 0.13;
+  const span = H - margin * 2;
+  for (let i = 0; i < strings.length; i++) {
+    strings[i].y = H - margin - (i / (NUM_STRINGS - 1)) * span;
+  }
+}
+
+// ─── Audio Engine ──────────────────────────────────
+let audioCtx, started = false;
+
+function initAudio() {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  // Compressor to keep mix clean
+  const compressor = audioCtx.createDynamicsCompressor();
+  compressor.threshold.value = -12;
+  compressor.knee.value = 10;
+  compressor.ratio.value = 4;
+  compressor.connect(audioCtx.destination);
+
+  // Convolution reverb
+  const convolver = audioCtx.createConvolver();
+  const irLength = audioCtx.sampleRate * 3;
+  const impulse = audioCtx.createBuffer(2, irLength, audioCtx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = impulse.getChannelData(ch);
+    for (let i = 0; i < irLength; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / irLength, 1.8);
+    }
+  }
+  convolver.buffer = impulse;
+
+  const wetGain = audioCtx.createGain();
+  wetGain.gain.value = 0.2;
+  convolver.connect(wetGain);
+  wetGain.connect(compressor);
+
+  const dryGain = audioCtx.createGain();
+  dryGain.gain.value = 0.51;
+  dryGain.connect(compressor);
+
+  for (const s of strings) {
+    s.createAudioNodes(audioCtx, dryGain, convolver);
+  }
+
+  started = true;
+}
+
+// ─── LuminousString ───────────────────────────────
+class LuminousString {
+  constructor(index) {
+    this.index = index;
+    this.freq = FUNDAMENTAL * PARTIALS[index];
+    this.y = 0; // set by resize()
+
+    // Color: warm amber (low) to bright gold (high)
+    this.hue = 22 + (index / (NUM_STRINGS - 1)) * 30;
+
+    // State
+    this.energy = 0;
+    this.bowX = 0.5;       // normalized x of last bow contact
+    this.phase = Math.random() * Math.PI * 2;
+    this.particles = [];
+
+    // Audio
+    this.gainNode = null;
+  }
+
+  createAudioNodes(ctx, dryDest, wetDest) {
+    this.gainNode = ctx.createGain();
+    this.gainNode.gain.value = 0;
+    this.gainNode.connect(dryDest);
+    this.gainNode.connect(wetDest);
+
+    // Fundamental
+    const osc1 = ctx.createOscillator();
+    osc1.type = 'sine';
+    osc1.frequency.value = this.freq;
+    const g1 = ctx.createGain();
+    g1.gain.value = 0.85;
+    osc1.connect(g1);
+    g1.connect(this.gainNode);
+    osc1.start();
+
+    // 2nd harmonic
+    const osc2 = ctx.createOscillator();
+    osc2.type = 'sine';
+    osc2.frequency.value = this.freq * 2;
+    const g2 = ctx.createGain();
+    g2.gain.value = 0.18;
+    osc2.connect(g2);
+    g2.connect(this.gainNode);
+    osc2.start();
+
+    // 3rd harmonic
+    const osc3 = ctx.createOscillator();
+    osc3.type = 'sine';
+    osc3.frequency.value = this.freq * 3;
+    const g3 = ctx.createGain();
+    g3.gain.value = 0.05;
+    osc3.connect(g3);
+    g3.connect(this.gainNode);
+    osc3.start();
+
+    // Subtle vibrato
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 3.5 + Math.random() * 2;
+    const lfoGain = ctx.createGain();
+    lfoGain.gain.value = this.freq * 0.002;
+    lfo.connect(lfoGain);
+    lfoGain.connect(osc1.frequency);
+    lfo.start();
+  }
+
+  excite(mouseX, velocity) {
+    const amp = Math.min(velocity / 18, 1);
+    this.energy = Math.min(this.energy + amp * 0.35, 1);
+    this.bowX = mouseX / W;
+
+    // Spawn particles from the bow point
+    const count = Math.ceil(amp * 4);
+    for (let i = 0; i < count && this.particles.length < 30; i++) {
+      this.particles.push({
+        x: mouseX + (Math.random() - 0.5) * 8,
+        y: this.y,
+        vx: (Math.random() - 0.5) * 1.2,
+        vy: -(Math.random() * 1.2 + 0.3),
+        life: 1,
+        radius: Math.random() * 2 + 0.5
+      });
+    }
+  }
+
+  update() {
+    // Decay energy
+    this.energy *= ENERGY_DECAY;
+    if (this.energy < 0.0005) this.energy = 0;
+
+    // Update audio gain to follow energy
+    if (started && this.gainNode) {
+      this.gainNode.gain.value = this.energy * 0.09;
+    }
+
+    // Visual oscillation phase (slow enough to see)
+    this.phase += (3 + this.freq * 0.008) * 0.06;
+
+    // Update particles
+    for (const p of this.particles) {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy -= 0.008;
+      p.vx *= 0.995;
+      p.life -= 0.01;
+    }
+    this.particles = this.particles.filter(p => p.life > 0);
+  }
+
+  draw(context, time) {
+    const segments = 100;
+    const breathe = 0.02 * Math.sin(time * 0.0008 + this.index * 0.9);
+
+    // Build the string path (displaced by energy + breathing)
+    const pathX = new Float64Array(segments + 1);
+    const pathY = new Float64Array(segments + 1);
+
+    for (let i = 0; i <= segments; i++) {
+      const frac = i / segments;
+      const x = frac * W;
+      let dy = breathe * Math.sin(Math.PI * frac) * 3;
+
+      if (this.energy > 0.001) {
+        const distFromBow = Math.abs(frac - this.bowX);
+        const envelope = Math.exp(-distFromBow * 5) * Math.sin(Math.PI * frac);
+        dy += this.energy * 20 * envelope * Math.sin(this.phase);
+      }
+
+      pathX[i] = x;
+      pathY[i] = this.y + dy;
+    }
+
+    const strokePath = () => {
+      context.beginPath();
+      context.moveTo(pathX[0], pathY[0]);
+      for (let i = 1; i <= segments; i++) {
+        context.lineTo(pathX[i], pathY[i]);
+      }
+      context.stroke();
+    };
+
+    // ── Outer glow (wide, dim) ──
+    if (this.energy > 0.01) {
+      context.strokeStyle = `hsla(${this.hue},80%,58%,${this.energy * 0.05})`;
+      context.lineWidth = 18 + this.energy * 22;
+      strokePath();
+
+      context.strokeStyle = `hsla(${this.hue},80%,60%,${this.energy * 0.1})`;
+      context.lineWidth = 6 + this.energy * 10;
+      strokePath();
+    }
+
+    // ── Core string ──
+    const alpha = 0.1 + this.energy * 0.9;
+    const lightness = 40 + this.energy * 35;
+    context.strokeStyle = `hsla(${this.hue},65%,${lightness}%,${alpha})`;
+    context.lineWidth = 0.6 + this.energy * 2;
+    strokePath();
+
+    // ── Particles ──
+    for (const p of this.particles) {
+      context.beginPath();
+      context.arc(p.x, p.y, p.radius * p.life, 0, Math.PI * 2);
+      context.fillStyle = `hsla(${this.hue + 8},70%,72%,${p.life * 0.5})`;
+      context.fill();
+    }
+  }
+}
+
+// ─── Create Strings ────────────────────────────────
+const strings = [];
+for (let i = 0; i < NUM_STRINGS; i++) {
+  strings.push(new LuminousString(i));
+}
+
+// ─── Mouse / Touch Input ──────────────────────────
+let mouseX = 0, mouseY = 0;
+let prevX = null, prevY = null;
+let cursorVisible = false;
+
+function onPointerMove(x, y) {
+  mouseX = x;
+  mouseY = y;
+  cursorVisible = true;
+
+  if (prevX !== null && started) {
+    const dx = mouseX - prevX;
+    const dy = mouseY - prevY;
+    const speed = Math.sqrt(dx * dx + dy * dy);
+    const horizontalSpeed = Math.abs(dx);
+
+    for (const s of strings) {
+      // Crossing detection
+      const crossedDown = prevY < s.y && mouseY >= s.y;
+      const crossedUp = prevY > s.y && mouseY <= s.y;
+
+      if (crossedDown || crossedUp) {
+        s.excite(mouseX, speed);
+      } else {
+        // Proximity bowing: horizontal movement near a string
+        const dist = Math.abs(mouseY - s.y);
+        if (dist < PROXIMITY_THRESHOLD && horizontalSpeed > 1.5) {
+          const proximity = 1 - dist / PROXIMITY_THRESHOLD;
+          s.excite(mouseX, proximity * horizontalSpeed * 0.4);
+        }
+      }
+    }
+  }
+
+  prevX = mouseX;
+  prevY = mouseY;
+}
+
+canvas.addEventListener('mousemove', e => onPointerMove(e.clientX, e.clientY));
+canvas.addEventListener('mouseleave', () => { cursorVisible = false; prevX = prevY = null; });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  onPointerMove(t.clientX, t.clientY);
+}, { passive: false });
+canvas.addEventListener('touchend', () => { cursorVisible = false; prevX = prevY = null; });
+
+// ─── Render Loop ──────────────────────────────────
+function frame(time) {
+  requestAnimationFrame(frame);
+
+  // Clear with subtle gradient
+  ctx.fillStyle = bgGradient || '#06060e';
+  ctx.fillRect(0, 0, W, H);
+
+  // Update and draw strings (highest first for layering)
+  for (let i = NUM_STRINGS - 1; i >= 0; i--) {
+    strings[i].update();
+    strings[i].draw(ctx, time);
+  }
+
+  // Custom cursor
+  if (cursorVisible) {
+    let nearestDist = Infinity;
+    let nearestHue = 35;
+    for (const s of strings) {
+      const d = Math.abs(mouseY - s.y);
+      if (d < nearestDist) { nearestDist = d; nearestHue = s.hue; }
+    }
+    const prox = Math.max(0, 1 - nearestDist / 80);
+    const cursorSize = 3 + prox * 4;
+
+    // Glow
+    ctx.beginPath();
+    ctx.arc(mouseX, mouseY, cursorSize * 3, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${nearestHue},70%,60%,${prox * 0.07})`;
+    ctx.fill();
+
+    // Core
+    ctx.beginPath();
+    ctx.arc(mouseX, mouseY, cursorSize, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${nearestHue},70%,70%,${0.3 + prox * 0.5})`;
+    ctx.fill();
+  }
+}
+
+// ─── Initialization ───────────────────────────────
+resize();
+window.addEventListener('resize', resize);
+
+const invite = document.getElementById('invite');
+function start() {
+  if (started) return;
+  initAudio();
+  invite.classList.add('gone');
+  setTimeout(() => invite.remove(), 1200);
+}
+invite.addEventListener('click', start);
+invite.addEventListener('touchstart', start);
+canvas.addEventListener('click', start);
+canvas.addEventListener('touchstart', start, { passive: true });
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

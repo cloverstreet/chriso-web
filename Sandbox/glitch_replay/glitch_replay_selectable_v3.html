@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Live Cam + Glitch Replay (Stable Replay)</title>
+<style>
+  :root { --bg:#0b0b10; --fg:#e8e8ef; --accent:#6cf; --muted:#8a8aa0; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+    font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; }
+  #app { position:fixed; inset:0; display:grid; grid-template-rows:auto 1fr auto; }
+  header, footer { padding:10px 14px; background:rgba(255,255,255,0.03); border-bottom:1px solid rgba(255,255,255,0.06); }
+  footer { border-top:1px solid rgba(255,255,255,0.06); border-bottom:none; display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+  main { position:relative; background:#000; overflow:hidden; }
+  video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  #live { opacity:1; transition:opacity .2s ease; }
+  #replay { opacity:0; transition:opacity .2s ease; }
+  .show-replay #live { opacity:0; }
+  .show-replay #replay { opacity:1; }
+  #hud {
+    position:absolute; left:10px; bottom:10px; padding:10px 12px;
+    background:rgba(0,0,0,0.45); backdrop-filter: blur(6px);
+    border:1px solid rgba(255,255,255,0.12); border-radius:10px;
+    font-size:14px; line-height:1.35;
+  }
+  .pill { display:inline-block; padding:4px 8px; border-radius:999px; border:1px solid rgba(255,255,255,0.14); background:rgba(255,255,255,0.06); font-size:12px; color:var(--fg); }
+  button {
+    background:var(--accent); color:#001018; border:none; border-radius:10px;
+    padding:10px 14px; font-weight:700; cursor:pointer;
+  }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .hint { color:var(--muted); }
+  kbd { background:#11151a; color:#e6f4ff; border:1px solid #1d2730; padding:2px 6px; border-radius:6px; font-family:ui-monospace,Consolas,monospace; }
+  select { background:#0f141a; color:var(--fg); border:1px solid #24303b; border-radius:8px; padding:6px 8px; }
+  label { font-size:12px; color:var(--muted); margin-right:6px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <strong>Live Cam + Glitch Replay</strong>
+    <div style="margin-top:8px; display:flex; gap:12px; flex-wrap:wrap">
+      <div><label for="videoSelect">Video:</label><select id="videoSelect"></select></div>
+      <div><label for="audioSelect">Audio:</label><select id="audioSelect"></select></div>
+      <div><label for="resSelect">Resolution:</label>
+        <select id="resSelect">
+          <option value="1280x720">1280×720</option>
+          <option value="1920x1080">1920×1080</option>
+          <option value="640x480">640×480</option>
+          <option value="auto" selected>Auto</option>
+        </select>
+      </div>
+      <button id="applyBtn" title="Switch to selected devices">Apply</button>
+      <button id="refreshBtn" title="Rescan devices">Refresh</button>
+    </div>
+  </header>
+
+  <main id="stage">
+    <video id="live" autoplay playsinline muted></video>
+    <video id="replay" playsinline></video>
+    <div id="hud" class="hint">
+      <div><span class="pill">Click <strong>Start</strong> → allow Camera + Mic (use localhost/HTTPS)</span></div>
+      <div style="margin-top:6px">
+        <div>Press <kbd>1..9</kbd> (<kbd>0</kbd>=10s) to jump back & enter replay.</div>
+        <div>In replay: mouse → <strong>X</strong>=loop length, <strong>Y</strong>=speed. <kbd>Esc</kbd> returns live.</div>
+      </div>
+      <div id="stats" style="margin-top:6px"></div>
+    </div>
+  </main>
+
+  <footer>
+    <button id="startBtn">Start</button>
+    <span class="hint">Buffer: <span id="bufSec">0</span>s</span>
+    <span class="hint">Lookback: <span id="lookback">–</span></span>
+    <span class="hint">Loop: <span id="loopLen">–</span></span>
+    <span class="hint">Speed: <span id="speed">–</span>x</span>
+  </footer>
+</div>
+
+<script>
+(async function () {
+  const liveEl   = document.getElementById('live');
+  const replayEl = document.getElementById('replay');
+  const startBtn = document.getElementById('startBtn');
+  const applyBtn = document.getElementById('applyBtn');
+  const refreshBtn = document.getElementById('refreshBtn');
+  const appEl    = document.getElementById('app');
+  const bufSecEl = document.getElementById('bufSec');
+  const lookbackEl = document.getElementById('lookback');
+  const loopLenEl  = document.getElementById('loopLen');
+  const speedEl    = document.getElementById('speed');
+  const statsEl    = document.getElementById('stats');
+  const stageEl    = document.getElementById('stage');
+  const videoSelect= document.getElementById('videoSelect');
+  const audioSelect= document.getElementById('audioSelect');
+  const resSelect  = document.getElementById('resSelect');
+
+  // --- Config (tuned for stable replay) ---
+  const BUFFER_SECONDS_MAX = 60;          // bigger rolling window
+  const MEDIARECORDER_SLICE_MS = 1000;    // 1s chunks => frequent keyframes & clean stitching
+  const DEFAULT_CLIP_SECONDS = 12;
+  const MIN_LOOP_SEC = 0.25, MAX_LOOP_SEC = 6.0;
+  const MIN_SPEED = 0.25, MAX_SPEED = 2.0;
+
+  // --- State ---
+  let mediaStream = null;
+  let mediaRecorder = null;
+  let chunks = []; // { blob, tStart, tEnd, bytes }
+  let inReplay = false;
+  let clipStartOffset = 0;
+  let clipDuration = DEFAULT_CLIP_SECONDS;
+  let loopLen = 1.0;
+  let speed = 1.0;
+  let currentLookback = null;
+
+  const LS_KEYS = { video: 'gr_video_deviceId', audio: 'gr_audio_deviceId', res: 'gr_resolution' };
+
+  function fmt(n, d=2){ return Number(n).toFixed(d); }
+  async function ensurePermissions() {
+    try {
+      const tmp = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
+      tmp.getTracks().forEach(t => t.stop());
+    } catch {}
+  }
+
+  async function listDevices() {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const vids = devices.filter(d => d.kind === 'videoinput');
+    const auds = devices.filter(d => d.kind === 'audioinput');
+
+    const selVid = localStorage.getItem(LS_KEYS.video) || '';
+    const selAud = localStorage.getItem(LS_KEYS.audio) || '';
+
+    videoSelect.innerHTML = '';
+    vids.forEach((d, i) => {
+      const opt = document.createElement('option');
+      opt.value = d.deviceId;
+      opt.textContent = d.label || `Camera ${i+1}`;
+      if (d.deviceId === selVid) opt.selected = true;
+      videoSelect.appendChild(opt);
+    });
+
+    audioSelect.innerHTML = '';
+    auds.forEach((d, i) => {
+      const opt = document.createElement('option');
+      opt.value = d.deviceId;
+      opt.textContent = d.label || `Mic ${i+1}`;
+      if (d.deviceId === selAud) opt.selected = true;
+      audioSelect.appendChild(opt);
+    });
+
+    const savedRes = localStorage.getItem(LS_KEYS.res) || 'auto';
+    resSelect.value = savedRes;
+  }
+
+  async function relistDevicesPreservingSelection() {
+    const prevVid = videoSelect.value;
+    const prevAud = audioSelect.value;
+    await listDevices();
+    if ([...videoSelect.options].some(o => o.value === prevVid)) videoSelect.value = prevVid;
+    if ([...audioSelect.options].some(o => o.value === prevAud)) audioSelect.value = prevAud;
+  }
+
+  function makeConstraints() {
+    const vidId = videoSelect.value || undefined;
+    const audId = audioSelect.value || undefined;
+
+    let width = { ideal: 1280 }, height = { ideal: 720 };
+    const res = resSelect.value;
+    if (res !== 'auto') {
+      const [w,h] = res.split('x').map(Number);
+      width = { ideal: w }; height = { ideal: h };
+    }
+    const video = vidId ? { deviceId: { exact: vidId }, width, height } : { width, height };
+    const audio = audId ? { deviceId: { exact: audId } } : true;
+    return { video, audio };
+  }
+
+  function stopStream(stream) {
+    if (!stream) return; stream.getTracks().forEach(t => t.stop());
+  }
+
+  function resetRecorder() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+    mediaRecorder = null; chunks = []; bufSecEl.textContent = '0';
+  }
+
+  function pruneBuffer() {
+    const now = performance.now();
+    const cutoff = now - (BUFFER_SECONDS_MAX * 1000);
+    while (chunks.length && chunks[0].tEnd < cutoff) chunks.shift();
+    const earliest = chunks[0]?.tStart ?? now;
+    const latest   = chunks[chunks.length-1]?.tEnd ?? now;
+    bufSecEl.textContent = Math.max(0, (latest - earliest)/1000 | 0);
+  }
+
+  // Pick a recording mimeType that works in this browser
+  function pickMime() {
+    const candidates = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm',
+      // Some Chromes may allow this; harmless if unsupported
+      'video/mp4;codecs=avc1.42E01E,mp4a.40.2'
+    ];
+    for (const m of candidates) {
+      if (MediaRecorder.isTypeSupported?.(m)) return m;
+    }
+    return '';
+  }
+
+  // Build a clip ending at now - lookbackSec, but include whole chunks
+  function assembleClipBlob(lookbackSec, desiredSec = DEFAULT_CLIP_SECONDS) {
+    const now = performance.now();
+    const clipEnd = now - (lookbackSec * 1000);
+    const clipStart = clipEnd - (desiredSec * 1000);
+
+    const selected = [];
+    let earliest = Infinity, latest = -Infinity;
+
+    for (const c of chunks) {
+      if (c.tEnd >= clipStart && c.tStart <= clipEnd) {
+        selected.push(c.blob);
+        if (c.tStart < earliest) earliest = c.tStart;
+        if (c.tEnd   > latest)   latest   = c.tEnd;
+      }
+    }
+    if (!selected.length) return { blob:null, durationSec:0 };
+
+    // Real duration based on what we actually have
+    const durationSec = Math.max(0.25, (latest - earliest)/1000);
+    return { blob: new Blob(selected, { type: selected[0].type || 'video/webm' }), durationSec };
+  }
+
+  async function enterReplay(lookbackSec) {
+    const { blob, durationSec } = assembleClipBlob(lookbackSec, DEFAULT_CLIP_SECONDS);
+    if (!blob) { statsEl.textContent = 'No buffer yet—let it run a bit longer.'; return; }
+
+    inReplay = true;
+    currentLookback = lookbackSec;
+    clipDuration = durationSec;
+
+    // clamp loopLen/speed
+    loopLen = Math.min(Math.max(loopLen, MIN_LOOP_SEC), Math.min(MAX_LOOP_SEC, clipDuration));
+    speed = Math.min(Math.max(speed, MIN_SPEED), MAX_SPEED);
+
+    const url = URL.createObjectURL(blob);
+    replayEl.src = url;
+    replayEl.playbackRate = speed;
+
+    // Wait for metadata before any seeks
+    await new Promise(res => {
+      const onMeta = () => { replayEl.removeEventListener('loadedmetadata', onMeta); res(); };
+      replayEl.addEventListener('loadedmetadata', onMeta);
+    });
+
+    // Safety: start from 0 to ensure we land on a keyframe, then step forward
+    replayEl.currentTime = 0;
+    await new Promise(res => {
+      const onCanPlay = () => { replayEl.removeEventListener('canplay', onCanPlay); res(); };
+      replayEl.addEventListener('canplay', onCanPlay);
+    });
+
+    // Anchor loop to end
+    clipStartOffset = Math.max(0, clipDuration - loopLen);
+    // Some decoders need a small epsilon away from the absolute end
+    const safeStart = Math.max(0, clipStartOffset - 0.05);
+    try { replayEl.currentTime = safeStart; } catch {}
+
+    replayEl.onended = null;
+    replayEl.removeEventListener('timeupdate', enforceLoop);
+    replayEl.addEventListener('timeupdate', enforceLoop, { passive:true });
+
+    appEl.classList.add('show-replay');
+
+    try {
+      replayEl.muted = false;
+      await replayEl.play();
+    } catch {
+      replayEl.muted = true;
+      await replayEl.play();
+      statsEl.textContent = 'Autoplay with sound blocked—click to unmute.';
+    }
+
+    lookbackEl.textContent = `${lookbackSec}s`;
+    loopLenEl.textContent = `${fmt(loopLen)}s`;
+    speedEl.textContent   = `${fmt(speed)}x`;
+    statsEl.textContent   = `Replay clip ≈ ${fmt(clipDuration,1)}s window`;
+  }
+
+  function enforceLoop() {
+    if (!inReplay) return;
+    const start = clipStartOffset;
+    const end = start + loopLen;
+    if (replayEl.currentTime < start || replayEl.currentTime > end) {
+      replayEl.currentTime = start;
+    }
+  }
+
+  function exitReplay() {
+    if (!inReplay) return;
+    inReplay = false;
+    currentLookback = null;
+    replayEl.pause();
+    replayEl.removeAttribute('src');
+    replayEl.load();
+    appEl.classList.remove('show-replay');
+    lookbackEl.textContent = '–';
+    loopLenEl.textContent  = '–';
+    speedEl.textContent    = '–';
+    statsEl.textContent    = '';
+  }
+
+  function updateLoopAndSpeedFromMouse(e) {
+    if (!inReplay) return;
+    const rect = stageEl.getBoundingClientRect();
+    const relX = Math.min(Math.max(0, e.clientX - rect.left), rect.width) / Math.max(1, rect.width);
+    const relY = Math.min(Math.max(0, e.clientY - rect.top),  rect.height) / Math.max(1, rect.height);
+    loopLen = MIN_LOOP_SEC + relX * (MAX_LOOP_SEC - MIN_LOOP_SEC);
+    loopLen = Math.min(loopLen, clipDuration); // never longer than clip
+    const invY = 1 - relY;
+    speed = MIN_SPEED + invY * (MAX_SPEED - MIN_SPEED);
+    replayEl.playbackRate = speed;
+    clipStartOffset = Math.max(0, clipDuration - loopLen);
+    loopLenEl.textContent = `${fmt(loopLen)}s`;
+    speedEl.textContent   = `${fmt(speed)}x`;
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Escape') { exitReplay(); return; }
+    const n = parseInt(e.key, 10);
+    if (!isNaN(n)) {
+      const lookback = (n === 0) ? 10 : n;
+      enterReplay(lookback);
+    }
+  }
+
+  async function startCapture() {
+    // Save UI choices
+    localStorage.setItem(LS_KEYS.video, videoSelect.value || '');
+    localStorage.setItem(LS_KEYS.audio, audioSelect.value || '');
+    localStorage.setItem(LS_KEYS.res,   resSelect.value || 'auto');
+
+    exitReplay(); resetRecorder(); stopStream(mediaStream);
+
+    const constraints = makeConstraints();
+    let pickedMime = pickMime();
+    try {
+      mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      await relistDevicesPreservingSelection(); // refresh labels after permission
+    } catch (err) {
+      alert('Failed to access camera/mic: ' + err.message);
+      return;
+    }
+
+    liveEl.srcObject = mediaStream;
+    liveEl.muted = true;
+    await liveEl.play().catch(()=>{});
+
+    const opts = pickedMime ? { mimeType: pickedMime, videoBitsPerSecond: 5_000_000 } : { videoBitsPerSecond: 5_000_000 };
+    try {
+      mediaRecorder = new MediaRecorder(mediaStream, opts);
+    } catch (e) {
+      // fallback: no options
+      mediaRecorder = new MediaRecorder(mediaStream);
+    }
+
+    mediaRecorder.addEventListener('dataavailable', (ev) => {
+      if (ev.data && ev.data.size > 0) {
+        const now = performance.now();
+        chunks.push({ blob: ev.data, tStart: now - MEDIARECORDER_SLICE_MS, tEnd: now, bytes: ev.data.size });
+        pruneBuffer();
+      }
+    });
+    mediaRecorder.start(MEDIARECORDER_SLICE_MS);
+
+    statsEl.textContent = `Recording (mime: ${pickedMime || 'auto'})… Press a number key for replay.`;
+  }
+
+  // UI events
+  startBtn.addEventListener('click', startCapture);
+  applyBtn.addEventListener('click', startCapture);
+  refreshBtn.addEventListener('click', relistDevicesPreservingSelection);
+  window.addEventListener('keydown', handleKey);
+  stageEl.addEventListener('mousemove', updateLoopAndSpeedFromMouse);
+
+  // Device hot-plug
+  navigator.mediaDevices.addEventListener?.('devicechange', async () => { await relistDevicesPreservingSelection(); });
+
+  // Init
+  await ensurePermissions();   // helps labels show
+  await listDevices();
+})();
+</script>
+</body>
+</html>

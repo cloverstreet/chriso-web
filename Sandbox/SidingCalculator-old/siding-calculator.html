@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cedar Siding Calculator</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState } = React;
+    const { Ruler, Scissors, Eye, Settings } = lucide;
+
+    const SidingCalculator = () => {
+      const [selectedBoard, setSelectedBoard] = useState(null);
+      const [showLines, setShowLines] = useState(true);
+      const [enhancedView, setEnhancedView] = useState(false);
+      const [leftReveal, setLeftReveal] = useState(3);
+      const [rightReveal, setRightReveal] = useState(4);
+      const [zoom, setZoom] = useState(1);
+      const [pan, setPan] = useState({ x: 0, y: 0 });
+      const [isDragging, setIsDragging] = useState(false);
+      const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+      
+      const wall = {
+        A: { x: 0, y: 0 },
+        B: { x: 96, y: 0 },
+        C: { x: 96, y: 183 },
+        D: { x: 0, y: 135 }
+      };
+      
+      const wall2 = {
+        B: { x: 96, y: 0 },
+        E: { x: 288, y: 0 },
+        F: { x: 288, y: 300 },
+        G: { x: 96, y: 300 }
+      };
+      
+      const toFraction = (decimal) => {
+        const whole = Math.floor(decimal);
+        const fraction = decimal - whole;
+        const sixteenths = Math.round(fraction * 16);
+        
+        if (sixteenths === 0) return `${whole}"`;
+        if (sixteenths === 16) return `${whole + 1}"`;
+        
+        const gcd = (a, b) => b === 0 ? a : gcd(b, a % b);
+        const divisor = gcd(sixteenths, 16);
+        const num = sixteenths / divisor;
+        const denom = 16 / divisor;
+        
+        if (whole === 0) return `${num}/${denom}"`;
+        return `${whole} ${num}/${denom}"`;
+      };
+      
+      const toFeetInches = (inches) => {
+        const feet = Math.floor(inches / 12);
+        const remainingInches = inches % 12;
+        return `${feet}' ${toFraction(remainingInches)}`;
+      };
+      
+      const calculateBoard = (boardNum) => {
+        const totalBoardsRight = Math.floor(wall.C.y / rightReveal);
+        const adjustedLeftReveal = wall.D.y / totalBoardsRight;
+        
+        const rightY = wall.C.y - (boardNum * rightReveal);
+        const leftY = wall.D.y - (boardNum * adjustedLeftReveal);
+        
+        const left = { x: wall.D.x, y: leftY };
+        const right = { x: wall.C.x, y: rightY };
+        
+        const length = Math.sqrt(Math.pow(right.x - left.x, 2) + Math.pow(right.y - left.y, 2));
+        
+        const deltaX = right.x - left.x;
+        const deltaY = right.y - left.y;
+        const angleRad = Math.atan2(deltaY, deltaX);
+        const angleDeg = angleRad * (180 / Math.PI);
+        
+        const leftAngle = 90 - angleDeg;
+        const rightAngle = 90 + angleDeg;
+        
+        return {
+          boardNum,
+          left,
+          right,
+          length: length.toFixed(2),
+          leftAngle: leftAngle.toFixed(1),
+          rightAngle: rightAngle.toFixed(1),
+          slope: angleDeg.toFixed(1),
+          adjustedLeftReveal: adjustedLeftReveal.toFixed(3)
+        };
+      };
+      
+      const totalBoards = Math.floor(wall.C.y / rightReveal);
+      const boards = Array.from({ length: totalBoards }, (_, i) => calculateBoard(i));
+      
+      const handleWheel = (e) => {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? 0.99 : 1.01;
+        setZoom(prev => Math.min(Math.max(prev * delta, 0.5), 5));
+      };
+      
+      const handleMouseDown = (e) => {
+        setIsDragging(true);
+        setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+      };
+      
+      const handleMouseMove = (e) => {
+        if (isDragging) {
+          setPan({
+            x: e.clientX - dragStart.x,
+            y: e.clientY - dragStart.y
+          });
+        }
+      };
+      
+      const handleMouseUp = () => {
+        setIsDragging(false);
+      };
+      
+      const resetView = () => {
+        setZoom(1);
+        setPan({ x: 0, y: 0 });
+      };
+      
+      const scale = 1.2;
+      const offsetX = 50;
+      const offsetY = 50;
+      
+      const toSvgX = (x) => x * scale + offsetX;
+      const toSvgY = (y) => (300 - y) * scale + offsetY;
+      
+      const renderEnhancedBoard = (board, index) => {
+        const bottomLeft = board.left;
+        const bottomRight = board.right;
+        
+        const angleRad = Math.atan2(bottomRight.y - bottomLeft.y, bottomRight.x - bottomLeft.x);
+        const perpAngle = angleRad + Math.PI / 2;
+        
+        const adjustedLeftReveal = parseFloat(board.adjustedLeftReveal);
+        const topLeft = {
+          x: bottomLeft.x + Math.cos(perpAngle) * adjustedLeftReveal,
+          y: bottomLeft.y + Math.sin(perpAngle) * adjustedLeftReveal
+        };
+        const topRight = {
+          x: bottomRight.x + Math.cos(perpAngle) * rightReveal,
+          y: bottomRight.y + Math.sin(perpAngle) * rightReveal
+        };
+        
+        const gradientId = `gradient-${index}`;
+        const baseColor = selectedBoard?.boardNum === board.boardNum ? '#dc2626' : '#8b7355';
+        
+        return (
+          <g key={board.boardNum}>
+            <defs>
+              <linearGradient id={gradientId} x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stopColor={baseColor} stopOpacity="0.6" />
+                <stop offset="100%" stopColor={baseColor} stopOpacity="1.0" />
+              </linearGradient>
+            </defs>
+            <polygon
+              points={`
+                ${toSvgX(topLeft.x)},${toSvgY(topLeft.y)}
+                ${toSvgX(topRight.x)},${toSvgY(topRight.y)}
+                ${toSvgX(bottomRight.x)},${toSvgY(bottomRight.y)}
+                ${toSvgX(bottomLeft.x)},${toSvgY(bottomLeft.y)}
+              `}
+              fill={`url(#${gradientId})`}
+              stroke="#5a4a3a"
+              strokeWidth="0.3"
+              style={{ cursor: 'pointer' }}
+              onClick={() => setSelectedBoard(board)}
+              className="hover:opacity-80 transition-opacity"
+            />
+          </g>
+        );
+      };
+      
+      return (
+        <div className="w-full min-h-screen bg-gray-50 p-4">
+          <div className="max-w-7xl mx-auto bg-white rounded-lg shadow-lg p-6" style={{ minHeight: '90vh' }}>
+            <h1 className="text-2xl font-bold text-gray-800 mb-2">Cedar Siding Design Calculator</h1>
+            <p className="text-gray-600 mb-4">Click on any board to see its measurements and cut angles</p>
+            
+            <div className="mb-4 flex flex-wrap gap-3">
+              <button
+                onClick={() => setShowLines(!showLines)}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center gap-2"
+              >
+                <Eye size={16} />
+                {showLines ? 'Hide Lines' : 'Show Lines'}
+              </button>
+              
+              <button
+                onClick={() => setEnhancedView(!enhancedView)}
+                className={`px-4 py-2 rounded transition-colors flex items-center gap-2 ${
+                  enhancedView 
+                    ? 'bg-green-600 text-white hover:bg-green-700' 
+                    : 'bg-gray-600 text-white hover:bg-gray-700'
+                }`}
+              >
+                <Settings size={16} />
+                {enhancedView ? '3D View' : 'Line View'}
+              </button>
+              
+              <div className="flex items-center gap-2 bg-gray-100 px-3 py-2 rounded">
+                <label className="text-sm font-medium text-gray-700">Left Reveal:</label>
+                <input
+                  type="number"
+                  value={leftReveal}
+                  onChange={(e) => setLeftReveal(parseFloat(e.target.value) || 3)}
+                  className="w-16 px-2 py-1 border border-gray-300 rounded"
+                  step="0.125"
+                  min="1"
+                  max="8"
+                />
+                <span className="text-sm text-gray-600">"</span>
+              </div>
+              
+              <div className="flex items-center gap-2 bg-gray-100 px-3 py-2 rounded">
+                <label className="text-sm font-medium text-gray-700">Right Reveal:</label>
+                <input
+                  type="number"
+                  value={rightReveal}
+                  onChange={(e) => setRightReveal(parseFloat(e.target.value) || 4)}
+                  className="w-16 px-2 py-1 border border-gray-300 rounded"
+                  step="0.125"
+                  min="1"
+                  max="8"
+                />
+                <span className="text-sm text-gray-600">"</span>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setZoom(prev => Math.min(prev * 1.2, 5))}
+                  className="px-3 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+                >
+                  Zoom +
+                </button>
+                <button
+                  onClick={() => setZoom(prev => Math.max(prev * 0.8, 0.5))}
+                  className="px-3 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+                >
+                  Zoom -
+                </button>
+                <button
+                  onClick={resetView}
+                  className="px-3 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+                >
+                  Reset View
+                </button>
+              </div>
+            </div>
+            
+            <div className="flex gap-4">
+              <div 
+                className="flex-1 border border-gray-300 rounded-lg overflow-hidden"
+                style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+              >
+                <svg 
+                  viewBox="0 0 600 500" 
+                  className="w-full h-auto"
+                  style={{ 
+                    minHeight: '500px',
+                    transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                    transformOrigin: 'center center',
+                    transition: isDragging ? 'none' : 'transform 0.1s ease-out'
+                  }}
+                  onWheel={handleWheel}
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  onMouseLeave={handleMouseUp}
+                >
+                  <polygon
+                    points={`${toSvgX(wall.A.x)},${toSvgY(wall.A.y)} ${toSvgX(wall.B.x)},${toSvgY(wall.B.y)} ${toSvgX(wall.C.x)},${toSvgY(wall.C.y)} ${toSvgX(wall.D.x)},${toSvgY(wall.D.y)}`}
+                    fill={enhancedView ? "#f5f5dc" : "#e8f4f8"}
+                    stroke="#2c5aa0"
+                    strokeWidth="3"
+                  />
+                  
+                  <polygon
+                    points={`${toSvgX(wall2.B.x)},${toSvgY(wall2.B.y)} ${toSvgX(wall2.E.x)},${toSvgY(wall2.E.y)} ${toSvgX(wall2.F.x)},${toSvgY(wall2.F.y)} ${toSvgX(wall2.G.x)},${toSvgY(wall2.G.y)}`}
+                    fill={enhancedView ? "#f5f5dc" : "#e8f4f8"}
+                    stroke="#2c5aa0"
+                    strokeWidth="3"
+                  />
+                  
+                  {enhancedView ? (
+                    boards.map((board, idx) => renderEnhancedBoard(board, idx))
+                  ) : (
+                    showLines && boards.map((board) => (
+                      <line
+                        key={board.boardNum}
+                        x1={toSvgX(board.left.x)}
+                        y1={toSvgY(board.left.y)}
+                        x2={toSvgX(board.right.x)}
+                        y2={toSvgY(board.right.y)}
+                        stroke={selectedBoard?.boardNum === board.boardNum ? "#dc2626" : "#7a7a7a"}
+                        strokeWidth={selectedBoard?.boardNum === board.boardNum ? "1.5" : "0.5"}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => setSelectedBoard(board)}
+                        className="hover:stroke-red-500 transition-colors"
+                      />
+                    ))
+                  )}
+                  
+                  <circle cx={toSvgX(wall.A.x)} cy={toSvgY(wall.A.y)} r="2" fill="#d32f2f"/>
+                  <text x={toSvgX(wall.A.x)} y={toSvgY(wall.A.y) + 15} fontSize="10" textAnchor="middle" fontWeight="bold">A</text>
+                  
+                  <circle cx={toSvgX(wall.B.x)} cy={toSvgY(wall.B.y)} r="2" fill="#d32f2f"/>
+                  <text x={toSvgX(wall.B.x)} y={toSvgY(wall.B.y) + 15} fontSize="10" textAnchor="middle" fontWeight="bold">B</text>
+                  
+                  <circle cx={toSvgX(wall.C.x)} cy={toSvgY(wall.C.y)} r="2" fill="#d32f2f"/>
+                  <text x={toSvgX(wall.C.x)} y={toSvgY(wall.C.y) - 8} fontSize="10" textAnchor="middle" fontWeight="bold">C</text>
+                  
+                  <circle cx={toSvgX(wall.D.x)} cy={toSvgY(wall.D.y)} r="2" fill="#d32f2f"/>
+                  <text x={toSvgX(wall.D.x)} y={toSvgY(wall.D.y) - 8} fontSize="10" textAnchor="middle" fontWeight="bold">D</text>
+                  
+                  <circle cx={toSvgX(wall2.E.x)} cy={toSvgY(wall2.E.y)} r="2" fill="#d32f2f"/>
+                  <text x={toSvgX(wall2.E.x)} y={toSvgY(wall2.E.y) + 15} fontSize="10" textAnchor="middle" fontWeight="bold">E</text>
+                  
+                  <circle cx={toSvgX(wall2.F.x)} cy={toSvgY(wall2.F.y)} r="2" fill="#d32f2f"/>
+                  <text x={toSvgX(wall2.F.x)} y={toSvgY(wall2.F.y) - 8} fontSize="10" textAnchor="middle" fontWeight="bold">F</text>
+                  
+                  <circle cx={toSvgX(wall2.G.x)} cy={toSvgY(wall2.G.y)} r="2" fill="#d32f2f"/>
+                  <text x={toSvgX(wall2.G.x) - 15} y={toSvgY(wall2.G.y)} fontSize="10" textAnchor="middle" fontWeight="bold">G</text>
+                </svg>
+              </div>
+              
+              <div className="w-72 space-y-4 flex-shrink-0">
+                {selectedBoard ? (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h2 className="text-lg font-semibold text-blue-900 mb-3 flex items-center gap-2">
+                      <Ruler size={20} />
+                      Board #{selectedBoard.boardNum}
+                    </h2>
+                    
+                    <div className="space-y-3">
+                      <div className="bg-white rounded p-3">
+                        <div className="text-sm text-gray-600 mb-1">Board Length</div>
+                        <div className="text-2xl font-bold text-gray-900">{selectedBoard.length}"</div>
+                        <div className="text-sm text-gray-500">
+                          {toFeetInches(parseFloat(selectedBoard.length))}
+                        </div>
+                      </div>
+                      
+                      <div className="bg-white rounded p-3">
+                        <div className="text-sm text-gray-600 mb-2 flex items-center gap-1">
+                          <Scissors size={16} />
+                          Cut Angles
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <div className="text-xs text-gray-500">Left End</div>
+                            <div className="text-lg font-semibold text-gray-900">{selectedBoard.leftAngle}°</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-500">Right End</div>
+                            <div className="text-lg font-semibold text-gray-900">{selectedBoard.rightAngle}°</div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="bg-white rounded p-3">
+                        <div className="text-sm text-gray-600 mb-1">Board Slope</div>
+                        <div className="text-lg font-semibold text-gray-900">{selectedBoard.slope}°</div>
+                        <div className="text-xs text-gray-500">from horizontal</div>
+                      </div>
+                      
+                      <div className="bg-white rounded p-3 text-xs">
+                        <div className="text-gray-600 mb-1">Position (from top)</div>
+                        <div className="space-y-1">
+                          <div>Left: {toFraction(selectedBoard.left.y)} from D</div>
+                          <div>Right: {toFraction(selectedBoard.right.y)} from C</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center text-gray-500">
+                    Click on any board to see measurements
+                  </div>
+                )}
+                
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-gray-800 mb-2">Wall Info</h3>
+                  <div className="text-sm space-y-1 text-gray-700">
+                    <div>Width: 96"</div>
+                    <div>Left: 135" (11'3")</div>
+                    <div>Right: 183" (15'3")</div>
+                    <div>Reveal L/R: {leftReveal}"/{rightReveal}"</div>
+                    <div>Boards: {totalBoards}</div>
+                    <div className="text-xs text-gray-500 pt-1">Adj. Left: {boards[0]?.adjustedLeftReveal}"</div>
+                  </div>
+                </div>
+                
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-amber-900 mb-2">Overlap Info</h3>
+                  <div className="text-sm space-y-1 text-amber-800">
+                    <div className="font-medium">Board height: 5.5"</div>
+                    <div>Right overlap: {(5.5 - rightReveal).toFixed(2)}"</div>
+                    <div>Left overlap: {(5.5 - parseFloat(boards[0]?.adjustedLeftReveal || leftReveal)).toFixed(2)}"</div>
+                    <div className="text-xs text-amber-600 pt-1 border-t border-amber-200 mt-2">
+                      Overlap = 5.5" - reveal
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    ReactDOM.render(<SidingCalculator />, document.getElementById('root'));
+  </script>
+</body>
+</html>

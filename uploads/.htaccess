@@ -1,0 +1,26 @@
+# PerfReal Upload Portal — .htaccess
+php_value upload_max_filesize 200M
+php_value post_max_size       210M
+php_value memory_limit        256M
+php_value max_execution_time  300
+php_value max_input_time      300
+
+<FilesMatch "^\.">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+<FilesMatch "(\.json|\.state|setup\.php)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^participantFiles/.*\.(php|phtml|php3|php4|php5|php7|phar|shtml|pl|py|cgi)$ - [F,L]
+</IfModule>
+
+Options -Indexes
+AddDefaultCharset UTF-8
+Header set X-Frame-Options "SAMEORIGIN"
+Header set X-Content-Type-Options "nosniff"

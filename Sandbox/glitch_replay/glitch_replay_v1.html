@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Live Cam + Glitch Replay</title>
+<style>
+  :root { --bg:#0b0b10; --fg:#e8e8ef; --accent:#6cf; --muted:#8a8aa0; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; }
+  #app { position:fixed; inset:0; display:grid; grid-template-rows:auto 1fr auto; }
+  header, footer { padding:10px 14px; background:rgba(255,255,255,0.03); border-bottom:1px solid rgba(255,255,255,0.06); }
+  footer { border-top:1px solid rgba(255,255,255,0.06); border-bottom:none; display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+  main { position:relative; background:#000; overflow:hidden; }
+  video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  #live { opacity:1; transition:opacity .2s ease; }
+  #replay { opacity:0; transition:opacity .2s ease; }
+  .show-replay #live { opacity:0; }
+  .show-replay #replay { opacity:1; }
+  #hud {
+    position:absolute; left:10px; bottom:10px; padding:10px 12px;
+    background:rgba(0,0,0,0.45); backdrop-filter: blur(6px);
+    border:1px solid rgba(255,255,255,0.12); border-radius:10px;
+    font-size:14px; line-height:1.35;
+  }
+  .pill { display:inline-block; padding:4px 8px; border-radius:999px; border:1px solid rgba(255,255,255,0.14); background:rgba(255,255,255,0.06); font-size:12px; color:var(--fg); }
+  button {
+    background:var(--accent); color:#001018; border:none; border-radius:10px;
+    padding:10px 14px; font-weight:700; cursor:pointer;
+  }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .hint { color:var(--muted); }
+  kbd { background:#11151a; color:#e6f4ff; border:1px solid #1d2730; padding:2px 6px; border-radius:6px; font-family:ui-monospace,Consolas,monospace; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <strong>Live Cam + Glitch Replay</strong>
+  </header>
+
+  <main id="stage">
+    <video id="live" autoplay playsinline muted></video>
+    <video id="replay" playsinline></video>
+    <div id="hud" class="hint">
+      <div><span class="pill">Click <strong>Start</strong> → allow Camera + Mic</span></div>
+      <div style="margin-top:6px">
+        <div>Press <kbd>1..9</kbd> (<kbd>0</kbd>=10s) to jump back & enter replay.</div>
+        <div>In replay: move mouse → <strong>X</strong> = loop length, <strong>Y</strong> = speed. Press <kbd>Esc</kbd> to return live.</div>
+      </div>
+      <div id="stats" style="margin-top:6px"></div>
+    </div>
+  </main>
+
+  <footer>
+    <button id="startBtn">Start</button>
+    <span class="hint">Buffer: <span id="bufSec">0</span>s (rolling)</span>
+    <span class="hint">Lookback: <span id="lookback">–</span></span>
+    <span class="hint">Loop: <span id="loopLen">–</span></span>
+    <span class="hint">Speed: <span id="speed">–</span>x</span>
+  </footer>
+</div>
+
+<script>
+(async function () {
+  const liveEl   = document.getElementById('live');
+  const replayEl = document.getElementById('replay');
+  const startBtn = document.getElementById('startBtn');
+  const appEl    = document.getElementById('app');
+  const bufSecEl = document.getElementById('bufSec');
+  const lookbackEl = document.getElementById('lookback');
+  const loopLenEl  = document.getElementById('loopLen');
+  const speedEl    = document.getElementById('speed');
+  const statsEl    = document.getElementById('stats');
+  const stageEl    = document.getElementById('stage');
+
+  // --- Config ---
+  const BUFFER_SECONDS_MAX = 45;          // Rolling memory buffer size
+  const MEDIARECORDER_SLICE_MS = 250;     // Chunk timeslice (lower => smoother jumps, higher overhead)
+  const DEFAULT_CLIP_SECONDS = 12;        // Base clip length we assemble for replay
+  const MIN_LOOP_SEC = 0.2, MAX_LOOP_SEC = 6.0;
+  const MIN_SPEED = 0.25, MAX_SPEED = 2.0;
+
+  // --- State ---
+  let mediaStream = null;
+  let mediaRecorder = null;
+  let chunks = []; // { blob, tStart, tEnd, bytes }
+  let t0 = performance.now(); // base timeline
+  let liveStartPerf = null;
+
+  // Replay-only state
+  let inReplay = false;
+  let clipStartOffset = 0;   // seconds into the clip
+  let clipDuration = DEFAULT_CLIP_SECONDS;
+  let loopLen = 1.0;
+  let speed = 1.0;
+  let currentLookback = null; // seconds
+
+  function fmt(n, digits=2){ return Number(n).toFixed(digits); }
+
+  function pruneBuffer() {
+    // Keep only last BUFFER_SECONDS_MAX seconds worth of chunks by time
+    const now = performance.now();
+    const cutoff = now - (BUFFER_SECONDS_MAX * 1000);
+    while (chunks.length && chunks[0].tEnd < cutoff) {
+      chunks.shift();
+    }
+    const earliest = chunks[0]?.tStart ?? now;
+    const latest   = chunks[chunks.length-1]?.tEnd ?? now;
+    bufSecEl.textContent = Math.max(0, (latest - earliest)/1000 | 0);
+  }
+
+  function assembleClipBlob(lookbackSec, clipSec = DEFAULT_CLIP_SECONDS) {
+    // Build a blob ending at "now - lookbackSec", spanning "clipSec"
+    const now = performance.now();
+    const clipEnd = now - (lookbackSec * 1000);
+    const clipStart = clipEnd - (clipSec * 1000);
+
+    const selected = [];
+    for (const c of chunks) {
+      if (c.tEnd >= clipStart && c.tStart <= clipEnd) selected.push(c.blob);
+    }
+    if (!selected.length) return null;
+    return new Blob(selected, { type: 'video/webm;codecs=vp8,opus' });
+  }
+
+  function enterReplay(lookbackSec) {
+    const blob = assembleClipBlob(lookbackSec, DEFAULT_CLIP_SECONDS);
+    if (!blob) {
+      console.warn('No data in buffer for replay.');
+      return;
+    }
+    // Show replay layer
+    inReplay = true;
+    currentLookback = lookbackSec;
+    clipDuration = DEFAULT_CLIP_SECONDS;
+    // Start loop at the end (most recent point in the clip)
+    loopLen = Math.min(Math.max(loopLen, MIN_LOOP_SEC), MAX_LOOP_SEC);
+    speed = Math.min(Math.max(speed, MIN_SPEED), MAX_SPEED);
+
+    const url = URL.createObjectURL(blob);
+    replayEl.src = url;
+    replayEl.muted = false; // we want clip audio
+    replayEl.playbackRate = speed;
+    replayEl.currentTime = Math.max(0, clipDuration - loopLen);
+    clipStartOffset = replayEl.currentTime;
+
+    replayEl.onended = null;
+    replayEl.addEventListener('timeupdate', enforceLoop, { passive:true });
+
+    // Crossfade: show replay, keep live running beneath
+    appEl.classList.add('show-replay');
+    // Some browsers need play() after a user gesture; entering via keypress should count.
+    replayEl.play().catch(err => console.warn('Replay play() blocked:', err));
+
+    lookbackEl.textContent = `${lookbackSec}s`;
+    loopLenEl.textContent = `${fmt(loopLen)}s`;
+    speedEl.textContent = `${fmt(speed,2)}x`;
+    statsEl.textContent = `Replay clip ≈ ${fmt(clipDuration)}s window`;
+  }
+
+  function enforceLoop() {
+    if (!inReplay) return;
+    const start = clipStartOffset;
+    const end = start + loopLen;
+    if (replayEl.currentTime < start || replayEl.currentTime > end) {
+      replayEl.currentTime = start;
+    }
+  }
+
+  function exitReplay() {
+    if (!inReplay) return;
+    inReplay = false;
+    currentLookback = null;
+    replayEl.pause();
+    replayEl.removeAttribute('src');
+    replayEl.load();
+    appEl.classList.remove('show-replay');
+    lookbackEl.textContent = '–';
+    loopLenEl.textContent  = '–';
+    speedEl.textContent    = '–';
+    statsEl.textContent    = '';
+  }
+
+  function updateLoopAndSpeedFromMouse(e) {
+    if (!inReplay) return;
+    const rect = stageEl.getBoundingClientRect();
+    const relX = Math.min(Math.max(0, e.clientX - rect.left), rect.width) / Math.max(1, rect.width);
+    const relY = Math.min(Math.max(0, e.clientY - rect.top),  rect.height) / Math.max(1, rect.height);
+
+    // Map X → loop length
+    const newLoop = MIN_LOOP_SEC + relX * (MAX_LOOP_SEC - MIN_LOOP_SEC);
+    loopLen = newLoop;
+
+    // Map Y → speed (top fast, bottom slow; invert Y)
+    const invY = 1 - relY;
+    const newSpeed = MIN_SPEED + invY * (MAX_SPEED - MIN_SPEED);
+    speed = newSpeed;
+    replayEl.playbackRate = speed;
+
+    // Keep loop end pinned to clip end by default (loop anchored to end)
+    clipStartOffset = Math.max(0, clipDuration - loopLen);
+
+    loopLenEl.textContent = `${fmt(loopLen)}s`;
+    speedEl.textContent   = `${fmt(speed,2)}x`;
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Escape') {
+      exitReplay();
+      return;
+    }
+    // Number keys = jump back N seconds (0 => 10s)
+    const n = parseInt(e.key, 10);
+    if (!isNaN(n)) {
+      const lookback = (n === 0) ? 10 : n;
+      enterReplay(lookback);
+    }
+  }
+
+  // Start capture + rolling buffer
+  async function start() {
+    startBtn.disabled = true;
+    try {
+      mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: true
+      });
+    } catch (err) {
+      alert('Failed to access camera/microphone: ' + err.message);
+      startBtn.disabled = false;
+      return;
+    }
+
+    liveEl.srcObject = mediaStream;
+    liveEl.muted = true; // avoid feedback while live
+    await liveEl.play().catch(()=>{});
+
+    // Rolling buffer via MediaRecorder (video+audio webm chunks)
+    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
+      ? 'video/webm;codecs=vp8,opus'
+      : 'video/webm';
+    mediaRecorder = new MediaRecorder(mediaStream, { mimeType: mime });
+    liveStartPerf = performance.now();
+
+    mediaRecorder.addEventListener('dataavailable', (ev) => {
+      if (ev.data && ev.data.size > 0) {
+        const now = performance.now();
+        const tEnd = now;
+        const tStart = tEnd - MEDIARECORDER_SLICE_MS;
+        chunks.push({ blob: ev.data, tStart, tEnd, bytes: ev.data.size });
+        pruneBuffer();
+      }
+    });
+
+    mediaRecorder.addEventListener('stop', ()=>{ /* noop */ });
+    mediaRecorder.start(MEDIARECORDER_SLICE_MS);
+
+    // UI
+    statsEl.textContent = 'Recording rolling buffer… Press a number key to try replay.';
+  }
+
+  // Events
+  startBtn.addEventListener('click', start);
+  window.addEventListener('keydown', handleKey);
+  stageEl.addEventListener('mousemove', updateLoopAndSpeedFromMouse);
+
+  // Handle window blur (optional: stay running)
+  window.addEventListener('beforeunload', () => {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+    if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,14 +1,29 @@
-# VS Code SFTP config contains passwords — never commit
+# ── Credentials — NEVER commit ───────────────────────────────
 **/.vscode/sftp.json
 .vscode/sftp.json
 
-# Mac junk
+# ── Dependencies ──────────────────────────────────────────────
+**/node_modules/
+
+# ── Build output (can regenerate) ────────────────────────────
+Sandbox/*/dist/
+TestCases/*/dist/
+
+# ── Personal / private content ────────────────────────────────
+_myNotes/
+media-operaRelated/
+uploads/participantFiles/
+
+# ── Mac junk ──────────────────────────────────────────────────
 .DS_Store
 **/.DS_Store
 
-# Editor
+# ── Editor ────────────────────────────────────────────────────
 .vscode/settings.json
 *.code-workspace
 
-# Logs
+# ── Logs ──────────────────────────────────────────────────────
 *.log
+
+# ── Claude Code config ────────────────────────────────────────
+**/.claude/

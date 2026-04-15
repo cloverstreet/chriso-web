@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Glitch Replay — Canvas+AudioWorklet Ring Buffer (fixed 1s)</title>
+<style>
+  :root{--bg:#0b0b10;--fg:#e8e8ef;--accent:#6cf;--muted:#8a8aa0}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+  #app{position:fixed;inset:0;display:grid;grid-template-rows:auto 1fr auto}
+  header,footer{padding:10px 14px;background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.06)}
+  footer{border-top:1px solid rgba(255,255,255,.06);border-bottom:none;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  main{position:relative;background:#000;overflow:hidden}
+  video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  #live{opacity:1;transition:opacity .2s}
+  #canvas{opacity:0;transition:opacity .2s}
+  .show-replay #live{opacity:0}
+  .show-replay #canvas{opacity:1}
+  #hud{position:absolute;left:10px;bottom:10px;padding:10px 12px;background:rgba(0,0,0,.45);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.12);border-radius:10px;font-size:13px;line-height:1.35;min-width:280px}
+  .pill{display:inline-block;padding:4px 8px;border-radius:999px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);font-size:12px}
+  button{background:var(--accent);color:#001018;border:none;border-radius:10px;padding:9px 12px;font-weight:700;cursor:pointer}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  select{background:#0f141a;color:var(--fg);border:1px solid #24303b;border-radius:8px;padding:6px 8px}
+  label{font-size:12px;color:var(--muted);margin-right:6px}
+  kbd{background:#11151a;color:#e6f4ff;border:1px solid #1d2730;padding:2px 6px;border-radius:6px;font-family:ui-monospace,Consolas,monospace}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .small{font-size:12px;color:var(--muted)}
+  #meterWrap{position:absolute;right:10px;bottom:10px;width:200px;height:44px;background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:6px 8px}
+  #meterLabel{font-size:12px;color:var(--muted);margin-bottom:4px}
+  #meter{width:100%;height:20px;background:#1a2330;border-radius:6px;overflow:hidden;position:relative}
+  #meter .bar{position:absolute;left:0;top:0;bottom:0;width:0%;background:#6cf;transition:width .08s linear}
+  #meter .peak{position:absolute;top:0;bottom:0;width:2px;right:0;background:#e8e8ef;opacity:.8}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <strong>Glitch Replay — Canvas + AudioWorklet (RAM-heavy)</strong>
+    <div style="margin-top:8px" class="row">
+      <div><label for="videoSelect">Video:</label><select id="videoSelect"></select></div>
+      <div><label for="audioSelect">Audio:</label><select id="audioSelect"></select></div>
+      <div><label for="resSelect">Res:</label>
+        <select id="resSelect">
+          <option value="1280x720">1280×720</option>
+          <option value="640x480">640×480</option>
+          <option value="auto" selected>Auto</option>
+        </select>
+      </div>
+      <button id="applyBtn">Apply</button>
+      <button id="refreshBtn">Refresh</button>
+      <button id="replay3">↺ 3s</button>
+      <button id="replay5">↺ 5s</button>
+      <button id="replay10">↺ 10s</button>
+      <span class="small">Keys: <kbd>1..9</kbd>, <kbd>0</kbd>=10s · <kbd>Esc</kbd> live</span>
+    </div>
+  </header>
+
+  <main id="stage" tabindex="0">
+    <video id="live" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+
+    <div id="hud">
+      <div><span class="pill">Start → allow Cam+Mic (use localhost/HTTPS)</span></div>
+      <div id="stats" style="margin-top:6px"></div>
+      <div id="diag" class="small" style="margin-top:6px;white-space:pre-line"></div>
+    </div>
+
+    <div id="meterWrap">
+      <div id="meterLabel">Audio input</div>
+      <div id="meter"><div class="bar" id="meterBar"></div><div class="peak" id="meterPeak"></div></div>
+    </div>
+  </main>
+
+  <footer>
+    <button id="startBtn">Start</button>
+    <span class="small">Buf: <span id="bufSec">0</span>s</span>
+    <span class="small">Frames: <span id="frameCount">0</span></span>
+    <span class="small">Audio secs: <span id="audioSecs">0.0</span></span>
+    <span class="small">Lookback: <span id="lookback">–</span></span>
+    <span class="small">Loop: 1.00s</span>
+    <span class="small">Speed: 1.00x</span>
+  </footer>
+</div>
+
+<script>
+(async function(){
+  // Elements
+  const live = document.getElementById('live');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d', {alpha:false, desynchronized:true});
+  const startBtn = document.getElementById('startBtn');
+  const applyBtn = document.getElementById('applyBtn');
+  const refreshBtn = document.getElementById('refreshBtn');
+  const replay3 = document.getElementById('replay3');
+  const replay5 = document.getElementById('replay5');
+  const replay10 = document.getElementById('replay10');
+  const stage = document.getElementById('stage');
+  const app = document.getElementById('app');
+  const stats = document.getElementById('stats');
+  const diag  = document.getElementById('diag');
+  const bufSecEl = document.getElementById('bufSec');
+  const frameCountEl = document.getElementById('frameCount');
+  const audioSecsEl = document.getElementById('audioSecs');
+  const lookbackEl = document.getElementById('lookback');
+  const videoSel = document.getElementById('videoSelect');
+  const audioSel = document.getElementById('audioSelect');
+  const resSel   = document.getElementById('resSelect');
+  const meterBar = document.getElementById('meterBar');
+  const meterPeak= document.getElementById('meterPeak');
+
+  // Config
+  const LOOP_LEN_S = 1.0;       // fixed 1s loop
+  const SPEED = 1.0;            // fixed
+  const MAX_VIDEO_SEC = 60;     // ring capacity (tune)
+  const TARGET_FPS = 30;        // capture rate
+  const AUDIO_RING_SEC = 60;    // ring capacity
+  const CAPTURE_SCALE = 1.0;    // 1.0 = native constraints
+
+  // State
+  let stream=null;
+  let frames=[];      // array of {bmp, t}
+  let framePeriodMs = 1000/TARGET_FPS;
+  let nextCaptureAt = 0;
+  let running=false, inReplay=false;
+  let rafId=null;
+
+  // Audio capture/playback
+  let audioCtx=null, srcNode=null;
+  let captureNode=null, playerNode=null;
+  let sampleRate=48000; // will set from audioCtx.actualSampleRate
+  let audioRing=null;   // Float32Array (mono) ring
+  let audioWrite=0;     // write index
+  let audioLength=0;    // total frames in ring
+  let audioLoopTimer=null;
+
+  // Device UI
+  const LS={v:'gr_video_deviceId',a:'gr_audio_deviceId',r:'gr_resolution'};
+  async function ensurePerms(){ try{ const t=await navigator.mediaDevices.getUserMedia({video:true,audio:true}); t.getTracks().forEach(x=>x.stop()); }catch{} }
+  async function listDevices(){
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    const vids = devs.filter(d=>d.kind==='videoinput');
+    const auds = devs.filter(d=>d.kind==='audioinput');
+    const sv = localStorage.getItem(LS.v)||'', sa=localStorage.getItem(LS.a)||'';
+    videoSel.innerHTML=''; vids.forEach((d,i)=>{const o=document.createElement('option'); o.value=d.deviceId; o.textContent=d.label||`Camera ${i+1}`; if(d.deviceId===sv) o.selected=true; videoSel.appendChild(o);});
+    audioSel.innerHTML=''; auds.forEach((d,i)=>{const o=document.createElement('option'); o.value=d.deviceId; o.textContent=d.label||`Mic ${i+1}`; if(d.deviceId===sa) o.selected=true; audioSel.appendChild(o);});
+    resSel.value = localStorage.getItem(LS.r)||'auto';
+  }
+  async function relistKeep(){
+    const pv=videoSel.value, pa=audioSel.value; await listDevices();
+    if ([...videoSel.options].some(o=>o.value===pv)) videoSel.value=pv;
+    if ([...audioSel.options].some(o=>o.value===pa)) audioSel.value=pa;
+  }
+  function makeConstraints(){
+    const vid=videoSel.value||undefined, aud=audioSel.value||undefined;
+    let width={ideal:1280}, height={ideal:720};
+    if(resSel.value!=='auto'){ const [w,h]=resSel.value.split('x').map(Number); width={ideal:w}; height={ideal:h}; }
+    const v=vid?{deviceId:{exact:vid},width,height}:{width,height};
+    const a=aud?{deviceId:{exact:aud}}:true;
+    return {video:v,audio:a};
+  }
+  function stopStream(s){ if(!s)return; s.getTracks().forEach(t=>t.stop()); }
+
+  // Video capture into RAM ring
+  function dropOldFrames(now){
+    const cut = now - MAX_VIDEO_SEC*1000;
+    while(frames.length && frames[0].t < cut){
+      const f=frames.shift(); try{ f.bmp.close(); }catch{}
+    }
+    const earliest=frames[0]?.t ?? now;
+    const latest=frames[frames.length-1]?.t ?? now;
+    bufSecEl.textContent = Math.max(0, ((latest-earliest)/1000)|0);
+    frameCountEl.textContent = frames.length;
+  }
+  async function captureLoop(ts){
+    if(!running){ rafId=null; return; }
+    if(nextCaptureAt===0) nextCaptureAt = ts;
+    if(ts >= nextCaptureAt){
+      try{
+        const bmp = await createImageBitmap(live, {resizeWidth: live.videoWidth*CAPTURE_SCALE, resizeHeight: live.videoHeight*CAPTURE_SCALE, resizeQuality: 'high'});
+        frames.push({bmp, t: performance.now()});
+      }catch{} // ignore transient errors
+      nextCaptureAt += framePeriodMs;
+    }
+    dropOldFrames(performance.now());
+    rafId = requestAnimationFrame(captureLoop);
+  }
+
+  // Audio worklets (capture & player) via blob URLs
+  async function ensureWorklets(){
+    if(!audioCtx) return;
+    // Capture processor: posts mono input to main
+    const capCode = `
+      class CaptureProcessor extends AudioWorkletProcessor {
+        process(inputs, outputs, params){
+          const ch = inputs[0][0];
+          if (ch){
+            const mono = new Float32Array(ch.length);
+            mono.set(ch);
+            this.port.postMessage(mono, [mono.buffer]);
+          }
+          return true;
+        }
+      }
+      registerProcessor('capture-processor', CaptureProcessor);
+    `;
+    // Player processor: pulls from internal queue, outputs mono
+    const playCode = `
+      class PlayerProcessor extends AudioWorkletProcessor {
+        constructor(){ super(); this.queue=[]; this.qPos=0; this.current=null;
+          this.port.onmessage = e=>{
+            if (e.data && e.data.type==='chunk'){
+              this.queue.push(e.data.payload);
+            } else if (e.data && e.data.type==='clear'){
+              this.queue.length=0; this.qPos=0; this.current=null;
+            }
+          };
+        }
+        _tick(out){
+          let o0 = out[0];
+          let ch0 = o0[0];
+          let i=0;
+          while(i<ch0.length){
+            if(!this.current || this.qPos>=this.current.length){
+              if(this.queue.length===0){ // out of data -> silence
+                while(i<ch0.length){ ch0[i++]=0; }
+                return;
+              }
+              this.current = this.queue.shift();
+              this.qPos = 0;
+            }
+            const n = Math.min(ch0.length - i, this.current.length - this.qPos);
+            ch0.set(this.current.subarray(this.qPos, this.qPos+n), i);
+            i += n; this.qPos += n;
+          }
+        }
+        process(inputs, outputs, params){
+          this._tick(outputs);
+          return true;
+        }
+      }
+      registerProcessor('player-processor', PlayerProcessor);
+    `;
+    const capURL = URL.createObjectURL(new Blob([capCode],{type:'application/javascript'}));
+    const playURL= URL.createObjectURL(new Blob([playCode],{type:'application/javascript'}));
+    await audioCtx.audioWorklet.addModule(capURL);
+    await audioCtx.audioWorklet.addModule(playURL);
+    URL.revokeObjectURL(capURL); URL.revokeObjectURL(playURL);
+  }
+
+  function setupAudioGraph(stream){
+    audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    sampleRate = audioCtx.sampleRate;
+    audioRing = new Float32Array(sampleRate * AUDIO_RING_SEC);
+    audioLength = audioRing.length; audioWrite = 0;
+
+    srcNode = audioCtx.createMediaStreamSource(stream);
+
+    // audio meter
+    const analyser = audioCtx.createAnalyser(); analyser.fftSize=1024;
+    srcNode.connect(analyser);
+    const data = new Uint8Array(analyser.fftSize);
+    let meterRAF=0, lastPeak=0, lastT=performance.now();
+    function meterTick(){
+      analyser.getByteTimeDomainData(data);
+      let sum=0; for(let i=0;i<data.length;i++){ const v=(data[i]-128)/128; sum+=v*v; }
+      const rms=Math.sqrt(sum/data.length); const pct=Math.min(100,Math.max(0,rms*100*1.8));
+      meterBar.style.width=pct.toFixed(1)+'%';
+      const now=performance.now(), dt=Math.max(1, now-lastT); lastPeak=Math.max(pct, lastPeak - dt*0.03); lastT=now;
+      meterPeak.style.left=Math.min(100,Math.max(0,lastPeak)).toFixed(1)+'%';
+      meterRAF=requestAnimationFrame(meterTick);
+    }
+    meterRAF=requestAnimationFrame(meterTick);
+
+    // Worklets
+    ensureWorklets().then(()=>{
+      captureNode = new AudioWorkletNode(audioCtx, 'capture-processor');
+      srcNode.connect(captureNode);
+      captureNode.port.onmessage = (e)=>{
+        const mono = e.data;
+        // write into ring
+        const N = mono.length;
+        let w = audioWrite;
+        if (w + N <= audioLength){
+          audioRing.set(mono, w);
+        } else {
+          const first = audioLength - w;
+          audioRing.set(mono.subarray(0, first), w);
+          audioRing.set(mono.subarray(first), 0);
+        }
+        audioWrite = (w + N) % audioLength;
+        audioSecsEl.textContent = (audioLength / sampleRate).toFixed(1);
+      };
+
+      playerNode = new AudioWorkletNode(audioCtx, 'player-processor');
+      playerNode.connect(audioCtx.destination);
+    });
+  }
+
+  function secondsToFrames(sec){ return Math.floor(sec * TARGET_FPS); }
+
+  function enterReplay(lookbackSec){
+    if(!running) return;
+    if(frames.length < secondsToFrames(2)){ stats.textContent='Need a few seconds of frames first.'; return; }
+
+    // Locate time window
+    const now = performance.now();
+    const endT = now - lookbackSec*1000;
+    const startT = endT - LOOP_LEN_S*1000;
+
+    // Extract video frames in [startT, endT]
+    const sel = frames.filter(f => f.t >= startT && f.t <= endT);
+    if(sel.length < 2){ stats.textContent='Too few frames in window; try a different lookback.'; return; }
+
+    // Precompute the loop's audio slice and schedule streaming to player
+    if (playerNode){
+      // Compute audio indices aligned to times
+      const endWrite = audioWrite; // latest write position corresponds approx to now
+      const samplesPerMs = sampleRate / 1000;
+      const lenSamples = Math.max(1, Math.floor(LOOP_LEN_S * sampleRate));
+      const endOffsetSamples = Math.floor(lookbackSec*1000 * samplesPerMs);
+      let loopEnd = (endWrite - endOffsetSamples + audioLength) % audioLength;
+      let loopStart = (loopEnd - lenSamples + audioLength) % audioLength;
+
+      // Build a contiguous Float32Array for the loop
+      const loopBuf = new Float32Array(lenSamples);
+      if (loopStart + lenSamples <= audioLength){
+        loopBuf.set(audioRing.subarray(loopStart, loopStart+lenSamples), 0);
+      } else {
+        const first = audioLength - loopStart;
+        loopBuf.set(audioRing.subarray(loopStart), 0);
+        loopBuf.set(audioRing.subarray(0, lenSamples - first), first);
+      }
+
+      // Clear and start feeding chunks (~1024 samples) repeatedly
+      playerNode.port.postMessage({type:'clear'});
+      if (audioLoopTimer) clearInterval(audioLoopTimer);
+      const CH = 1024;
+      let pos = 0;
+      audioLoopTimer = setInterval(()=>{
+        // send next chunk; when end reached, wrap to start (loop)
+        const next = loopBuf.subarray(pos, Math.min(loopBuf.length, pos+CH));
+        const chunk = new Float32Array(next.length); chunk.set(next);
+        playerNode.port.postMessage({type:'chunk', payload: chunk}, [chunk.buffer]);
+        pos += CH; if (pos >= loopBuf.length) pos = 0;
+      }, Math.max(1, Math.floor(1000 * CH / sampleRate))); // ~21ms @48k
+    }
+
+    // Switch to canvas replay
+    inReplay = true;
+    app.classList.add('show-replay');
+    lookbackEl.textContent = `${lookbackSec}s`;
+    stats.textContent = `Canvas replay loop 1.00s @ ~${TARGET_FPS}fps; audio via worklet loop`;
+
+    // Draw looped frames
+    const W = live.videoWidth||1280, H = live.videoHeight||720;
+    canvas.width = W; canvas.height = H;
+
+    let i = 0;
+    function drawLoop(){
+      if(!inReplay) return;
+      const f = sel[i];
+      if (f && f.bmp) ctx.drawImage(f.bmp, 0, 0, W, H);
+      i = (i+1) % sel.length;
+      setTimeout(()=>requestAnimationFrame(drawLoop), framePeriodMs); // steady-ish cadence
+    }
+    drawLoop();
+  }
+
+  function exitReplay(){
+    if(!inReplay) return;
+    inReplay=false;
+    app.classList.remove('show-replay');
+    lookbackEl.textContent='–';
+    stats.textContent='';
+    if (audioLoopTimer){ clearInterval(audioLoopTimer); audioLoopTimer=null; }
+  }
+
+  async function startCapture(){
+    localStorage.setItem(LS.v, videoSel.value||'');
+    localStorage.setItem(LS.a, audioSel.value||'');
+    localStorage.setItem(LS.r, resSel.value||'auto');
+
+    exitReplay();
+    running=false; if(rafId) cancelAnimationFrame(rafId); rafId=null;
+    frames.forEach(f=>{try{f.bmp.close();}catch{}}); frames.length=0;
+    stopStream(stream);
+
+    const cons = makeConstraints();
+    try{ stream = await navigator.mediaDevices.getUserMedia(cons); await relistKeep(); }
+    catch(e){ alert('Camera/mic error: '+e.message); return; }
+
+    live.srcObject=stream; live.muted=true; await live.play().catch(()=>{});
+    setupAudioGraph(stream);
+
+    running=true; nextCaptureAt=0;
+    rafId = requestAnimationFrame(captureLoop);
+    stats.textContent='Capturing to RAM rings… press number key or ↺ button to replay 1s loop.';
+  }
+
+  function onKey(e){
+    if (e.key==='Escape'){ exitReplay(); return; }
+    const n=parseInt(e.key,10);
+    if (!isNaN(n)){ e.preventDefault(); enterReplay(n===0?10:n); }
+  }
+
+  // Wire
+  startBtn.addEventListener('click', startCapture);
+  applyBtn.addEventListener('click', startCapture);
+  refreshBtn.addEventListener('click', relistKeep);
+  replay3.addEventListener('click', ()=>enterReplay(3));
+  replay5.addEventListener('click', ()=>enterReplay(5));
+  replay10.addEventListener('click', ()=>enterReplay(10));
+  document.addEventListener('keydown', onKey, {passive:false});
+  window.addEventListener('keydown', onKey, {passive:false});
+
+  navigator.mediaDevices.addEventListener?.('devicechange', relistKeep);
+  document.addEventListener('visibilitychange', ()=>{ if(document.hidden && inReplay) exitReplay(); });
+  window.addEventListener('beforeunload', ()=>{
+    running=false; if(rafId) cancelAnimationFrame(rafId);
+    if (audioLoopTimer) clearInterval(audioLoopTimer);
+    stopStream(stream);
+    try{ if(audioCtx && audioCtx.state!=='closed') audioCtx.close(); }catch{}
+    frames.forEach(f=>{try{f.bmp.close();}catch{}});
+  });
+
+  await ensurePerms(); await listDevices();
+})();
+</script>
+</body>
+</html>

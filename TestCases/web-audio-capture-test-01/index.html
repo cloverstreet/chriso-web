@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Audio Capture — Test Case 01</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0d0d0d; color: #d0d0d0;
+      font-family: 'Courier New', monospace;
+      display: flex; flex-direction: column;
+      align-items: center; min-height: 100vh;
+      padding: 24px 16px; gap: 12px;
+    }
+    .page-title {
+      font-size: .62rem; color: #666;
+      letter-spacing: .28em; text-transform: uppercase;
+    }
+    .main-layout {
+      display: flex; flex-direction: row;
+      align-items: flex-start; gap: 12px;
+    }
+    .modules-col { display: flex; flex-direction: column; gap: 6px; }
+    /* ── Module shell ─────────────────────────── */
+    .module { background: #111; border: 1px solid #242424; width: 265px; display: flex; flex-direction: column; }
+    /* ── Header ──────────────────────────────── */
+    .mod-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 5px 8px; border-bottom: 1px solid #1a1a1a;
+    }
+    .mod-title { font-size: .72rem; color: #bbb; letter-spacing: .16em; text-transform: uppercase; flex: 1; text-align: center; }
+    .bypass-btn {
+      font-family: 'Courier New', monospace; font-size: .62rem; letter-spacing: .08em;
+      background: none; border: 1px solid; padding: 2px 6px; cursor: pointer; transition: all .12s;
+    }
+    .bypass-btn.on  { border-color:#2a9a2a; color:#2a9a2a; box-shadow:0 0 4px #2a9a2a44; }
+    .bypass-btn.off { border-color:#e02020; color:#e02020; text-decoration:line-through; }
+    /* ── Body ────────────────────────────────── */
+    .mod-body { padding: 10px 10px 6px; display:flex; flex-direction:column; gap:7px; }
+    .capture-btn {
+      font-family:'Courier New',monospace; font-size:.68rem; letter-spacing:.12em;
+      text-transform:uppercase; background:none; border:1px solid #c8a854;
+      color:#c8a854; padding:6px 10px; cursor:pointer; width:100%; transition:all .12s;
+    }
+    .capture-btn:hover { border-color:#e8c874; color:#e8c874; box-shadow:0 0 6px #c8a85444; }
+    .capture-btn.active { border-color:#2a9a2a; color:#2a9a2a; box-shadow:0 0 4px #2a9a2a44; }
+    .stat-row { display:flex; align-items:center; gap:6px; }
+    .stat-lbl { font-size:.62rem; color:#555; letter-spacing:.1em; text-transform:uppercase; flex-shrink:0; width:36px; }
+    .stat-val { font-size:.62rem; color:#aaa; flex:1; text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    /* select dropdowns */
+    select {
+      font-family:'Courier New',monospace; font-size:.62rem; color:#aaa;
+      background:#0d0d0d; border:1px solid #242424; padding:3px 6px;
+      width:100%; cursor:pointer; outline:none; appearance:none;
+      -webkit-appearance:none;
+    }
+    select:focus { border-color:#c8a854; }
+    select option { background:#111; color:#aaa; }
+    .sel-row { display:flex; flex-direction:column; gap:3px; }
+    .sel-lbl { font-size:.62rem; color:#555; letter-spacing:.1em; text-transform:uppercase; }
+    /* ── Footer / Gain+Meter ─────────────────── */
+    .mod-footer { border-top:1px solid #1a1a1a; padding:6px 10px 8px; display:flex; flex-direction:column; gap:4px; }
+    .ctrl-row { display:flex; justify-content:space-between; align-items:baseline; }
+    .ctrl-lbl { font-size:.68rem; color:#aaa; letter-spacing:.12em; text-transform:uppercase; }
+    .ctrl-val { font-size:.72rem; color:#c8a854; }
+    .meter-row { display:flex; align-items:flex-start; gap:8px; }
+    .meter-strip { position:relative; width:22px; height:68px; flex-shrink:0; cursor:ns-resize; user-select:none; }
+    .meter-bars  { position:absolute; inset:0; display:flex; gap:8px; }
+    .meter-bar   { flex:1; height:100%; background:#0d1a0d; position:relative; overflow:hidden; }
+    .meter-fill  {
+      position:absolute; bottom:0; left:0; right:0; height:0%;
+      background: linear-gradient(to top, #1a5a1a 0%, #2a9a2a 68%, #7ab020 78%, #b89010 85%, #c06010 91%, #c83010 96%, #e02020 100%);
+    }
+    .meter-peak  { position:absolute; left:0; right:0; height:2px; background:#fff; bottom:0; opacity:0; }
+    .meter-peak.active { opacity:1; }
+    .gain-thumb  { position:absolute; left:0; width:22px; height:5px; background:#6aaee0; z-index:2; cursor:ns-resize; pointer-events:none; }
+    .clip-dot    { width:6px; height:6px; border-radius:50%; background:#1a1a1a; border:1px solid #333; flex-shrink:0; margin-top:2px; }
+    .clip-dot.clip { background:#e02020; border-color:#ff4040; box-shadow:0 0 4px #e0202088; }
+    .db-readout  { font-size:.62rem; color:#555; text-align:center; }
+    /* ── Info panel ──────────────────────────── */
+    .info-panel {
+      width: 260px; display: flex; flex-direction: column; gap: 8px;
+    }
+    .info-section { border: 1px solid #1a1a1a; padding: 10px; }
+    .info-title { font-size:.62rem; color:#666; letter-spacing:.2em; text-transform:uppercase; margin-bottom:8px; }
+    .info-block { margin-bottom:8px; }
+    .info-block:last-child { margin-bottom:0; }
+    .info-mode { font-size:.68rem; color:#c8a854; letter-spacing:.1em; margin-bottom:2px; }
+    .info-desc { font-size:.60rem; color:#444; line-height:1.65; }
+    .info-desc .hi  { color:#c8a854; }
+    .info-desc .ok  { color:#2a9a2a; }
+    .info-desc .warn { color:#b08030; }
+    .info-desc .dim  { color:#333; }
+    /* active source display */
+    .src-display { border: 1px solid #1a2a1a; padding: 10px; }
+    .src-display .info-title { color:#2a9a2a; }
+    .src-row { display:flex; gap:6px; margin-bottom:4px; align-items:baseline; }
+    .src-key { font-size:.60rem; color:#555; width:52px; flex-shrink:0; text-transform:uppercase; letter-spacing:.08em; }
+    .src-val { font-size:.62rem; color:#aaa; flex:1; }
+    /* debug log */
+    .debug-panel { border:1px solid #1a1a1a; padding:8px 10px; }
+    .debug-title { font-size:.62rem; color:#555; letter-spacing:.2em; text-transform:uppercase; margin-bottom:4px; }
+    #debug-log { font-size:.60rem; color:#c8a854; min-height:1em; line-height:1.5; }
+  </style>
+</head>
+<body>
+<div class="page-title">instruments / web audio capture — test case 01</div>
+<div class="main-layout">
+
+  <!-- ══ MODULES COLUMN ══════════════════════════════════════════ -->
+  <div class="modules-col">
+
+    <!-- ── CAPTURE MODULE ─────────────────────────────────────── -->
+    <div class="module">
+      <div class="mod-head">
+        <span class="mod-title">WEB CAPTURE</span>
+        <button class="bypass-btn on" id="cap-bypass" onclick="toggleCapBypass()">ON</button>
+      </div>
+      <div class="mod-body">
+        <button class="capture-btn" id="capture-btn" onclick="toggleCapture()">▶ CAPTURE TAB / WINDOW</button>
+        <div class="stat-row"><span class="stat-lbl">SRC</span><span class="stat-val" id="s-src">— none —</span></div>
+        <div class="stat-row"><span class="stat-lbl">CH</span> <span class="stat-val" id="s-ch">—</span></div>
+        <div class="stat-row"><span class="stat-lbl">RATE</span><span class="stat-val" id="s-rate">—</span></div>
+      </div>
+      <div class="mod-footer">
+        <div class="ctrl-row"><span class="ctrl-lbl">GAIN</span><span class="ctrl-val" id="cap-gain-val">+0.0 dB</span></div>
+        <div class="meter-row">
+          <div class="meter-strip" id="cap-meter">
+            <div class="meter-bars">
+              <div class="meter-bar"><div class="meter-fill" id="cap-fl"></div><div class="meter-peak" id="cap-pl"></div></div>
+              <div class="meter-bar"><div class="meter-fill" id="cap-fr"></div><div class="meter-peak" id="cap-pr"></div></div>
+            </div>
+            <div class="gain-thumb" id="cap-thumb"></div>
+          </div>
+          <div class="clip-dot" id="cap-clip"></div>
+        </div>
+        <div class="db-readout" id="cap-db">— dB</div>
+      </div>
+    </div>
+
+    <!-- ── OUTPUT MODULE ──────────────────────────────────────── -->
+    <div class="module">
+      <div class="mod-head">
+        <span class="mod-title">OUTPUT</span>
+        <button class="bypass-btn on" id="out-bypass" onclick="toggleOutBypass()">ON</button>
+      </div>
+      <div class="mod-body">
+        <div class="sel-row">
+          <span class="sel-lbl">DEVICE</span>
+          <select id="out-device" onchange="onDeviceChange()"><option value="">— select after capture —</option></select>
+        </div>
+        <div class="sel-row">
+          <span class="sel-lbl">CHANNELS</span>
+          <select id="out-channels" onchange="onChannelChange()"><option value="0">Ch 1–2 (default)</option></select>
+        </div>
+        <div class="stat-row" style="margin-top:2px">
+          <span class="stat-lbl">MAX CH</span><span class="stat-val" id="out-maxch">—</span>
+        </div>
+      </div>
+      <div class="mod-footer">
+        <div class="ctrl-row"><span class="ctrl-lbl">GAIN</span><span class="ctrl-val" id="out-gain-val">−60 dB</span></div>
+        <div class="meter-row">
+          <div class="meter-strip" id="out-meter">
+            <div class="meter-bars">
+              <div class="meter-bar"><div class="meter-fill" id="out-fl"></div><div class="meter-peak" id="out-pl"></div></div>
+              <div class="meter-bar"><div class="meter-fill" id="out-fr"></div><div class="meter-peak" id="out-pr"></div></div>
+            </div>
+            <div class="gain-thumb" id="out-thumb"></div>
+          </div>
+          <div class="clip-dot" id="out-clip"></div>
+        </div>
+        <div class="db-readout" id="out-db">— dB</div>
+      </div>
+    </div>
+
+  </div><!-- /modules-col -->
+
+  <!-- ══ INFO PANEL ═══════════════════════════════════════════════ -->
+  <div class="info-panel">
+
+    <!-- Active source status -->
+    <div class="src-display" id="src-display">
+      <div class="info-title">▸ source</div>
+      <div class="src-row"><span class="src-key">label</span><span class="src-val" id="info-label">none</span></div>
+      <div class="src-row"><span class="src-key">type</span> <span class="src-val" id="info-type">—</span></div>
+      <div class="src-row"><span class="src-key">ch</span>   <span class="src-val" id="info-ch">—</span></div>
+      <div class="src-row"><span class="src-key">rate</span> <span class="src-val" id="info-rate">—</span></div>
+      <div class="src-row"><span class="src-key">drm?</span> <span class="src-val" id="info-drm">—</span></div>
+    </div>
+
+    <!-- What getDisplayMedia is -->
+    <div class="info-section">
+      <div class="info-title">▸ what is getDisplayMedia</div>
+      <div class="info-desc">
+        A browser API that lets a page capture audio (and/or video) from another source the user selects.
+        It always returns a <span class="hi">copy</span> — the original source keeps playing normally.
+        Requires a user gesture to invoke. Chrome shows a picker dialog.
+      </div>
+    </div>
+
+    <!-- Modes -->
+    <div class="info-section">
+      <div class="info-title">▸ capture modes</div>
+      <div class="info-block">
+        <div class="info-mode">TAB</div>
+        <div class="info-desc">Captures audio from a specific browser tab. Most reliable for web audio. <span class="hi">Must check "Share tab audio"</span> checkbox in the picker — without it you get video only. DRM-protected tabs may still deliver a silent track.</div>
+      </div>
+      <div class="info-block">
+        <div class="info-mode">WINDOW</div>
+        <div class="info-desc">Captures video of a specific app window. <span class="warn">Audio is not reliably available</span> in window mode on most platforms — no audio checkbox appears. Use Tab or Screen for audio.</div>
+      </div>
+      <div class="info-block">
+        <div class="info-mode">SCREEN / DESKTOP</div>
+        <div class="info-desc">Captures the full screen (video). On some Chrome builds, a <span class="hi">"Share system audio"</span> checkbox appears — this can capture all system audio simultaneously. <span class="warn">Mac: requires explicit OS permission.</span> Inconsistent across Chrome versions.</div>
+      </div>
+      <div class="info-block">
+        <div class="info-mode">SYSTEM AUDIO (LOOPBACK)</div>
+        <div class="info-desc">True system capture — everything playing on the computer — requires OS routing: <span class="hi">BlackHole</span> or <span class="hi">Loopback</span> (Mac) creates a virtual audio device. Set it as the system output, then capture it as a mic input. The Fireface's TotalMix can also create an internal loopback bus.</div>
+      </div>
+    </div>
+
+    <!-- Limitations -->
+    <div class="info-section">
+      <div class="info-title">▸ limitations</div>
+      <div class="info-desc">
+        <span class="hi">Copy only</span> — can't intercept or mute the original.<br>
+        <span class="warn">DRM content</span> (Spotify web, Netflix, some YouTube Premium) delivers a silent audio track — the stream object looks valid but carries no signal.<br>
+        <span class="hi">No feedback</span> as long as the output device differs from the capture source.<br>
+        <span class="dim">Firefox / Safari</span>: limited or no audio support in getDisplayMedia.
+      </div>
+    </div>
+
+    <!-- debug -->
+    <div class="debug-panel">
+      <div class="debug-title">debug</div>
+      <div id="debug-log">—</div>
+    </div>
+
+  </div><!-- /info-panel -->
+</div><!-- /main-layout -->
+
+<script>
+// ── Constants ──────────────────────────────────────────────────
+const METER_H   = 68;
+const GAIN_MIN  = -60, GAIN_MAX = 12;
+const PEAK_HOLD = 1600;
+
+// ── Audio graph ────────────────────────────────────────────────
+let actx = null, stream = null, srcNode = null;
+let capGain = null, outGain = null;
+let capAnlL = null, capAnlR = null;
+let outAnlL = null, outAnlR = null;
+let outMerger = null, outStereoSplit = null;
+let animId = null;
+
+// ── Module state (capture ON, output ON but silent) ────────────
+let capGainDb = 0,  outGainDb = -60;
+let capBypassed = false, outBypassed = false;  // both start ON
+let selectedDeviceId = '';
+let selectedChPair   = [0, 1];  // [leftOut, rightOut], 0-indexed
+
+// ── Peak hold ─────────────────────────────────────────────────
+let pkCapL={v:0},pkCapR={v:0},pkCapTL={v:0},pkCapTR={v:0},clipCapT={v:0};
+let pkOutL={v:0},pkOutR={v:0},pkOutTL={v:0},pkOutTR={v:0},clipOutT={v:0};
+
+// ── Helpers ────────────────────────────────────────────────────
+const db2lin  = db => Math.pow(10, db / 20);
+const lin2db  = v  => v < 1e-6 ? -Infinity : 20 * Math.log10(v);
+const clamp   = (v,a,b) => Math.max(a, Math.min(b, v));
+const log     = msg => { document.getElementById('debug-log').textContent = msg; };
+const el      = id  => document.getElementById(id);
+
+// ── Gain thumb position ────────────────────────────────────────
+function setThumb(thumbEl, db) {
+  const pct = (db - GAIN_MIN) / (GAIN_MAX - GAIN_MIN);
+  thumbEl.style.bottom = (pct * METER_H - 2.5).toFixed(1) + 'px';
+}
+
+// ── Gain setters ───────────────────────────────────────────────
+function setCapGain(db) {
+  capGainDb = clamp(db, GAIN_MIN, GAIN_MAX);
+  el('cap-gain-val').textContent = fmtDb(capGainDb);
+  setThumb(el('cap-thumb'), capGainDb);
+  if (capGain && actx) capGain.gain.setTargetAtTime(capBypassed ? 0 : db2lin(capGainDb), actx.currentTime, 0.02);
+}
+function setOutGain(db) {
+  outGainDb = clamp(db, GAIN_MIN, GAIN_MAX);
+  el('out-gain-val').textContent = fmtDb(outGainDb);
+  setThumb(el('out-thumb'), outGainDb);
+  if (outGain && actx) outGain.gain.setTargetAtTime(outBypassed ? 0 : db2lin(outGainDb), actx.currentTime, 0.02);
+}
+function fmtDb(db) {
+  if (db <= GAIN_MIN + 0.1) return '−60 dB';
+  return (db >= 0 ? '+' : '') + db.toFixed(1) + ' dB';
+}
+
+// ── Bypass ─────────────────────────────────────────────────────
+function toggleCapBypass() {
+  capBypassed = !capBypassed;
+  el('cap-bypass').textContent  = capBypassed ? 'OFF' : 'ON';
+  el('cap-bypass').className    = 'bypass-btn ' + (capBypassed ? 'off' : 'on');
+  if (capGain && actx) capGain.gain.setTargetAtTime(capBypassed ? 0 : db2lin(capGainDb), actx.currentTime, 0.02);
+}
+function toggleOutBypass() {
+  outBypassed = !outBypassed;
+  el('out-bypass').textContent  = outBypassed ? 'OFF' : 'ON';
+  el('out-bypass').className    = 'bypass-btn ' + (outBypassed ? 'off' : 'on');
+  if (outGain && actx) outGain.gain.setTargetAtTime(outBypassed ? 0 : db2lin(outGainDb), actx.currentTime, 0.02);
+}
+
+// ── Draggable gain thumb ───────────────────────────────────────
+function makeDraggable(stripId, setFn, getFn) {
+  const strip = el(stripId);
+  let dragging = false, startY = 0, startDb = 0;
+  strip.addEventListener('mousedown', e => {
+    dragging = true; startY = e.clientY; startDb = getFn(); e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const ddb = ((startY - e.clientY) / METER_H) * (GAIN_MAX - GAIN_MIN);
+    setFn(startDb + ddb);
+  });
+  document.addEventListener('mouseup', () => { dragging = false; });
+  strip.addEventListener('dblclick', () => setFn(0));
+}
+
+// ── Device enumeration ─────────────────────────────────────────
+async function enumerateOutputDevices() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const outputs = devices.filter(d => d.kind === 'audiooutput');
+    const sel = el('out-device');
+    const prev = sel.value;
+    sel.innerHTML = '';
+    outputs.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d.deviceId;
+      opt.textContent = d.label || ('Device ' + d.deviceId.slice(0,8));
+      sel.appendChild(opt);
+    });
+    if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+    log('✓ found ' + outputs.length + ' output device(s)');
+  } catch(e) { log('enumerateDevices: ' + e.message); }
+}
+
+// ── Channel pair selector ──────────────────────────────────────
+function populateChannelPairs(maxCh) {
+  const sel = el('out-channels');
+  sel.innerHTML = '';
+  for (let i = 0; i < maxCh; i += 2) {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = 'Ch ' + (i+1) + '–' + (i+2);
+    sel.appendChild(opt);
+  }
+  el('out-maxch').textContent = maxCh + ' ch';
+}
+
+// ── Route output to selected channel pair ──────────────────────
+function connectOutputRouting() {
+  if (!actx || !outGain) return;
+
+  // Disconnect old routing
+  if (outMerger)      { try { outMerger.disconnect();      } catch(e){} }
+  if (outStereoSplit) { try { outStereoSplit.disconnect(); } catch(e){} }
+
+  const maxCh = actx.destination.maxChannelCount || 2;
+  actx.destination.channelCount     = maxCh;
+  actx.destination.channelCountMode = 'explicit';
+  actx.destination.channelInterpretation = 'discrete';
+
+  outStereoSplit = actx.createChannelSplitter(2);
+  outMerger      = actx.createChannelMerger(Math.max(maxCh, selectedChPair[1] + 1));
+
+  outGain.connect(outStereoSplit);
+  outStereoSplit.connect(outMerger, 0, selectedChPair[0]);  // L → left channel
+  outStereoSplit.connect(outMerger, 1, selectedChPair[1]);  // R → right channel
+  outMerger.connect(actx.destination);
+
+  log('→ routing: Ch ' + (selectedChPair[0]+1) + '–' + (selectedChPair[1]+1) + ' / ' + maxCh + 'ch device');
+}
+
+// ── Device change ──────────────────────────────────────────────
+async function onDeviceChange() {
+  const deviceId = el('out-device').value;
+  selectedDeviceId = deviceId;
+  if (!actx) return;
+  try {
+    await actx.setSinkId(deviceId);
+    const maxCh = actx.destination.maxChannelCount || 2;
+    populateChannelPairs(maxCh);
+    selectedChPair = [0, 1]; // reset to ch 1-2 on device change
+    el('out-channels').value = '0';
+    connectOutputRouting();
+    log('✓ output → ' + (el('out-device').options[el('out-device').selectedIndex]?.text || deviceId));
+  } catch(e) { log('setSinkId error: ' + e.message); }
+}
+
+// ── Channel pair change ────────────────────────────────────────
+function onChannelChange() {
+  const startCh = parseInt(el('out-channels').value);
+  selectedChPair = [startCh, startCh + 1];
+  connectOutputRouting();
+}
+
+// ── Capture ────────────────────────────────────────────────────
+async function toggleCapture() {
+  if (stream) { stopCapture(); return; }
+  log('requesting getDisplayMedia…');
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      audio: { echoCancellation:false, noiseSuppression:false, autoGainControl:false },
+      video: true
+    });
+    stream.getVideoTracks().forEach(t => t.stop());
+
+    const aTracks = stream.getAudioTracks();
+    if (!aTracks.length) {
+      log('⚠ No audio track — check "Share tab audio" in picker'); stream = null; return;
+    }
+    const track = aTracks[0], s = track.getSettings();
+    const label = track.label || 'unknown';
+
+    el('s-src').textContent    = label;
+    el('s-ch').textContent     = (s.channelCount || '?') + 'ch';
+    el('s-rate').textContent   = (s.sampleRate   || '?') + ' Hz';
+    el('info-label').textContent = label;
+    el('info-ch').textContent    = (s.channelCount || '?') + ' ch';
+    el('info-rate').textContent  = (s.sampleRate   || '?') + ' Hz';
+    // Detect type from label
+    const lc = label.toLowerCase();
+    el('info-type').textContent = lc.includes('tab') ? 'browser tab' : lc.includes('window') ? 'window' : lc.includes('screen') || lc.includes('display') ? 'screen/desktop' : 'unknown';
+    el('info-drm').textContent = '(play signal → watch meter)';
+
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended') await actx.resume();
+
+    // Apply selected device if already chosen
+    if (selectedDeviceId) {
+      try { await actx.setSinkId(selectedDeviceId); } catch(e) { log('setSinkId: ' + e.message); }
+    }
+
+    // Build graph
+    srcNode = actx.createMediaStreamSource(stream);
+    capGain = actx.createGain(); capGain.gain.value = capBypassed ? 0 : db2lin(capGainDb);
+    outGain = actx.createGain(); outGain.gain.value = outBypassed ? 0 : db2lin(outGainDb);
+
+    capAnlL = mkAnl(); capAnlR = mkAnl();
+    outAnlL = mkAnl(); outAnlR = mkAnl();
+
+    const capSplit = actx.createChannelSplitter(2);
+    srcNode.connect(capGain);
+    capGain.connect(capSplit);
+    capSplit.connect(capAnlL, 0);
+    capSplit.connect(capAnlR, 1);
+
+    capGain.connect(outGain);
+    const outMetSplit = actx.createChannelSplitter(2);
+    outGain.connect(outMetSplit);
+    outMetSplit.connect(outAnlL, 0);
+    outMetSplit.connect(outAnlR, 1);
+
+    // Output routing (channel merger)
+    const maxCh = actx.destination.maxChannelCount || 2;
+    populateChannelPairs(maxCh);
+    connectOutputRouting();
+
+    // Enumerate devices now that we have permissions
+    await enumerateOutputDevices();
+
+    el('capture-btn').textContent = '■ STOP CAPTURE';
+    el('capture-btn').className   = 'capture-btn active';
+    track.addEventListener('ended', () => { log('stream ended'); stopCapture(); });
+    log('✓ capturing: ' + label);
+    startMeter();
+  } catch(e) { log('✗ ' + e.name + ': ' + e.message); stream = null; }
+}
+function mkAnl() {
+  const a = actx.createAnalyser(); a.fftSize = 512; a.smoothingTimeConstant = 0.6; return a;
+}
+
+function stopCapture() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  [srcNode, capGain, outGain, outMerger, outStereoSplit].forEach(n => { try { n?.disconnect(); } catch(e){} });
+  srcNode = capGain = outGain = outMerger = outStereoSplit = null;
+  capAnlL = capAnlR = outAnlL = outAnlR = null;
+  cancelAnimationFrame(animId); animId = null;
+  pkCapL.v=pkCapR.v=pkOutL.v=pkOutR.v=0;
+
+  el('capture-btn').textContent = '▶ CAPTURE TAB / WINDOW';
+  el('capture-btn').className   = 'capture-btn';
+  ['s-src','s-ch','s-rate'].forEach(id => el(id).textContent='—');
+  el('s-src').textContent = '— none —';
+  ['info-label','info-type','info-ch','info-rate','info-drm'].forEach(id => el(id).textContent='—');
+  ['cap-fl','cap-fr','out-fl','out-fr'].forEach(id => el(id).style.height='0%');
+  ['cap-pl','cap-pr','out-pl','out-pr'].forEach(id => { el(id).style.bottom='0px'; el(id).classList.remove('active'); });
+  ['cap-db','out-db'].forEach(id => el(id).textContent='— dB');
+  ['cap-clip','out-clip'].forEach(id => el(id).classList.remove('clip'));
+  log('stopped');
+}
+
+// ── Meter ──────────────────────────────────────────────────────
+function rms(anl) {
+  const b = new Float32Array(anl.fftSize);
+  anl.getFloatTimeDomainData(b);
+  let s = 0; for (let i=0;i<b.length;i++) s+=b[i]*b[i];
+  return Math.sqrt(s/b.length);
+}
+function dbPct(r) { return clamp((lin2db(r)+40)/40, 0, 1); }
+
+function updateMeter(prefix, anlL, anlR, pkL, pkR, pkTL, pkTR, clipT, ts) {
+  const vL=rms(anlL), vR=rms(anlR);
+  const pL=dbPct(vL),  pR=dbPct(vR);
+  el(prefix+'-fl').style.height=(pL*100).toFixed(1)+'%';
+  el(prefix+'-fr').style.height=(pR*100).toFixed(1)+'%';
+
+  if(pL>pkL.v){pkL.v=pL;pkTL.v=ts;}else if(ts-pkTL.v>PEAK_HOLD)pkL.v=Math.max(0,pkL.v-.008);
+  if(pR>pkR.v){pkR.v=pR;pkTR.v=ts;}else if(ts-pkTR.v>PEAK_HOLD)pkR.v=Math.max(0,pkR.v-.008);
+
+  const plEl=el(prefix+'-pl'), prEl=el(prefix+'-pr');
+  plEl.style.bottom=(pkL.v*100).toFixed(1)+'%'; plEl.classList.toggle('active', pkL.v>0.01);
+  prEl.style.bottom=(pkR.v*100).toFixed(1)+'%'; prEl.classList.toggle('active', pkR.v>0.01);
+
+  const avgDb=lin2db((vL+vR)/2);
+  el(prefix+'-db').textContent = isFinite(avgDb) ? avgDb.toFixed(1)+' dB' : '—∞ dB';
+
+  // DRM detection: if capture running but meter dead for 3s
+  if (prefix==='cap' && vL<1e-6 && vR<1e-6 && stream) {
+    el('info-drm').textContent = 'possibly silent (DRM?)';
+  } else if (prefix==='cap' && (vL>1e-4 || vR>1e-4)) {
+    el('info-drm').textContent = '✓ signal present';
+  }
+
+  const clipping = pL>=0.98||pR>=0.98;
+  const clipEl = el(prefix+'-clip');
+  if(clipping){clipEl.classList.add('clip');clipT.v=ts;}
+  else if(ts-clipT.v>600)clipEl.classList.remove('clip');
+}
+
+function startMeter() {
+  function loop(ts) {
+    if(!capAnlL)return;
+    updateMeter('cap',capAnlL,capAnlR,pkCapL,pkCapR,pkCapTL,pkCapTR,clipCapT,ts);
+    updateMeter('out',outAnlL,outAnlR,pkOutL,pkOutR,pkOutTL,pkOutTR,clipOutT,ts);
+    animId=requestAnimationFrame(loop);
+  }
+  animId=requestAnimationFrame(loop);
+}
+
+// ── Init ───────────────────────────────────────────────────────
+makeDraggable('cap-meter', setCapGain, ()=>capGainDb);
+makeDraggable('out-meter', setOutGain, ()=>outGainDb);
+setCapGain(0);
+setOutGain(-60);
+</script>
+</body>
+</html>
