@@ -83,7 +83,24 @@ body {
 .adsr-val { font-size:.58rem; min-width:32px; text-align:right; cursor:text; }
 .global-slot[data-slot="0"].saved { border-color:#3a7aaa; color:#6aaee0; }
 .global-slot[data-slot="0"]:hover { border-color:#5a9aaa; color:#8acce0; }
-/* Per-slot color tinting (matches canvas node colors) */
+/* Flanking stereo meters on FX modules */
+.fx-flank {
+  position:absolute; top:30px; bottom:8px; width:3px;
+  display:flex; gap:1px; pointer-events:none;
+}
+.fx-flank.left  { left:2px; }
+.fx-flank.right { right:2px; }
+.fx-flank-bar {
+  flex:1; position:relative;
+  background:linear-gradient(to top,#0a140a 0%,#0f170f 100%);
+  border-radius:1px; overflow:hidden;
+}
+.fx-flank-level {
+  position:absolute; bottom:0; left:0; width:100%;
+  background:linear-gradient(to top,#1a5a1a 0%,#2a9a2a 68%,#b89010 85%,#e02020 100%);
+  transition:height .04s;
+}
+.module { position:relative; } /* ensure flank absolute-positioning works */
 .global-slot[data-slot="1"].saved  { border-color:hsl(0,55%,40%);   color:hsl(0,55%,65%); }
 .global-slot[data-slot="2"].saved  { border-color:hsl(20,55%,40%);  color:hsl(20,55%,65%); }
 .global-slot[data-slot="3"].saved  { border-color:hsl(45,55%,40%);  color:hsl(45,55%,65%); }
@@ -337,6 +354,18 @@ input.vfader::-webkit-slider-thumb {
   position:absolute; bottom:0; left:0; width:100%; height:100%;
   display:flex; gap:2px;
 }
+/* 0dB reference mark — positioned via --zero-dB CSS var (default 83% for -60→+12 range) */
+.gain-meter-wrap::before {
+  content:""; position:absolute; left:-2px; right:-2px;
+  bottom:var(--zero-db, 83.33%); height:1px;
+  background:rgba(200,200,100,0.45); z-index:1; pointer-events:none;
+}
+.gain-meter-wrap::after {
+  content:"0"; position:absolute; left:-11px;
+  bottom:calc(var(--zero-db, 83.33%) - 5px);
+  font-family:'Courier New',monospace; font-size:.46rem;
+  color:rgba(200,200,100,0.55); line-height:1; z-index:1; pointer-events:none;
+}
 .gain-meter-bar {
   flex:1; position:relative;
   background:linear-gradient(to top, #0d1a0d 0%, #121f12 80%, #0f0f0f 100%);
@@ -441,6 +470,15 @@ input.gain-meter-slider::-webkit-slider-thumb {
             <span class="ctrl-val" id="mic-pan-val" data-value="0" style="font-size:.65rem;min-width:24px;text-align:right;">C</span>
           </div>
         </div>
+        <!-- DIRECT → OUT -->
+        <div style="margin-bottom:5px;padding-top:5px;border-top:1px solid #1a1a1a;">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px;">
+            <label style="font-size:.62rem;letter-spacing:.08em;color:#888;">DIRECT → OUT</label>
+            <span class="ctrl-val" id="mic-direct-val" data-value="0" style="font-size:.65rem;">-inf</span>
+          </div>
+          <input type="range" id="mic-direct-sl" min="0" max="1" step="0.01" value="0"
+                 oninput="setMicDirect(this.value)" style="width:100%;">
+        </div>
         <!-- Combined gain+meter slider -->
         <div style="display:flex;justify-content:center;height:68px;min-height:68px;margin-bottom:4px;">
           <div class="gain-meter-wrap" style="height:68px;">
@@ -514,6 +552,15 @@ input.gain-meter-slider::-webkit-slider-thumb {
             <span class="ctrl-val" id="test-pan-val" data-value="0" style="font-size:.65rem;min-width:24px;text-align:right;">C</span>
           </div>
         </div>
+        <!-- DIRECT → OUT -->
+        <div style="margin-bottom:5px;padding-top:5px;border-top:1px solid #1a1a1a;">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px;">
+            <label style="font-size:.62rem;letter-spacing:.08em;color:#888;">DIRECT → OUT</label>
+            <span class="ctrl-val" id="test-direct-val" data-value="0" style="font-size:.65rem;">-inf</span>
+          </div>
+          <input type="range" id="test-direct-sl" min="0" max="1" step="0.01" value="0"
+                 oninput="setTestDirect(this.value)" style="width:100%;">
+        </div>
         <!-- ADSR + gain/meter side by side -->
         <div style="display:flex;gap:5px;align-items:flex-start;">
           <!-- ADSR panel (hidden in steady mode) -->
@@ -548,7 +595,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
           <!-- Gain+meter -->
           <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">
             <div style="display:flex;justify-content:center;height:68px;min-height:68px;margin-bottom:3px;">
-              <div class="gain-meter-wrap" style="height:68px;">
+              <div class="gain-meter-wrap" style="height:68px;--zero-db:90.9%;">
                 <div class="gain-meter-bg">
                   <div class="gain-meter-bar">
                     <div class="gain-meter-level" id="test-level-l" style="height:0%"></div>
@@ -560,7 +607,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
                   </div>
                 </div>
                 <input class="gain-meter-slider" type="range" id="test-gain-sl"
-                  min="-60" max="0" step="0.5" value="-12" oninput="setTestGainDb(this.value)">
+                  min="-60" max="6" step="0.5" value="-12" oninput="setTestGainDb(this.value)">
               </div>
             </div>
             <span class="ctrl-val" id="test-gain-val" data-value="-12" style="font-size:.65rem;">-12dB</span>
@@ -620,6 +667,8 @@ input.gain-meter-slider::-webkit-slider-thumb {
 
     <!-- ════════ PITCH SHIFT (double wide) ════════ -->
     <div class="module wide" id="pitch-module">
+      <div class="fx-flank left"><div class="fx-flank-bar"><div class="fx-flank-level" id="pitch-in-l"></div></div><div class="fx-flank-bar"><div class="fx-flank-level" id="pitch-in-r"></div></div></div>
+      <div class="fx-flank right"><div class="fx-flank-bar"><div class="fx-flank-level" id="pitch-out-l"></div></div><div class="fx-flank-bar"><div class="fx-flank-level" id="pitch-out-r"></div></div></div>
       <div class="mod-head">
         <span class="mod-title">PITCH SHIFT</span>
         <div class="head-presets" id="pitch-head-presets">
@@ -698,6 +747,8 @@ input.gain-meter-slider::-webkit-slider-thumb {
 
     <!-- ════════ DELAY (double wide) ════════ -->
     <div class="module wide" id="delay-module">
+      <div class="fx-flank left"><div class="fx-flank-bar"><div class="fx-flank-level" id="delay-in-l"></div></div><div class="fx-flank-bar"><div class="fx-flank-level" id="delay-in-r"></div></div></div>
+      <div class="fx-flank right"><div class="fx-flank-bar"><div class="fx-flank-level" id="delay-out-l"></div></div><div class="fx-flank-bar"><div class="fx-flank-level" id="delay-out-r"></div></div></div>
       <div class="mod-head">
         <span class="mod-title">DELAY</span>
         <div class="head-presets" id="delay-head-presets">
@@ -1000,6 +1051,12 @@ let micInput=null; // Tone.UserMedia
 let micGainNode, preFxGain, inputMeter; // Tone nodes
 let testOscTone=null, testNoiseTone=null, testOscGainTone, testNoiseGainTone, testMasterGainTone, testPanner; // all Tone.js
 let micPanner=null; // mic stereo pan
+let micDirectG=null, testDirectG=null; // direct-to-output sends (bypass all FX)
+// Flanking meter analysers: pitch in/out L/R, delay in/out L/R
+let pitchInSplit=null, pitchOutSplit=null, delayInSplit=null, delayOutSplit=null;
+let pitchInAnL=null, pitchInAnR=null, pitchOutAnL=null, pitchOutAnR=null;
+let delayInAnL=null, delayInAnR=null, delayOutAnL=null, delayOutAnR=null;
+let delayOutSum=null; // sums dry+wet for delay output meter tap
 let pitchShift, pitchDryG, pitchWetG;
 let pitchSumG, pitchToDelayG, pitchToOutG; // pitch post-mix sends
 let delayToPitchG; // delay→pitch feedback send
@@ -1051,6 +1108,20 @@ async function initAudio() {
     pitchToDelayG  = stereoGain(1);   // pitch → delay send (default full)
     pitchToOutG    = stereoGain(0);   // pitch → out direct send (default 0)
     delayToPitchG  = stereoGain(0);   // delay wet → pitch input feedback (default 0)
+    micDirectG     = stereoGain(0);   // mic → output direct (bypass FX, default 0)
+    testDirectG    = stereoGain(0);   // sig gen → output direct (bypass FX, default 0)
+    // ── Flanking meter analysers (native Web Audio for efficiency) ──
+    const rc = Tone.context.rawContext;
+    const mkAn = () => { const a = rc.createAnalyser(); a.fftSize=256; a.smoothingTimeConstant=0.75; return a; };
+    pitchInSplit  = rc.createChannelSplitter(2); pitchInAnL=mkAn(); pitchInAnR=mkAn();
+    pitchInSplit.connect(pitchInAnL,0,0); pitchInSplit.connect(pitchInAnR,1,0);
+    pitchOutSplit = rc.createChannelSplitter(2); pitchOutAnL=mkAn(); pitchOutAnR=mkAn();
+    pitchOutSplit.connect(pitchOutAnL,0,0); pitchOutSplit.connect(pitchOutAnR,1,0);
+    delayInSplit  = rc.createChannelSplitter(2); delayInAnL=mkAn(); delayInAnR=mkAn();
+    delayInSplit.connect(delayInAnL,0,0); delayInSplit.connect(delayInAnR,1,0);
+    delayOutSplit = rc.createChannelSplitter(2); delayOutAnL=mkAn(); delayOutAnR=mkAn();
+    delayOutSplit.connect(delayOutAnL,0,0); delayOutSplit.connect(delayOutAnR,1,0);
+    delayOutSum   = stereoGain(1); // summing node for delay output meter
     delayNode      = new Tone.Delay({ delayTime:0.5, maxDelay:62 });
     feedbackGain   = stereoGain(0.3);
     delayDryGain   = stereoGain(1);
@@ -1074,6 +1145,7 @@ async function initAudio() {
     testMasterGainTone.connect(testEnvelope);
     testEnvelope.connect(testPanner);
     testPanner.connect(preFxGain); // Tone→Tone ✓ (via panner)
+    testPanner.connect(testDirectG); testDirectG.connect(outputGainNode); // DIRECT → OUT bypass
     testEnvelope.triggerAttack(); // open fully in steady mode
     testMasterGain = testMasterGainTone; // alias for backward-compat refs
 
@@ -1088,6 +1160,7 @@ async function initAudio() {
     // ── Signal graph (Tone.js throughout) ──────────────────────
     micGainNode.connect(micPanner);
     micPanner.connect(preFxGain);
+    micPanner.connect(micDirectG); micDirectG.connect(outputGainNode); // DIRECT → OUT bypass
     preFxGain.connect(inputMeter);
     // Pitch internal: preFxGain → dry+wet → pitchSumG
     preFxGain.connect(pitchDryG); preFxGain.connect(pitchShift); pitchShift.connect(pitchWetG);
@@ -1100,7 +1173,14 @@ async function initAudio() {
     delayNode.connect(delayWetGain);
     // Delay sends: wet/dry → out, wet → pitch input (danger-zone feedback)
     delayDryGain.connect(outputGainNode); delayWetGain.connect(outputGainNode);
-    delayWetGain.connect(delayToPitchG); delayToPitchG.connect(preFxGain);
+    // Flanking meter taps (side-chain analysers, not in main audio path)
+    preFxGain.connect(pitchInSplit);
+    pitchSumG.connect(pitchOutSplit);
+    pitchToDelayG.connect(delayInSplit);
+    delayDryGain.connect(delayOutSum); delayWetGain.connect(delayOutSum);
+    delayOutSum.connect(delayOutSplit);
+    // Feedback tap — direct from delay line (pre-wet), so send gain is the true level
+    delayNode.connect(delayToPitchG); delayToPitchG.connect(preFxGain);
     // Pitch direct → out
     pitchToOutG.connect(outputGainNode);
     outputGainNode.connect(outputMeter); outputGainNode.connect(outputMuteNode); outputMuteNode.toDestination();
@@ -1360,6 +1440,16 @@ function setMicPan(v) {
     el.dataset.value = pan;
   }
 }
+function setMicDirect(v){
+  if(micDirectG) micDirectG.gain.rampTo(parseFloat(v), paramRampTime);
+  const g=parseFloat(v); const el=document.getElementById('mic-direct-val');
+  if(el){el.textContent=g<0.001?'-inf':fmtDb(gainToDb(g)); el.dataset.value=g;}
+}
+function setTestDirect(v){
+  if(testDirectG) testDirectG.gain.rampTo(parseFloat(v), paramRampTime);
+  const g=parseFloat(v); const el=document.getElementById('test-direct-val');
+  if(el){el.textContent=g<0.001?'-inf':fmtDb(gainToDb(g)); el.dataset.value=g;}
+}
 
 function setSigGenMode(mode){
   testMode=mode;
@@ -1534,6 +1624,19 @@ function animateMeters(){
   const odEl = document.getElementById('out-db');
   const oLinMix = Math.max(oLin_l, oLin_r);
   if (odEl) odEl.textContent = oLinMix < SILENCE ? '—' : fmtDb(gainToDb(oLinMix));
+  // ── Flanking FX meters (skinny stereo bars L=input R=output on pitch+delay) ──
+  if (pitchInAnL) {
+    const toPct = lin => lin<SILENCE?0:Math.max(0,Math.min(100,(gainToDb(lin)+60)/60*100));
+    const set = (id, pct) => { const el=document.getElementById(id); if(el) el.style.height=pct+'%'; };
+    set('pitch-in-l',  toPct(getAnalyserRMS(pitchInAnL)));
+    set('pitch-in-r',  toPct(getAnalyserRMS(pitchInAnR)));
+    set('pitch-out-l', toPct(getAnalyserRMS(pitchOutAnL)));
+    set('pitch-out-r', toPct(getAnalyserRMS(pitchOutAnR)));
+    set('delay-in-l',  toPct(getAnalyserRMS(delayInAnL)));
+    set('delay-in-r',  toPct(getAnalyserRMS(delayInAnR)));
+    set('delay-out-l', toPct(getAnalyserRMS(delayOutAnL)));
+    set('delay-out-r', toPct(getAnalyserRMS(delayOutAnR)));
+  }
   requestAnimationFrame(animateMeters);
 }
 
@@ -1675,6 +1778,8 @@ function getGlobalState(){
     inputGainDb:parseFloat(document.getElementById('input-gain-db').value),
     outputGainDb:parseFloat(document.getElementById('output-gain-db').value),
     micPan:parseFloat((document.getElementById('mic-pan-sl')||{value:0}).value),
+    micDirect:parseFloat((document.getElementById('mic-direct-sl')||{value:0}).value),
+    testDirect:parseFloat((document.getElementById('test-direct-sl')||{value:0}).value),
     testEnabled,
     testWave:document.getElementById('test-wave').value,
     testFreqHz:freqLog.toVal(parseFloat(document.getElementById('test-freq-sl').value)),
@@ -1687,6 +1792,8 @@ function applyGlobalState(s){
   document.getElementById('input-gain-db').value=s.inputGainDb; setInputGainDb(s.inputGainDb);
   if(s.outputGainDb!==undefined){document.getElementById('output-gain-db').value=s.outputGainDb; setOutputGainDb(s.outputGainDb);}
   if(s.micPan!==undefined){const mp=document.getElementById('mic-pan-sl'); if(mp){mp.value=s.micPan; setMicPan(s.micPan);}}
+  if(s.micDirect!==undefined){const mdr=document.getElementById('mic-direct-sl'); if(mdr){mdr.value=s.micDirect; setMicDirect(s.micDirect);}}
+  if(s.testDirect!==undefined){const tdr=document.getElementById('test-direct-sl'); if(tdr){tdr.value=s.testDirect; setTestDirect(s.testDirect);}}
   document.getElementById('test-wave').value=s.testWave; setTestWave(s.testWave);
   setTestFreqHz(s.testFreqHz); document.getElementById('test-gain-sl').value=s.testGainDb; setTestGainDb(s.testGainDb);
   if(s.testEnabled!==testEnabled) toggleTestTone();
@@ -1759,12 +1866,12 @@ function setupDblClick(){
       const v=parseFloat(sl.value); const nv=v>0.5?0:1; sl.value=nv; fn(nv);
     });
   });
-  // dB sliders: toggle -60 ↔ 0
+  // Gain sliders (dB): dblclick → always 0dB (unity)
   [['input-gain-db',setInputGainDb],['output-gain-db',setOutputGainDb],
-   ['test-gain-sl',setTestGainDb]].forEach(([id,fn])=>{
-    document.getElementById(id).addEventListener('dblclick',e=>{
-      e.preventDefault(); const sl=document.getElementById(id);
-      const v=parseFloat(sl.value); const nv=v>-30?-60:0; sl.value=nv; fn(nv);
+   ['test-gain-sl',setTestGainDb],['sys-gain-sl',setSysGainDb]].forEach(([id,fn])=>{
+    const sl=document.getElementById(id); if(!sl)return;
+    sl.addEventListener('dblclick',e=>{
+      e.preventDefault(); sl.value=0; fn(0);
     });
   });
   // Pitch semitones: dblclick → reset to 0
@@ -1816,7 +1923,9 @@ function setupEditables(){
   makeEditableSafe(document.getElementById('delay-to-pitch-val'),{min:0,max:1,slider:document.getElementById('delay-to-pitch'),format:v=>v<0.001?'-inf':fmtDb(gainToDb(v)),parse:s=>s.trim()==='-inf'?0:dbToGain(parseFloat(s)),onSet:v=>{document.getElementById('delay-to-pitch').value=v;setDelayToPitch(v);}});
   makeEditableSafe(document.getElementById('test-pan-val'),{min:-1,max:1,slider:document.getElementById('test-pan-sl'),format:v=>Math.abs(v)<0.03?'C':(v<0?'L':'R')+Math.round(Math.abs(v)*100)+'%',parse:s=>{if(s.trim()==='C')return 0;const m=s.match(/([LR])(\d+)/i);if(m)return m[1].toUpperCase()==='L'?-m[2]/100:m[2]/100;return parseFloat(s);},onSet:v=>{document.getElementById('test-pan-sl').value=v;setTestPan(v);}});
   makeEditableSafe(document.getElementById('mic-pan-val'),{min:-1,max:1,slider:document.getElementById('mic-pan-sl'),format:v=>Math.abs(v)<0.03?'C':(v<0?'L':'R')+Math.round(Math.abs(v)*100)+'%',parse:s=>{if(s.trim()==='C')return 0;const m=s.match(/([LR])(\d+)/i);if(m)return m[1].toUpperCase()==='L'?-m[2]/100:m[2]/100;return parseFloat(s);},onSet:v=>{document.getElementById('mic-pan-sl').value=v;setMicPan(v);}});
-  makeEditableSafe(document.getElementById('test-gain-val'),{min:-60,max:0,slider:document.getElementById('test-gain-sl'),format:v=>Math.round(v)+'dB',parse:s=>parseFloat(s),onSet:v=>{document.getElementById('test-gain-sl').value=v;setTestGainDb(v);}});
+  makeEditableSafe(document.getElementById('mic-direct-val'),{min:0,max:1,slider:document.getElementById('mic-direct-sl'),format:v=>v<0.001?'-inf':fmtDb(gainToDb(v)),parse:s=>s.trim()==='-inf'?0:dbToGain(parseFloat(s)),onSet:v=>{document.getElementById('mic-direct-sl').value=v;setMicDirect(v);}});
+  makeEditableSafe(document.getElementById('test-direct-val'),{min:0,max:1,slider:document.getElementById('test-direct-sl'),format:v=>v<0.001?'-inf':fmtDb(gainToDb(v)),parse:s=>s.trim()==='-inf'?0:dbToGain(parseFloat(s)),onSet:v=>{document.getElementById('test-direct-sl').value=v;setTestDirect(v);}});
+  makeEditableSafe(document.getElementById('test-gain-val'),{min:-60,max:6,slider:document.getElementById('test-gain-sl'),format:v=>Math.round(v)+'dB',parse:s=>parseFloat(s),onSet:v=>{document.getElementById('test-gain-sl').value=v;setTestGainDb(v);}});
   makeEditableSafe(document.getElementById('sys-gain-val'),{min:-60,max:12,slider:document.getElementById('sys-gain-sl'),format:v=>Math.round(v)+'dB',parse:s=>parseFloat(s),onSet:v=>{document.getElementById('sys-gain-sl').value=v;setSysGainDb(v);}});
   makeEditableSafe(document.getElementById('adsr-a-val'),{min:1,max:2000,slider:document.getElementById('adsr-a-sl'),format:v=>Math.round(v)+'ms',parse:s=>parseFloat(s),onSet:v=>{document.getElementById('adsr-a-sl').value=v;setAdsrA(v);}});
   makeEditableSafe(document.getElementById('adsr-d-val'),{min:1,max:2000,slider:document.getElementById('adsr-d-sl'),format:v=>Math.round(v)+'ms',parse:s=>parseFloat(s),onSet:v=>{document.getElementById('adsr-d-sl').value=v;setAdsrD(v);}});
@@ -2074,14 +2183,14 @@ function psRedraw() {
 
     // Per-slot color
     const sat = 75, lt = 58;
-    const fillAlpha = isCursorNear ? 0.28 + brightness*0.25 : 0.12;
-    const borderLt  = isSelected ? 72 : 50;
-    const borderAlpha = isSelected ? 1 : 0.7;
+    const fillAlpha = isCursorNear ? 0.38 + brightness*0.28 : 0.18;
+    const borderLt  = isSelected ? 70 : 45;
+    const borderAlpha = isSelected ? 0.9 : 0.35;
 
     // Inner tinted glow — tighter than influence halo
     const glow = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, PS_R * 2.8);
-    glow.addColorStop(0, psColor(i, sat, lt, 0.18 + brightness*0.14));
-    glow.addColorStop(0.6, psColor(i, sat, lt, 0.04));
+    glow.addColorStop(0, psColor(i, sat, lt, 0.26 + brightness*0.16));
+    glow.addColorStop(0.6, psColor(i, sat, lt, 0.06));
     glow.addColorStop(1, psColor(i, sat, lt, 0));
     ctx.fillStyle = glow;
     ctx.beginPath(); ctx.arc(pos.x, pos.y, PS_R*2.8, 0, Math.PI*2); ctx.fill();
@@ -2090,8 +2199,8 @@ function psRedraw() {
     ctx.fillStyle = psColor(i, sat, lt, fillAlpha);
     ctx.beginPath(); ctx.arc(pos.x, pos.y, PS_R, 0, Math.PI*2); ctx.fill();
 
-    // Blob border
-    ctx.lineWidth = isSelected ? 2 : 1;
+    // Blob border (thinner, softer)
+    ctx.lineWidth = isSelected ? 1.5 : 0.75;
     ctx.strokeStyle = psColor(i, sat, borderLt, borderAlpha);
     ctx.beginPath(); ctx.arc(pos.x, pos.y, PS_R, 0, Math.PI*2); ctx.stroke();
 
@@ -2269,7 +2378,7 @@ function psSetupCanvas() {
 
 // ── WASD continuous movement loop ───────────────────────────────────────
 const PS_WASD_SLOW=0.4; // px/frame normal
-const PS_WASD_FAST=9.0; // px/frame with Shift (max sprint)
+const PS_WASD_FAST=7.0; // px/frame with Shift (max sprint)
 
 function psWasdLoop() {
   if (!psCanvasActive || !psCursor) { psWasdRAF = null; return; }
@@ -2279,7 +2388,7 @@ function psWasdLoop() {
   let spd;
   if (psKeys.shift) {
     if (!psSprintStart) psSprintStart = Date.now();
-    const t = Math.min((Date.now() - psSprintStart) / 800, 1); // 0.8s to full sprint
+    const t = Math.min((Date.now() - psSprintStart) / 1000, 1); // 1s to full sprint
     spd = PS_WASD_SLOW + (PS_WASD_FAST - PS_WASD_SLOW) * t * t; // ease-in
   } else { psSprintStart = 0; spd = PS_WASD_SLOW; }
   if(psKeys.w)psCursor.y=Math.max(0,psCursor.y-spd);
