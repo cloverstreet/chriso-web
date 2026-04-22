@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+  
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -411,6 +412,19 @@ input.gain-meter-slider::-webkit-slider-thumb {
           </select>
           <div class="ch-note" id="ch-note"></div>
         </div>
+        <!-- PAN -->
+        <div style="margin-bottom:5px;">
+          <div style="display:flex;align-items:center;gap:3px;margin-bottom:1px;">
+            <label style="font-size:.62rem;letter-spacing:.1em;color:#888;">PAN</label>
+            <div style="position:relative;flex:1;">
+              <input type="range" id="mic-pan-sl" min="-1" max="1" step="0.01" value="0"
+                     oninput="setMicPan(this.value)" style="width:100%;">
+              <div style="position:absolute;top:-5px;left:50%;transform:translateX(-50%);
+                          width:1px;height:4px;background:#444;pointer-events:none;"></div>
+            </div>
+            <span class="ctrl-val" id="mic-pan-val" data-value="0" style="font-size:.65rem;min-width:24px;text-align:right;">C</span>
+          </div>
+        </div>
         <!-- Combined gain+meter slider -->
         <div style="display:flex;justify-content:center;height:68px;min-height:68px;margin-bottom:4px;">
           <div class="gain-meter-wrap" style="height:68px;">
@@ -767,6 +781,13 @@ input.gain-meter-slider::-webkit-slider-thumb {
               <button class="global-slot" data-slot="6" onclick="handleGlobalPreset(this)">6</button>
               <button class="global-slot" data-slot="7" onclick="handleGlobalPreset(this)">7</button>
               <button class="global-slot" data-slot="8" onclick="handleGlobalPreset(this)">8</button>
+              <button class="global-slot" data-slot="9" onclick="handleGlobalPreset(this)">9</button>
+              <button class="global-slot" data-slot="10" onclick="handleGlobalPreset(this)">10</button>
+              <button class="global-slot" data-slot="11" onclick="handleGlobalPreset(this)">11</button>
+              <button class="global-slot" data-slot="12" onclick="handleGlobalPreset(this)">12</button>
+              <button class="global-slot" data-slot="13" onclick="handleGlobalPreset(this)">13</button>
+              <button class="global-slot" data-slot="14" onclick="handleGlobalPreset(this)">14</button>
+              <button class="global-slot" data-slot="15" onclick="handleGlobalPreset(this)">15</button>
               <span style="flex:1;min-width:4px;"></span>
               <select id="ps-layout-sel" onchange="psLoadLayout(this.value)"
                 style="background:#0d0d0d;border:1px solid #252525;color:#666;font-family:'Courier New',monospace;
@@ -942,6 +963,7 @@ let rawCtx;
 let micInput=null; // Tone.UserMedia
 let micGainNode, preFxGain, inputMeter; // Tone nodes
 let testOscTone=null, testNoiseTone=null, testOscGainTone, testNoiseGainTone, testMasterGainTone, testPanner; // all Tone.js
+let micPanner=null; // mic stereo pan
 let pitchShift, pitchDryG, pitchWetG;
 let pitchSumG, pitchToDelayG, pitchToOutG; // pitch post-mix sends
 let delayToPitchG; // delay→pitch feedback send
@@ -969,25 +991,36 @@ async function initAudio() {
   btn.disabled=true; st.textContent='requesting device access...';
   try {
     await Tone.start();
+    // ── Minimize latency: Tone.js defaults lookAhead to 0.1s (100ms)
+    //    for scheduling safety. We don't schedule on the timeline, so 0 is fine.
+    try { Tone.context.lookAhead = 0; } catch(e) { console.warn('lookAhead:',e); }
     rawCtx = Tone.context.rawContext;
 
     // ── ALL Tone.js — zero native→Tone bridging ──────────────────
-    micGainNode    = new Tone.Gain(1);   // mic gain + mute
-    preFxGain      = new Tone.Gain(1);   // sums mic + test → FX
+    // Helper: force a Tone.Gain to be stereo (channelCount:2, explicit)
+    const stereoGain = (g) => {
+      const opts = {channelCount:2, channelCountMode:'explicit', channelInterpretation:'speakers'};
+      const n = new Tone.Gain(g);
+      try { Object.assign(n.input, opts); Object.assign(n.output, opts); } catch(e){}
+      return n;
+    };
+    micGainNode    = stereoGain(1);      // mic gain + mute
+    micPanner      = new Tone.Panner(0); // mic stereo pan
+    preFxGain      = stereoGain(1);      // sums mic + test → FX
     inputMeter     = new Tone.Meter({ normalRange:true, smoothing:0.85 });
     pitchShift     = new Tone.PitchShift({ pitch:0, windowSize:0.1 });
-    pitchDryG      = new Tone.Gain(0);
-    pitchWetG      = new Tone.Gain(1);
-    pitchSumG      = new Tone.Gain(1);   // sums dry+wet pitch output
-    pitchToDelayG  = new Tone.Gain(1);   // pitch → delay send (default full)
-    pitchToOutG    = new Tone.Gain(0);   // pitch → out direct send (default 0)
-    delayToPitchG  = new Tone.Gain(0);   // delay wet → pitch input feedback (default 0)
+    pitchDryG      = stereoGain(0);
+    pitchWetG      = stereoGain(1);
+    pitchSumG      = stereoGain(1);   // sums dry+wet pitch output
+    pitchToDelayG  = stereoGain(1);   // pitch → delay send (default full)
+    pitchToOutG    = stereoGain(0);   // pitch → out direct send (default 0)
+    delayToPitchG  = stereoGain(0);   // delay wet → pitch input feedback (default 0)
     delayNode      = new Tone.Delay({ delayTime:0.5, maxDelay:62 });
-    feedbackGain   = new Tone.Gain(0.3);
-    delayDryGain   = new Tone.Gain(1);
-    delayWetGain   = new Tone.Gain(0.4);
-    outputGainNode = new Tone.Gain(1);
-    outputMuteNode = new Tone.Gain(1);
+    feedbackGain   = stereoGain(0.3);
+    delayDryGain   = stereoGain(1);
+    delayWetGain   = stereoGain(0.4);
+    outputGainNode = stereoGain(1);
+    outputMuteNode = stereoGain(1);
     outputMeter    = new Tone.Meter({ normalRange:true, smoothing:0.85, channels:2 });
 
     // Test tone: all Tone.js (eliminates native→Tone connection issues)
@@ -1017,7 +1050,8 @@ async function initAudio() {
     testEnvelope.connect(testAnalyser); // Tone→native analyser (post-envelope) ✓
 
     // ── Signal graph (Tone.js throughout) ──────────────────────
-    micGainNode.connect(preFxGain);
+    micGainNode.connect(micPanner);
+    micPanner.connect(preFxGain);
     preFxGain.connect(inputMeter);
     // Pitch internal: preFxGain → dry+wet → pitchSumG
     preFxGain.connect(pitchDryG); preFxGain.connect(pitchShift); pitchShift.connect(pitchWetG);
@@ -1271,6 +1305,18 @@ function setTestPan(v) {
   const pan = parseFloat(v);
   if (testPanner) testPanner.pan.rampTo(pan, 0.05);
   const el = document.getElementById('test-pan-val');
+  if (el) {
+    if (Math.abs(pan) < 0.03) el.textContent = 'C';
+    else if (pan < 0) el.textContent = 'L' + Math.round(Math.abs(pan)*100) + '%';
+    else el.textContent = 'R' + Math.round(pan*100) + '%';
+    el.dataset.value = pan;
+  }
+}
+
+function setMicPan(v) {
+  const pan = parseFloat(v);
+  if (micPanner) micPanner.pan.rampTo(pan, 0.05);
+  const el = document.getElementById('mic-pan-val');
   if (el) {
     if (Math.abs(pan) < 0.03) el.textContent = 'C';
     else if (pan < 0) el.textContent = 'L' + Math.round(Math.abs(pan)*100) + '%';
@@ -1548,7 +1594,18 @@ function getFxState(fx){
   if(fx==='delay') return {time:parseFloat(document.getElementById('delay-time-val').dataset.value||0.5),fb:parseFloat(document.getElementById('delay-fb').value),dry:parseFloat(document.getElementById('delay-dry').value),wet:parseFloat(document.getElementById('delay-wet').value),toPitch:parseFloat(document.getElementById('delay-to-pitch').value)};
 }
 function applyFxState(fx,s){
-  if(fx==='pitch'){
+  if(fx==='siggen'){
+    if(s.mode) setSigGenMode(s.mode);
+    if(s.wave){document.getElementById('test-wave').value=s.wave; setTestWave(s.wave);}
+    if(s.freqHz!==undefined) setTestFreqHz(s.freqHz);
+    if(s.gainDb!==undefined){document.getElementById('test-gain-sl').value=s.gainDb; setTestGainDb(s.gainDb);}
+    if(s.pan!==undefined){document.getElementById('test-pan-sl').value=s.pan; setTestPan(s.pan);}
+    if(s.adsrA!==undefined){document.getElementById('adsr-a-sl').value=s.adsrA; setAdsrA(s.adsrA);}
+    if(s.adsrD!==undefined){document.getElementById('adsr-d-sl').value=s.adsrD; setAdsrD(s.adsrD);}
+    if(s.adsrSMs!==undefined){document.getElementById('adsr-s-sl').value=s.adsrSMs; setAdsrS(s.adsrSMs);}
+    if(s.adsrR!==undefined){document.getElementById('adsr-r-sl').value=s.adsrR; setAdsrR(s.adsrR);}
+    if(s.pulseRateMs!==undefined){document.getElementById('pulse-rate-sl').value=s.pulseRateMs; setPulseRate(s.pulseRateMs);}
+  } else if(fx==='pitch'){
     document.getElementById('pitch-window').value=s.window; setPitchWindow(s.window);
     document.getElementById('pitch-semi').value=s.semi; setPitchSemi(s.semi);
     document.getElementById('pitch-wetdry').value=s.wetdry; setPitchWetDry(s.wetdry);
@@ -1573,6 +1630,7 @@ function getGlobalState(){
   return {
     inputGainDb:parseFloat(document.getElementById('input-gain-db').value),
     outputGainDb:parseFloat(document.getElementById('output-gain-db').value),
+    micPan:parseFloat((document.getElementById('mic-pan-sl')||{value:0}).value),
     testEnabled,
     testWave:document.getElementById('test-wave').value,
     testFreqHz:freqLog.toVal(parseFloat(document.getElementById('test-freq-sl').value)),
@@ -1584,6 +1642,7 @@ function getGlobalState(){
 function applyGlobalState(s){
   document.getElementById('input-gain-db').value=s.inputGainDb; setInputGainDb(s.inputGainDb);
   if(s.outputGainDb!==undefined){document.getElementById('output-gain-db').value=s.outputGainDb; setOutputGainDb(s.outputGainDb);}
+  if(s.micPan!==undefined){const mp=document.getElementById('mic-pan-sl'); if(mp){mp.value=s.micPan; setMicPan(s.micPan);}}
   document.getElementById('test-wave').value=s.testWave; setTestWave(s.testWave);
   setTestFreqHz(s.testFreqHz); document.getElementById('test-gain-sl').value=s.testGainDb; setTestGainDb(s.testGainDb);
   if(s.testEnabled!==testEnabled) toggleTestTone();
@@ -1680,6 +1739,10 @@ function setupDblClick(){
   document.getElementById('test-pan-sl').addEventListener('dblclick',e=>{
     e.preventDefault(); document.getElementById('test-pan-sl').value=0; setTestPan(0);
   });
+  const micPan=document.getElementById('mic-pan-sl');
+  if(micPan) micPan.addEventListener('dblclick',e=>{
+    e.preventDefault(); micPan.value=0; setMicPan(0);
+  });
 }
 
 function setupSliderSlew(){
@@ -1708,6 +1771,7 @@ function setupEditables(){
   makeEditableSafe(document.getElementById('pitch-to-out-val'),{min:0,max:1,slider:document.getElementById('pitch-to-out'),format:v=>v<0.001?'-inf':fmtDb(gainToDb(v)),parse:s=>s.trim()==='-inf'?0:dbToGain(parseFloat(s)),onSet:v=>{document.getElementById('pitch-to-out').value=v;setPitchToOut(v);}});
   makeEditableSafe(document.getElementById('delay-to-pitch-val'),{min:0,max:1,slider:document.getElementById('delay-to-pitch'),format:v=>v<0.001?'-inf':fmtDb(gainToDb(v)),parse:s=>s.trim()==='-inf'?0:dbToGain(parseFloat(s)),onSet:v=>{document.getElementById('delay-to-pitch').value=v;setDelayToPitch(v);}});
   makeEditableSafe(document.getElementById('test-pan-val'),{min:-1,max:1,slider:document.getElementById('test-pan-sl'),format:v=>Math.abs(v)<0.03?'C':(v<0?'L':'R')+Math.round(Math.abs(v)*100)+'%',parse:s=>{if(s.trim()==='C')return 0;const m=s.match(/([LR])(\d+)/i);if(m)return m[1].toUpperCase()==='L'?-m[2]/100:m[2]/100;return parseFloat(s);},onSet:v=>{document.getElementById('test-pan-sl').value=v;setTestPan(v);}});
+  makeEditableSafe(document.getElementById('mic-pan-val'),{min:-1,max:1,slider:document.getElementById('mic-pan-sl'),format:v=>Math.abs(v)<0.03?'C':(v<0?'L':'R')+Math.round(Math.abs(v)*100)+'%',parse:s=>{if(s.trim()==='C')return 0;const m=s.match(/([LR])(\d+)/i);if(m)return m[1].toUpperCase()==='L'?-m[2]/100:m[2]/100;return parseFloat(s);},onSet:v=>{document.getElementById('mic-pan-sl').value=v;setMicPan(v);}});
   makeEditableSafe(document.getElementById('test-gain-val'),{min:-60,max:0,slider:document.getElementById('test-gain-sl'),format:v=>Math.round(v)+'dB',parse:s=>parseFloat(s),onSet:v=>{document.getElementById('test-gain-sl').value=v;setTestGainDb(v);}});
   makeEditableSafe(document.getElementById('sys-gain-val'),{min:-60,max:12,slider:document.getElementById('sys-gain-sl'),format:v=>Math.round(v)+'dB',parse:s=>parseFloat(s),onSet:v=>{document.getElementById('sys-gain-sl').value=v;setSysGainDb(v);}});
   makeEditableSafe(document.getElementById('adsr-a-val'),{min:1,max:2000,slider:document.getElementById('adsr-a-sl'),format:v=>Math.round(v)+'ms',parse:s=>parseFloat(s),onSet:v=>{document.getElementById('adsr-a-sl').value=v;setAdsrA(v);}});
@@ -1721,7 +1785,7 @@ function setupEditables(){
 // INTERPOLATION SPACE — 2D interpolation space for global presets
 // ═══════════════════════════════════════════════════════════════════════
 
-const PS_SLOTS     = 9;
+const PS_SLOTS     = 16;
 const PS_R         = 20;          // preset circle radius (canvas px)
 const PS_IDW_POWER = 2;           // inverse distance weighting exponent
 
@@ -2185,7 +2249,7 @@ function psSetupKeyboard() {
     const codeM = e.code.match(/^Digit(\d)$/);
     if (codeM) {
       const num = parseInt(codeM[1]);
-      if (num >= 0 && num <= 8) {
+      if (num >= 0 && num <= 9) {
         e.preventDefault();
         const idx = num; // slot 0=home, 1-8=user
         const canvas = document.getElementById('playspace-canvas');
