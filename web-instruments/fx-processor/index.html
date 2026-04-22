@@ -83,6 +83,22 @@ body {
 .adsr-val { font-size:.58rem; min-width:32px; text-align:right; cursor:text; }
 .global-slot[data-slot="0"].saved { border-color:#3a7aaa; color:#6aaee0; }
 .global-slot[data-slot="0"]:hover { border-color:#5a9aaa; color:#8acce0; }
+/* Per-slot color tinting (matches canvas node colors) */
+.global-slot[data-slot="1"].saved  { border-color:hsl(0,55%,40%);   color:hsl(0,55%,65%); }
+.global-slot[data-slot="2"].saved  { border-color:hsl(20,55%,40%);  color:hsl(20,55%,65%); }
+.global-slot[data-slot="3"].saved  { border-color:hsl(45,55%,40%);  color:hsl(45,55%,65%); }
+.global-slot[data-slot="4"].saved  { border-color:hsl(70,55%,40%);  color:hsl(70,55%,65%); }
+.global-slot[data-slot="5"].saved  { border-color:hsl(100,55%,40%); color:hsl(100,55%,65%); }
+.global-slot[data-slot="6"].saved  { border-color:hsl(140,55%,40%); color:hsl(140,55%,65%); }
+.global-slot[data-slot="7"].saved  { border-color:hsl(170,55%,40%); color:hsl(170,55%,65%); }
+.global-slot[data-slot="8"].saved  { border-color:hsl(210,55%,40%); color:hsl(210,55%,65%); }
+.global-slot[data-slot="9"].saved  { border-color:hsl(240,55%,40%); color:hsl(240,55%,65%); }
+.global-slot[data-slot="10"].saved { border-color:hsl(270,55%,40%); color:hsl(270,55%,65%); }
+.global-slot[data-slot="11"].saved { border-color:hsl(295,55%,40%); color:hsl(295,55%,65%); }
+.global-slot[data-slot="12"].saved { border-color:hsl(320,55%,40%); color:hsl(320,55%,65%); }
+.global-slot[data-slot="13"].saved { border-color:hsl(340,55%,40%); color:hsl(340,55%,65%); }
+.global-slot[data-slot="14"].saved { border-color:hsl(15,55%,40%);  color:hsl(15,55%,65%); }
+.global-slot[data-slot="15"].saved { border-color:hsl(160,55%,40%); color:hsl(160,55%,65%); }
 </style>
 
 <style>
@@ -482,7 +498,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
             <span class="ctrl-val" id="test-freq-val" data-value="110" style="font-size:.68rem;margin-left:auto;">110 Hz</span>
             <span style="color:#666;font-size:.62rem;font-style:italic;" id="test-note-val">~A2</span>
           </div>
-          <input type="range" id="test-freq-sl" min="0" max="1000" step="1" value="263"
+          <input type="range" id="test-freq-sl" min="0" max="1000" step="any" value="263"
                  oninput="setTestFreqPos(this.value)" style="width:100%;">
         </div>
         <!-- Pan (compact) -->
@@ -701,7 +717,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
           <label style="font-size:.68rem;letter-spacing:.12em;color:#aaa;">TIME (log scale)</label>
           <span class="ctrl-val" id="delay-time-val" data-value="0.5" style="font-size:.72rem;">0.50s</span>
         </div>
-        <input type="range" id="delay-time" min="0" max="1000" step="1" value="340"
+        <input type="range" id="delay-time" min="0" max="1000" step="any" value="340"
                oninput="setDelayTimePos(this.value)" style="width:100%;">
       </div>
       <!-- FEEDBACK -->
@@ -951,11 +967,31 @@ let paramRampTime = 0.03; // elevated to 0.25 during arrow-key slider use
 // Logarithmic slider utilities
 const freqLog = { // 0.5Hz → 20kHz (allow sub-bass and near-zero)
   toVal: p => 0.5 * Math.pow(40000, p / 1000),
-  toPos: v => v < 0.5 ? 0 : Math.round(1000 * Math.log(v / 0.5) / Math.log(40000))
+  toPos: v => v < 0.5 ? 0 : (1000 * Math.log(v / 0.5) / Math.log(40000))
 };
-const timeLog = { // 0.01s → 60s
-  toVal: p => 0.01 * Math.pow(6000, p / 1000),
-  toPos: v => Math.round(1000 * Math.log(Math.max(v,0.01) / 0.01) / Math.log(6000))
+const timeLog = { // 0.01s → 60s, piecewise so 1s is at ~1/3 of slider
+  toVal: p => {
+    const t = p / 1000; // 0..1 normalised
+    if (t <= 1/3) {
+      // Linear 0.01→1s over first third
+      return 0.01 + (1 - 0.01) * (t / (1/3));
+    } else {
+      // Log 1s→60s over remaining 2/3
+      const u = (t - 1/3) / (2/3); // 0..1 in second segment
+      return Math.pow(60, u); // 60^0=1, 60^1=60
+    }
+  },
+  toPos: v => {
+    if (v <= 0.01) return 0;
+    if (v <= 1) {
+      // Inverse of linear 0.01→1 over first third
+      return 1000 * (1/3) * ((v - 0.01) / (1 - 0.01));
+    } else {
+      // Inverse of log 1→60 over remaining 2/3
+      const u = Math.log(v) / Math.log(60);
+      return 1000 * (1/3 + u * 2/3);
+    }
+  }
 };
 
 // ── State ────────────────────────────────────────────────────────
@@ -1381,7 +1417,11 @@ function setTestFreqPos(pos){
 }
 function setTestFreqHz(hz){
   document.getElementById('test-freq-sl').value=freqLog.toPos(hz);
-  setTestFreqPos(freqLog.toPos(hz));
+  // Set audio directly to requested hz, not to slider-rounded value
+  if(testOscTone) testOscTone.frequency.rampTo(Math.max(hz,0.5),0.01);
+  document.getElementById('test-freq-val').textContent=fmtHz(hz);
+  document.getElementById('test-freq-val').dataset.value=hz;
+  const noteEl=document.getElementById('test-note-val'); if(noteEl) noteEl.textContent=hzToNoteName(hz);
 }
 function setTestFreqSemi(st){setTestFreqHz(semiToHz(parseFloat(st)));}
 function setTestGainDb(db){
@@ -1505,23 +1545,20 @@ function toggleMute(which){
 // ── Per-FX bypass ─────────────────────────────────────────────────
 function toggleFxBypass(fx){
   const r=0.04;
-  if(fx==='siggen'){
-    setSigGenMode(s.mode||'steady');
-    document.getElementById('test-wave').value=s.wave; setTestWave(s.wave);
-    if(s.freqHz) setTestFreqHz(s.freqHz);
-    if(s.gainDb!==undefined){document.getElementById('test-gain-sl').value=s.gainDb; setTestGainDb(s.gainDb);}
-    if(s.pan!==undefined){document.getElementById('test-pan-sl').value=s.pan; setTestPan(s.pan);}
-    if(s.adsrA!==undefined){document.getElementById('adsr-a-sl').value=s.adsrA; setAdsrA(s.adsrA);}
-    if(s.adsrD!==undefined){document.getElementById('adsr-d-sl').value=s.adsrD; setAdsrD(s.adsrD);}
-    if(s.adsrSMs!==undefined){document.getElementById('adsr-s-sl').value=s.adsrSMs; setAdsrS(s.adsrSMs);}
-    if(s.adsrR!==undefined){document.getElementById('adsr-r-sl').value=s.adsrR; setAdsrR(s.adsrR);}
-    if(s.pulseRateMs!==undefined){document.getElementById('pulse-rate-sl').value=s.pulseRateMs; setPulseRate(s.pulseRateMs);}
-    return;
-  }
   if(fx==='pitch'){
     pitchBypassed=!pitchBypassed;
-    if(pitchBypassed){pitchDryG.gain.rampTo(1,r);pitchWetG.gain.rampTo(0,r);}
-    else{const wd=parseFloat(document.getElementById('pitch-wetdry').value); pitchWetG.gain.rampTo(wd,r); pitchDryG.gain.rampTo(1-wd,r);}
+    if(pitchBypassed){
+      // TRUE bypass: disconnect pitchShift entirely (eliminates its internal latency)
+      pitchDryG.gain.rampTo(1,r); pitchWetG.gain.rampTo(0,r);
+      try { pitchShift.disconnect(pitchWetG); } catch(e){}
+      try { preFxGain.disconnect(pitchShift); } catch(e){}
+    } else {
+      // Reconnect pitchShift into the graph
+      try { preFxGain.connect(pitchShift); } catch(e){}
+      try { pitchShift.connect(pitchWetG); } catch(e){}
+      const wd=parseFloat(document.getElementById('pitch-wetdry').value);
+      pitchWetG.gain.rampTo(wd,r); pitchDryG.gain.rampTo(1-wd,r);
+    }
     const pb=document.getElementById('pitch-bypass-btn');
     pb.textContent=pitchBypassed?'OFF':'ON';
     pb.classList.toggle('bypassed',pitchBypassed);
@@ -1563,7 +1600,14 @@ function setDelayTimePos(pos){
   const t=timeLog.toVal(parseFloat(pos)); if(delayNode)delayNode.delayTime.rampTo(t,0.1);
   const el=document.getElementById('delay-time-val'); el.textContent=t>=1?t.toFixed(2)+'s':t.toFixed(3)+'s'; el.dataset.value=t;
 }
-function setDelayTimeSec(t){document.getElementById('delay-time').value=timeLog.toPos(t); setDelayTimePos(timeLog.toPos(t));}
+function setDelayTimeSec(t){
+  document.getElementById('delay-time').value=timeLog.toPos(t);
+  // Set audio + display to exact t, don't roundtrip through slider
+  if(delayNode)delayNode.delayTime.rampTo(t,0.1);
+  const el=document.getElementById('delay-time-val');
+  el.textContent=t>=1?t.toFixed(2)+'s':t.toFixed(3)+'s';
+  el.dataset.value=t;
+}
 function setFeedback(v){
   const f=parseFloat(v); if(feedbackGain)feedbackGain.gain.rampTo(f,paramRampTime);
   const isDanger=f>=1; const fbEl=document.getElementById('delay-fb-val'); fbEl.textContent=Math.round(f*100)+'%'; fbEl.dataset.value=f;
@@ -1786,7 +1830,27 @@ function setupEditables(){
 // ═══════════════════════════════════════════════════════════════════════
 
 const PS_SLOTS     = 16;
-const PS_R         = 20;          // preset circle radius (canvas px)
+const PS_R         = 14;          // preset circle radius (canvas px)
+// Per-slot colors — slot 0 is home (cyan/blue), 1-15 span the spectrum
+const PS_COLORS = [
+  {h:195, name:'cyan'},     // 0 home
+  {h:  0, name:'red'},      // 1
+  {h: 20, name:'orange'},   // 2
+  {h: 45, name:'amber'},    // 3
+  {h: 70, name:'yellow'},   // 4
+  {h:100, name:'lime'},     // 5
+  {h:140, name:'green'},    // 6
+  {h:170, name:'teal'},     // 7
+  {h:210, name:'blue'},     // 8
+  {h:240, name:'indigo'},   // 9
+  {h:270, name:'violet'},   // 10
+  {h:295, name:'purple'},   // 11
+  {h:320, name:'magenta'},  // 12
+  {h:340, name:'pink'},     // 13
+  {h: 15, name:'coral'},    // 14
+  {h:160, name:'mint'}      // 15
+];
+function psColor(i, sat, light, alpha){ const h = PS_COLORS[i] ? PS_COLORS[i].h : 45; return `hsla(${h},${sat}%,${light}%,${alpha})`; }
 const PS_IDW_POWER = 2;           // inverse distance weighting exponent
 
 let psData       = Array(PS_SLOTS).fill(null); // {state, x, y} or null
@@ -1976,16 +2040,19 @@ function psRedraw() {
   ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(0,H/2); ctx.lineTo(W,H/2); ctx.stroke();
 
-  // Draw influence halos from placed presets
+  // Draw influence halos from placed presets (per-slot color, smoother falloff)
+  const influenceR = W * 0.22; // smaller than before (was 0.3)
   for (let i = 0; i < PS_SLOTS; i++) {
     if (!psData[i] || psData[i].x === undefined) continue;
     const pos = psGetPos(i, W, H, defaults);
     if (!pos) continue;
-    const grad = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, W * 0.3);
-    grad.addColorStop(0, 'rgba(200,168,84,0.04)');
-    grad.addColorStop(1, 'rgba(200,168,84,0)');
+    const grad = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, influenceR);
+    grad.addColorStop(0,    psColor(i, 70, 55, 0.10));
+    grad.addColorStop(0.35, psColor(i, 70, 55, 0.04));
+    grad.addColorStop(0.7,  psColor(i, 70, 55, 0.01));
+    grad.addColorStop(1,    psColor(i, 70, 55, 0));
     ctx.fillStyle = grad;
-    ctx.beginPath(); ctx.arc(pos.x, pos.y, W*0.3, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(pos.x, pos.y, influenceR, 0, Math.PI*2); ctx.fill();
   }
 
   // Cursor influence halo
@@ -1998,47 +2065,44 @@ function psRedraw() {
 
   // Draw ONLY placed presets
   for (let i = 0; i < PS_SLOTS; i++) {
-    if (!psData[i] || psData[i].x === undefined) continue; // skip unplaced
+    if (!psData[i] || psData[i].x === undefined) continue;
     const pos = { x: psData[i].x * W, y: psData[i].y * H };
     const isSelected = i === psSelected;
     const dist = psCursor ? Math.sqrt((psCursor.x-pos.x)**2+(psCursor.y-pos.y)**2) : Infinity;
     const isCursorNear = dist < PS_R * 3;
     const brightness = Math.max(0, 1 - dist / (W * 0.4));
 
-    // Glow halo
-    const grad = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, W * 0.28);
-    grad.addColorStop(0, `rgba(200,168,84,${0.06 + brightness*0.08})`);
-    grad.addColorStop(1, 'rgba(200,168,84,0)');
-    ctx.fillStyle = grad;
-    ctx.beginPath(); ctx.arc(pos.x, pos.y, W*0.28, 0, Math.PI*2); ctx.fill();
+    // Per-slot color
+    const sat = 75, lt = 58;
+    const fillAlpha = isCursorNear ? 0.28 + brightness*0.25 : 0.12;
+    const borderLt  = isSelected ? 72 : 50;
+    const borderAlpha = isSelected ? 1 : 0.7;
+
+    // Inner tinted glow — tighter than influence halo
+    const glow = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, PS_R * 2.8);
+    glow.addColorStop(0, psColor(i, sat, lt, 0.18 + brightness*0.14));
+    glow.addColorStop(0.6, psColor(i, sat, lt, 0.04));
+    glow.addColorStop(1, psColor(i, sat, lt, 0));
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(pos.x, pos.y, PS_R*2.8, 0, Math.PI*2); ctx.fill();
 
     // Blob fill
-    ctx.fillStyle = isCursorNear
-      ? `rgba(200,168,84,${0.22 + brightness*0.2})`
-      : `rgba(200,168,84,0.1)`;
+    ctx.fillStyle = psColor(i, sat, lt, fillAlpha);
     ctx.beginPath(); ctx.arc(pos.x, pos.y, PS_R, 0, Math.PI*2); ctx.fill();
 
     // Blob border
     ctx.lineWidth = isSelected ? 2 : 1;
-    ctx.strokeStyle = isSelected ? '#e8c874' : '#6a6a3a';
+    ctx.strokeStyle = psColor(i, sat, borderLt, borderAlpha);
     ctx.beginPath(); ctx.arc(pos.x, pos.y, PS_R, 0, Math.PI*2); ctx.stroke();
 
-    // Label — slot 0 gets special home marker
+    // Label — slot 0 gets ◈ symbol, others get the number
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = psColor(i, sat, isCursorNear ? 80 : 68, 0.95);
     if (i === 0) {
-      // Home node: cyan tint, filled circle, ◈ symbol
-      ctx.fillStyle = isCursorNear ? 'rgba(100,200,255,0.3)' : 'rgba(80,160,220,0.15)';
-      ctx.beginPath(); ctx.arc(pos.x, pos.y, PS_R, 0, Math.PI*2); ctx.fill();
-      ctx.strokeStyle = isSelected ? '#6ae0ff' : 'rgba(80,160,220,0.6)';
-      ctx.lineWidth = isSelected ? 2 : 1;
-      ctx.beginPath(); ctx.arc(pos.x, pos.y, PS_R, 0, Math.PI*2); ctx.stroke();
-      ctx.fillStyle = isCursorNear ? '#6ae0ff' : '#4a9aaa';
       ctx.font = `${isSelected?'bold ':''} 10px "Courier New"`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText('◈', pos.x, pos.y);
     } else {
-      ctx.fillStyle = isCursorNear ? '#e8c874' : '#9a8a4a';
-      ctx.font = `${isSelected?'bold ':''} 12px "Courier New"`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = `${isSelected?'bold ':''} 11px "Courier New"`;
       ctx.fillText(i, pos.x, pos.y);
     }
   }
@@ -2205,7 +2269,7 @@ function psSetupCanvas() {
 
 // ── WASD continuous movement loop ───────────────────────────────────────
 const PS_WASD_SLOW=0.4; // px/frame normal
-const PS_WASD_FAST=4.0;  // px/frame with Shift
+const PS_WASD_FAST=9.0; // px/frame with Shift (max sprint)
 
 function psWasdLoop() {
   if (!psCanvasActive || !psCursor) { psWasdRAF = null; return; }
@@ -2215,7 +2279,7 @@ function psWasdLoop() {
   let spd;
   if (psKeys.shift) {
     if (!psSprintStart) psSprintStart = Date.now();
-    const t = Math.min((Date.now() - psSprintStart) / 2000, 1);
+    const t = Math.min((Date.now() - psSprintStart) / 800, 1); // 0.8s to full sprint
     spd = PS_WASD_SLOW + (PS_WASD_FAST - PS_WASD_SLOW) * t * t; // ease-in
   } else { psSprintStart = 0; spd = PS_WASD_SLOW; }
   if(psKeys.w)psCursor.y=Math.max(0,psCursor.y-spd);
