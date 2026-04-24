@@ -288,52 +288,57 @@ function unproj(px,py){
 
 const NODES = {
   // --- source & street ---
-  // Source sits in the middle of the 16″ main. Service line drops straight
-  // down: lane, lane, sidewalk, ditch, then meter close to the street.
-  // Outside shutoff is ~60 ft toward the house, at middle-of-house length.
-  // House is ~50 ft long; most interior runs head down-and-to-the-left.
-  main:          {x: 800, y:  90, kind:'source',    label:'16″ city main · street pressure',                         small:'SOURCE',        detail:'3/4″ supply tap · crosses highway · 5/8×3/4 meter · outside shutoff'},
-  tap:           {x: 800, y: 185, kind:'tap',       label:'service tap · 3/4″ under highway',                        small:'TAP · 3/4"',    detail:'3/4″ copper service line · 55 ft · C≈130'},
-  // --- meter & outside shutoff ---
-  meter:         {x: 800, y: 330, kind:'meter',     label:'5/8″×3/4″ house meter · close to street',                 small:'METER',         detail:'5/8×3/4 displacement meter · significant minor-loss node'},
-  mainshutoff:   {x: 500, y: 470, kind:'valve',     label:'outside main shutoff · mid-length of house (~60 ft)',     small:'OUTSIDE SHUT',  detail:'ball valve · click to toggle · house is ≈50 ft long'},
-  outside_tee:   {x: 400, y: 530, kind:'tee',       label:'outside tee · becomes 1″ PVC',                            small:'TEE'},
-  // --- yard hydrants 1 (south branch) ---
-  yh1:           {x: 140, y: 700, kind:'hydrant',   label:'yard hydrant № 1 · 30 ft branch',                         small:'YH 1'},
-  // --- side of house ---
-  side_tee:      {x: 460, y: 630, kind:'tee',       label:'side-of-house tee · two iris valves',                     small:'SIDE TEE'},
-  yh_branch_tee: {x: 540, y: 790, kind:'tee',       label:'yard-hydrant branch tee',                                 small:'YH TEE'},
-  yh2:           {x: 380, y: 900, kind:'hydrant',   label:'yard hydrant № 2',                                        small:'YH 2'},
-  yh3:           {x: 700, y: 900, kind:'hydrant',   label:'yard hydrant № 3',                                        small:'YH 3'},
-  under_house:   {x: 420, y: 580, kind:'valve',     label:'under-slab valve · under the house',                      small:'UNDER-SLAB'},
-  main_in_house: {x: 510, y: 660, kind:'valve',     label:'main in-house shutoff',                                   small:'MAIN IN-HOUSE'},
-  in_tee:        {x: 600, y: 720, kind:'tee',       label:'in-house tee · hot & cold legs',                          small:'IN-HOUSE TEE'},
-  hot_shutoff:   {x: 720, y: 760, kind:'valve',     label:'hot-leg shutoff',                                         small:'HOT SHUT'},
-  hwh:           {x: 880, y: 810, kind:'heater',    label:'pressure tank · hot-water heater',                        small:'HEAT ORB'},
-  hot_manifold:  {x:1060, y: 770, kind:'manifold',  label:'HOT manifold',                                            small:'HOT MAN.'},
-  cold_manifold: {x: 970, y: 640, kind:'manifold',  label:'COLD manifold',                                           small:'COLD MAN.'},
+  // The 16" main (the flowing river band at top) IS the source — no
+  // separate source node is drawn. `main` is just the tree root.
+  // Service line drops straight down from the river through two lanes,
+  // a sidewalk, and a ditch to the meter. Meter / street-shutoff /
+  // underground-tee are stacked within ~1–2 ft of each other.
+  main:                {x: 800, y:  80, kind:'source',  label:'16″ city main · street pressure',                     small:'SOURCE',       detail:'this whole river is the source · 3/4″ tap drops south across the highway'},
+  tap:                 {x: 800, y: 140, kind:'tap',     label:'service tap · 3/4″ under the highway',                small:'TAP · 3/4"',   detail:'3/4″ copper service · 55 ft · C≈130 · crosses two lanes, sidewalk, ditch'},
+  // --- meter & street shutoff, very close together ---
+  meter:               {x: 800, y: 340, kind:'meter',   label:'5/8″×3/4″ house meter · close to street',             small:'METER',        detail:'5/8×3/4 displacement meter · major minor-loss'},
+  street_shutoff:      {x: 800, y: 380, kind:'valve',   label:'street shutoff · a few inches from meter',            small:'STREET SHUT',  detail:'ball valve · closes the whole system'},
+  ug_tee:              {x: 800, y: 420, kind:'tee',     label:'underground tee · ~1 ft from shutoff · 1″ PVC onward',small:'UG TEE',       detail:'transitions 3/4″ → 1″ PVC here'},
+  // --- branch A: 30 ft to yard hydrant № 1 (far lower-left) ---
+  yh1:                 {x: 150, y: 720, kind:'hydrant', label:'yard hydrant № 1 · 30 ft branch',                     small:'YH 1'},
+  // --- branch B: 60 ft to the side of the house ---
+  side_tee:            {x: 820, y: 690, kind:'tee',     label:'side-of-house tee · two iris valves',                 small:'SIDE TEE',     detail:'one shutoff feeds yard hydrants, the other feeds the house'},
+  // branch B-1: yard-hydrant shutoff → two more hydrants
+  side_yh_shutoff:     {x: 640, y: 770, kind:'valve',   label:'yard-hydrant branch shutoff',                         small:'YH BR SHUT',   detail:'isolates yard hydrants 2 & 3'},
+  yh_branch_tee:       {x: 500, y: 870, kind:'tee',     label:'yard-hydrant branch tee',                             small:'YH TEE'},
+  yh2:                 {x: 360, y: 960, kind:'hydrant', label:'yard hydrant № 2',                                    small:'YH 2'},
+  yh3:                 {x: 640, y: 960, kind:'hydrant', label:'yard hydrant № 3',                                    small:'YH 3'},
+  // branch B-2: house shutoff → under-slab → main in-house → hot/cold
+  side_house_shutoff:  {x: 960, y: 770, kind:'valve',   label:'house branch shutoff · feeds the under-slab run',     small:'HOUSE SHUT',   detail:'isolates everything inside the house'},
+  main_in_house:       {x:1080, y: 820, kind:'valve',   label:'main in-house shutoff · at house entry',              small:'MAIN IN-HOUSE'},
+  in_tee:              {x:1170, y: 820, kind:'tee',     label:'in-house tee · hot & cold legs',                      small:'IN-HOUSE TEE'},
+  hot_shutoff:         {x:1250, y: 870, kind:'valve',   label:'hot-leg shutoff',                                     small:'HOT SHUT'},
+  hwh:                 {x:1360, y: 910, kind:'heater',  label:'pressure tank · hot-water heater',                    small:'HEAT ORB'},
+  hot_manifold:        {x:1510, y: 870, kind:'manifold',label:'HOT manifold',                                        small:'HOT MAN.'},
+  cold_manifold:       {x:1250, y: 740, kind:'manifold',label:'COLD manifold',                                       small:'COLD MAN.'},
 };
 
 /* EDGES — a directed tree rooted at `main`.
    D = inner diameter (in), L = length (ft), C = Hazen-Williams, Kminor = sum of fitting K's.
    hot=true after the HWH.                                                           */
 const EDGES_DEF = [
-  {id:'main→tap',          a:'main',          b:'tap',           D:0.75, L: 8, C:130, Km:2.0, material:'tap saddle to 3/4″ copper service'},
-  {id:'tap→meter',         a:'tap',           b:'meter',         D:0.75, L:55, C:130, Km:1.2, material:'3/4″ service under the highway'},
-  {id:'meter→out_shut',    a:'meter',         b:'mainshutoff',   D:0.625,L: 1, C:100, Km:8.0, material:'5/8×3/4 meter body'},
-  {id:'out_shut→out_tee',  a:'mainshutoff',   b:'outside_tee',   D:0.75, L: 2, C:150, Km:0.3, material:'ball valve → 1″ PVC transition'},
-  {id:'out_tee→yh1',       a:'outside_tee',   b:'yh1',           D:1.00, L:30, C:150, Km:2.0, material:'1″ PVC · 30 ft branch'},
-  {id:'out_tee→side',      a:'outside_tee',   b:'side_tee',      D:1.00, L:40, C:150, Km:1.2, material:'1″ PVC to side of house'},
-  {id:'side→yhbranch',     a:'side_tee',      b:'yh_branch_tee', D:1.00, L:22, C:150, Km:1.0, material:'1″ PVC (valve · yard branch)'},
-  {id:'yhbranch→yh2',      a:'yh_branch_tee', b:'yh2',           D:1.00, L:18, C:150, Km:1.2, material:'1″ PVC → YH2'},
-  {id:'yhbranch→yh3',      a:'yh_branch_tee', b:'yh3',           D:1.00, L:30, C:150, Km:1.5, material:'1″ PVC → YH3'},
-  {id:'side→under',        a:'side_tee',      b:'under_house',   D:1.00, L:18, C:150, Km:1.5, material:'1″ PVC · under slab (valve)'},
-  {id:'under→mih',         a:'under_house',   b:'main_in_house', D:1.00, L:10, C:150, Km:0.8, material:'1″ PVC → in-house'},
-  {id:'mih→intee',         a:'main_in_house', b:'in_tee',        D:1.00, L: 4, C:140, Km:1.0, material:'1″ transition to copper'},
-  {id:'intee→hot_shut',    a:'in_tee',        b:'hot_shutoff',   D:0.75, L: 6, C:140, Km:0.6, material:'3/4″ copper (hot leg)'},
-  {id:'hot_shut→hwh',      a:'hot_shutoff',   b:'hwh',           D:0.75, L: 6, C:140, Km:1.4, material:'PRV + expansion tank + heater'},
-  {id:'hwh→hot_man',       a:'hwh',           b:'hot_manifold',  D:0.75, L:25, C:140, Km:1.0, material:'3/4″ copper — hot', hot:true},
-  {id:'intee→cold_man',    a:'in_tee',        b:'cold_manifold', D:0.75, L:30, C:140, Km:1.2, material:'3/4″ copper — cold'},
+  {id:'main→tap',          a:'main',               b:'tap',                D:0.75, L: 8, C:130, Km:2.0, material:'tap saddle · 3/4″ copper service'},
+  {id:'tap→meter',         a:'tap',                b:'meter',              D:0.75, L:55, C:130, Km:1.2, material:'3/4″ copper service · crosses highway'},
+  {id:'meter→strshut',     a:'meter',              b:'street_shutoff',     D:0.625,L: 0.5,C:100, Km:8.0, material:'5/8×3/4 meter body'},
+  {id:'strshut→ugtee',     a:'street_shutoff',     b:'ug_tee',             D:0.75, L: 1, C:150, Km:0.5, material:'ball valve · 3/4→1″ transition'},
+  {id:'ugtee→yh1',         a:'ug_tee',             b:'yh1',                D:1.00, L:30, C:150, Km:2.0, material:'1″ PVC · 30 ft branch to YH1'},
+  {id:'ugtee→sidetee',     a:'ug_tee',             b:'side_tee',           D:1.00, L:60, C:150, Km:1.2, material:'1″ PVC · 60 ft to side of house'},
+  {id:'side→yhshut',       a:'side_tee',           b:'side_yh_shutoff',    D:1.00, L: 1, C:150, Km:0.8, material:'tee + ball valve (yard-hydrant branch)'},
+  {id:'yhshut→yhbr',       a:'side_yh_shutoff',    b:'yh_branch_tee',      D:1.00, L:15, C:150, Km:1.0, material:'1″ PVC to yard-hydrant tee'},
+  {id:'yhbr→yh2',          a:'yh_branch_tee',      b:'yh2',                D:1.00, L:15, C:150, Km:1.2, material:'1″ PVC → YH2'},
+  {id:'yhbr→yh3',          a:'yh_branch_tee',      b:'yh3',                D:1.00, L:25, C:150, Km:1.5, material:'1″ PVC → YH3'},
+  {id:'side→houshut',      a:'side_tee',           b:'side_house_shutoff', D:1.00, L: 1, C:150, Km:0.8, material:'tee + ball valve (house branch)'},
+  {id:'houshut→mih',       a:'side_house_shutoff', b:'main_in_house',      D:1.00, L:15, C:150, Km:1.5, material:'1″ PVC · under slab → main in-house shutoff'},
+  {id:'mih→intee',         a:'main_in_house',      b:'in_tee',             D:1.00, L: 4, C:140, Km:1.0, material:'1″ transition to copper'},
+  {id:'intee→hot_shut',    a:'in_tee',             b:'hot_shutoff',        D:0.75, L: 6, C:140, Km:0.6, material:'3/4″ copper (hot leg)'},
+  {id:'hot_shut→hwh',      a:'hot_shutoff',        b:'hwh',                D:0.75, L: 6, C:140, Km:1.4, material:'PRV + expansion tank + heater'},
+  {id:'hwh→hot_man',       a:'hwh',                b:'hot_manifold',       D:0.75, L:25, C:140, Km:1.0, material:'3/4″ copper — hot', hot:true},
+  {id:'intee→cold_man',    a:'in_tee',             b:'cold_manifold',      D:0.75, L:30, C:140, Km:1.2, material:'3/4″ copper — cold'},
 ];
 
 // Materialize edges with mutable state. Also seed each NODE with default
@@ -371,10 +376,11 @@ const OUTLETS = [
 
 /* Iris-valves on the system — closing one isolates its downstream subtree. */
 const VALVES = {
-  mainshutoff:   {open:true, label:'outside main'},
-  under_house:   {open:true, label:'under-slab'},
-  main_in_house: {open:true, label:'main in-house'},
-  hot_shutoff:   {open:true, label:'hot-leg'},
+  street_shutoff:     {open:true, label:'street shutoff'},
+  side_yh_shutoff:    {open:true, label:'yard-hydrant branch'},
+  side_house_shutoff: {open:true, label:'house branch'},
+  main_in_house:      {open:true, label:'main in-house'},
+  hot_shutoff:        {open:true, label:'hot-leg'},
 };
 
 /* ----------------------------- PHYSICS -------------------------------- */
@@ -830,12 +836,14 @@ function drawPipe(e){
 
   ctx.restore();
 
-  // Particles — always visible. Even at zero flow, a gentle perfusion drifts.
+  // Particles — only move when water is actually flowing. At rest the pipes
+  // still glow (pressure halo keeps them alive) but no drift, so closing a
+  // valve visibly stops flow through the whole downstream network.
   if (!isolated){
     const parts = EDGE_PARTICLES[e.id];
     const V = e.V;                                       // ft/s
-    const baseDrift = 0.0004;                            // creep even at rest
-    const flowMul  = 0.0022;                             // flow contribution
+    const baseDrift = 0;                                 // static at rest
+    const flowMul  = 0.0028;
     const speedFactor = Math.min(0.05, baseDrift + flowMul * V);
     const dt = perfDelta;
     for (const p of parts){
@@ -931,31 +939,23 @@ function drawCityMain(){
   ctx.beginPath(); ctx.moveTo(x0, laneTopY + laneH*0.18); ctx.lineTo(x1, laneTopY + laneH*0.18); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(x0, laneBotY - laneH*0.18); ctx.lineTo(x1, laneBotY - laneH*0.18); ctx.stroke();
 
-  // --- sidewalk (parchment stripe) ---
-  const [, sideTopY] = proj(0, 360 + cam.y);
-  const [, sideBotY] = proj(0, 395 + cam.y);
-  const gSide = ctx.createLinearGradient(0, sideTopY, 0, sideBotY);
-  gSide.addColorStop(0, 'rgba(236,216,168,0.05)');
-  gSide.addColorStop(0.5,'rgba(236,216,168,0.10)');
-  gSide.addColorStop(1, 'rgba(236,216,168,0.03)');
-  ctx.fillStyle = gSide;
-  ctx.fillRect(x0, sideTopY, x1-x0, sideBotY - sideTopY);
-  // sidewalk seams
-  ctx.strokeStyle = 'rgba(236,216,168,0.12)';
+  // --- sidewalk: a thin parchment hairline, not a band ---
+  const [, swY] = proj(0, 260 + cam.y);
+  ctx.strokeStyle = 'rgba(236,216,168,0.22)';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath(); ctx.moveTo(x0, swY); ctx.lineTo(x1, swY); ctx.stroke();
+  // little tick-marks for sidewalk seams
+  ctx.strokeStyle = 'rgba(236,216,168,0.14)';
   ctx.lineWidth = 0.6;
-  for (let xi = 60*s; xi < x1-x0; xi += 80*s){
-    ctx.beginPath(); ctx.moveTo(x0 + xi, sideTopY); ctx.lineTo(x0 + xi, sideBotY); ctx.stroke();
+  for (let xi = 40*s; xi < x1-x0; xi += 90*s){
+    ctx.beginPath(); ctx.moveTo(x0 + xi, swY-3*s); ctx.lineTo(x0 + xi, swY+3*s); ctx.stroke();
   }
 
-  // --- ditch (shadowy dip between sidewalk and meter) ---
-  const [, ditchTopY] = proj(0, 395 + cam.y);
-  const [, ditchBotY] = proj(0, 445 + cam.y);
-  const gDitch = ctx.createLinearGradient(0, ditchTopY, 0, ditchBotY);
-  gDitch.addColorStop(0,  'rgba(15,22,28,0.0)');
-  gDitch.addColorStop(0.5,'rgba(28,42,48,0.45)');
-  gDitch.addColorStop(1,  'rgba(15,22,28,0.0)');
-  ctx.fillStyle = gDitch;
-  ctx.fillRect(x0, ditchTopY, x1-x0, ditchBotY - ditchTopY);
+  // --- ditch: a single dim groove, not a band ---
+  const [, ditchY] = proj(0, 295 + cam.y);
+  ctx.strokeStyle = 'rgba(18,28,36,0.55)';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x0, ditchY); ctx.lineTo(x1, ditchY); ctx.stroke();
   ctx.restore();
 
   // Current-rate indicator (label)
@@ -989,13 +989,9 @@ function drawNode(id){
   const hue = '#dcc48a';
   switch (n.kind){
     case 'source': {
-      // concentric ripple — the "aquifer origin"
-      for (let k=0;k<4;k++){
-        const rr = (10+k*8)*s + poly(t*0.0009, k, 3)*s;
-        ctx.strokeStyle = 'rgba(127,177,208,'+(0.25-k*0.05)+')';
-        ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(x,y, rr, 0, Math.PI*2); ctx.stroke();
-      }
+      // The river band at the top of the stage IS the source — no separate
+      // node is drawn. The click target is still valid (for tooltips/osc)
+      // via the dashed ring above.
       break;
     }
     case 'tap': {
@@ -1210,6 +1206,7 @@ function drawNode(id){
 
 function drawLabel(id, x, y, s){
   const n = NODES[id];
+  if (n.kind === 'source') return;      // river band carries its own label
   const tx = x; const ty = y + 46*s;
   ctx.save();
   ctx.font = '400 '+Math.max(12, 12*s+4)+'px "Cormorant Garamond", serif';
