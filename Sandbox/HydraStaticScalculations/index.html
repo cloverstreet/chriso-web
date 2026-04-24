@@ -288,26 +288,30 @@ function unproj(px,py){
 
 const NODES = {
   // --- source & street ---
-  main:          {x:  80, y:  90, kind:'source',    label:'16″ city main · street pressure',        small:'SOURCE'},
-  tap:           {x: 240, y: 170, kind:'tap',       label:'service tap · 3/4″',                      small:'TAP · 3/4"'},
+  // Source sits in the middle of the 16″ main. Service line drops straight
+  // down: lane, lane, sidewalk, ditch, then meter close to the street.
+  // Outside shutoff is ~60 ft toward the house, at middle-of-house length.
+  // House is ~50 ft long; most interior runs head down-and-to-the-left.
+  main:          {x: 800, y:  90, kind:'source',    label:'16″ city main · street pressure',                         small:'SOURCE',        detail:'3/4″ supply tap · crosses highway · 5/8×3/4 meter · outside shutoff'},
+  tap:           {x: 800, y: 185, kind:'tap',       label:'service tap · 3/4″ under highway',                        small:'TAP · 3/4"',    detail:'3/4″ copper service line · 55 ft · C≈130'},
   // --- meter & outside shutoff ---
-  meter:         {x: 420, y: 290, kind:'meter',     label:'5/8″×3/4″ house meter',                   small:'METER'},
-  mainshutoff:   {x: 540, y: 340, kind:'valve',     label:'outside main shutoff',                    small:'OUTSIDE SHUT'},
-  outside_tee:   {x: 640, y: 400, kind:'tee',       label:'outside tee · becomes 1″ PVC',            small:'TEE'},
+  meter:         {x: 800, y: 330, kind:'meter',     label:'5/8″×3/4″ house meter · close to street',                 small:'METER',         detail:'5/8×3/4 displacement meter · significant minor-loss node'},
+  mainshutoff:   {x: 500, y: 470, kind:'valve',     label:'outside main shutoff · mid-length of house (~60 ft)',     small:'OUTSIDE SHUT',  detail:'ball valve · click to toggle · house is ≈50 ft long'},
+  outside_tee:   {x: 400, y: 530, kind:'tee',       label:'outside tee · becomes 1″ PVC',                            small:'TEE'},
   // --- yard hydrants 1 (south branch) ---
-  yh1:           {x: 360, y: 720, kind:'hydrant',   label:'yard hydrant № 1 · 30 ft branch',         small:'YH 1'},
+  yh1:           {x: 140, y: 700, kind:'hydrant',   label:'yard hydrant № 1 · 30 ft branch',                         small:'YH 1'},
   // --- side of house ---
-  side_tee:      {x: 800, y: 440, kind:'tee',       label:'side-of-house tee · two iris valves',     small:'SIDE TEE'},
-  yh_branch_tee: {x: 900, y: 640, kind:'tee',       label:'yard-hydrant branch tee',                 small:'YH TEE'},
-  yh2:           {x: 770, y: 820, kind:'hydrant',   label:'yard hydrant № 2',                        small:'YH 2'},
-  yh3:           {x:1040, y: 820, kind:'hydrant',   label:'yard hydrant № 3',                        small:'YH 3'},
-  under_house:   {x: 960, y: 440, kind:'valve',     label:'under-slab valve · under the house',      small:'UNDER-SLAB'},
-  main_in_house: {x:1100, y: 440, kind:'valve',     label:'main in-house shutoff',                   small:'MAIN IN-HOUSE'},
-  in_tee:        {x:1180, y: 440, kind:'tee',       label:'in-house tee · hot & cold legs',          small:'IN-HOUSE TEE'},
-  hot_shutoff:   {x:1230, y: 560, kind:'valve',     label:'hot-leg shutoff',                         small:'HOT SHUT'},
-  hwh:           {x:1340, y: 640, kind:'heater',    label:'pressure tank · hot-water heater',        small:'HEAT ORB'},
-  hot_manifold:  {x:1500, y: 560, kind:'manifold',  label:'HOT manifold',                            small:'HOT MAN.'},
-  cold_manifold: {x:1500, y: 320, kind:'manifold',  label:'COLD manifold',                           small:'COLD MAN.'},
+  side_tee:      {x: 460, y: 630, kind:'tee',       label:'side-of-house tee · two iris valves',                     small:'SIDE TEE'},
+  yh_branch_tee: {x: 540, y: 790, kind:'tee',       label:'yard-hydrant branch tee',                                 small:'YH TEE'},
+  yh2:           {x: 380, y: 900, kind:'hydrant',   label:'yard hydrant № 2',                                        small:'YH 2'},
+  yh3:           {x: 700, y: 900, kind:'hydrant',   label:'yard hydrant № 3',                                        small:'YH 3'},
+  under_house:   {x: 420, y: 580, kind:'valve',     label:'under-slab valve · under the house',                      small:'UNDER-SLAB'},
+  main_in_house: {x: 510, y: 660, kind:'valve',     label:'main in-house shutoff',                                   small:'MAIN IN-HOUSE'},
+  in_tee:        {x: 600, y: 720, kind:'tee',       label:'in-house tee · hot & cold legs',                          small:'IN-HOUSE TEE'},
+  hot_shutoff:   {x: 720, y: 760, kind:'valve',     label:'hot-leg shutoff',                                         small:'HOT SHUT'},
+  hwh:           {x: 880, y: 810, kind:'heater',    label:'pressure tank · hot-water heater',                        small:'HEAT ORB'},
+  hot_manifold:  {x:1060, y: 770, kind:'manifold',  label:'HOT manifold',                                            small:'HOT MAN.'},
+  cold_manifold: {x: 970, y: 640, kind:'manifold',  label:'COLD manifold',                                           small:'COLD MAN.'},
 };
 
 /* EDGES — a directed tree rooted at `main`.
@@ -352,11 +356,15 @@ for (const e of EDGES){
   CHILDREN[e.a].push(e);
 }
 
-/* OUTLETS — sprinkler/hydrant K-factor model: Q(gpm) = K * sqrt(P_residual in psi). */
+/* OUTLETS — sprinkler/hydrant K-factor model: Q(gpm) = K * sqrt(P_residual in psi).
+   K calibrated from a field test: at 60 psi static, opening one yard hydrant
+   adjacent to the outside shutoff → 20–22 gpm with residual ≈ 8 psi.
+   Implied K ≈ 21/√8 ≈ 7.4. These are big, nearly-full-bore yard hydrants
+   (not garden faucets). */
 const OUTLETS = [
-  {id:'YH1', node:'yh1',           K:3.2, open:false, label:'yard hydrant № 1'},
-  {id:'YH2', node:'yh2',           K:3.2, open:false, label:'yard hydrant № 2'},
-  {id:'YH3', node:'yh3',           K:3.2, open:false, label:'yard hydrant № 3'},
+  {id:'YH1', node:'yh1',           K:7.4, open:false, label:'yard hydrant № 1'},
+  {id:'YH2', node:'yh2',           K:7.4, open:false, label:'yard hydrant № 2'},
+  {id:'YH3', node:'yh3',           K:7.4, open:false, label:'yard hydrant № 3'},
   {id:'HOT', node:'hot_manifold',  K:4.2, open:false, label:'hot manifold draw (1 sprinkler eqv.)'},
   {id:'COLD',node:'cold_manifold', K:4.2, open:false, label:'cold manifold draw (1 sprinkler eqv.)'},
 ];
@@ -525,6 +533,61 @@ canvas.addEventListener('click', e => {
   if (o){ o.open = !o.open; emitOSC(o.node, 'open', o.open ? 1 : 0); return; }
   if (VALVES[id]){ VALVES[id].open = !VALVES[id].open; emitOSC(id, 'valve', VALVES[id].open ? 1 : 0); return; }
 });
+
+/* Hover tooltip — reveals the fuller label and any `detail` field on nodes. */
+let hoveredId = null;
+canvas.addEventListener('mousemove', e => {
+  const id = hitNode(e.clientX, e.clientY);
+  if (id !== hoveredId){ hoveredId = id; canvas.style.cursor = id ? 'pointer' : 'default'; }
+});
+canvas.addEventListener('mouseleave', () => { hoveredId = null; canvas.style.cursor = 'default'; });
+function drawTooltip(){
+  if (!hoveredId) return;
+  const n = NODES[hoveredId];
+  if (!n) return;
+  const [x, y, s] = proj(n.x + cam.x, n.y + cam.y);
+  // compose two or three lines of text
+  const lines = [n.label || n.small];
+  if (n.detail) lines.push(n.detail);
+  // live values
+  const pLine = `${n.P.toFixed(1)} psi · ${n.T.toFixed(0)}°F` + (n.Qtotal>0.01 ? ` · ${n.Qtotal.toFixed(2)} gpm` : '');
+  lines.push(pLine);
+
+  ctx.save();
+  ctx.font = '400 '+Math.max(12, 11*s+4)+'px "Cormorant Garamond", serif';
+  const lineH = Math.max(15, 14*s+4);
+  const padX = 12*s+6, padY = 8*s+4;
+  // measure widest line
+  let w = 0;
+  for (const ln of lines){ const m = ctx.measureText(ln).width; if (m>w) w = m; }
+  const h = lines.length * lineH + padY*1.5;
+  let tx = x + 28*s, ty = y - h - 14*s;
+  // keep on-screen
+  if (tx + w + padX*2 > W - 8) tx = x - w - padX*2 - 28*s;
+  if (ty < 10) ty = y + 34*s;
+  // bg
+  ctx.fillStyle = 'rgba(14,11,24,0.92)';
+  ctx.strokeStyle = 'rgba(220,196,138,0.35)';
+  ctx.lineWidth = 1;
+  const r = 3;
+  ctx.beginPath();
+  ctx.moveTo(tx+r, ty); ctx.lineTo(tx+w+padX*2-r, ty); ctx.quadraticCurveTo(tx+w+padX*2, ty, tx+w+padX*2, ty+r);
+  ctx.lineTo(tx+w+padX*2, ty+h-r); ctx.quadraticCurveTo(tx+w+padX*2, ty+h, tx+w+padX*2-r, ty+h);
+  ctx.lineTo(tx+r, ty+h); ctx.quadraticCurveTo(tx, ty+h, tx, ty+h-r);
+  ctx.lineTo(tx, ty+r); ctx.quadraticCurveTo(tx, ty, tx+r, ty);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  // text
+  ctx.fillStyle = 'rgba(236,216,168,0.95)';
+  ctx.textBaseline = 'top';
+  for (let i=0;i<lines.length;i++){
+    if (i===lines.length-1) ctx.fillStyle = 'rgba(208,143,182,0.95)';
+    else if (i===0) ctx.fillStyle = 'rgba(236,216,168,0.98)';
+    else ctx.fillStyle = 'rgba(236,216,168,0.78)';
+    ctx.fillText(lines[i], tx+padX, ty+padY + i*lineH);
+  }
+  ctx.restore();
+}
 
 /* ---------------------------- SOURCE SLIDER --------------------------- */
 const psiInput = $('#psi'), psiVal = $('#psi-val');
@@ -801,12 +864,14 @@ function drawPipe(e){
 }
 
 function drawCityMain(){
-  // A horizontal distant current along the top ~10% — abstraction of
-  // the 16″ main "on the other side of the highway".
+  // Horizontal distant current — the 16″ main crossing the top of the stage.
+  // Now expanded to suggest a two-lane highway with shoulders, sidewalks,
+  // and a ditch between the road and the meter. Straight vertical service
+  // line drops from the main through these layers down to the meter.
   const stageYTop = 10;
   const [x0, y0, s] = proj(0 + cam.x, stageYTop + cam.y);
   const [x1, y1]    = proj(STAGE_W + cam.x, stageYTop + cam.y);
-  const bandH = 110 * s;
+  const bandH = 130 * s;
   const g = ctx.createLinearGradient(x0, y0-bandH/2, x0, y0+bandH/2);
   g.addColorStop(0,    'rgba(42,79,112,0.0)');
   g.addColorStop(0.3,  'rgba(42,79,112,0.45)');
@@ -836,15 +901,61 @@ function drawCityMain(){
     ctx.stroke();
   }
 
-  // "Highway" insinuation: a subtle parchment band below the river.
-  const hwY = 90 * s;
+  // --- two-lane highway with shoulders, sidewalks, and a ditch ---
   ctx.globalCompositeOperation = 'source-over';
-  const gH = ctx.createLinearGradient(0, y0 + bandH*0.35, 0, y0 + bandH*0.35 + hwY);
-  gH.addColorStop(0, 'rgba(236,216,168,0.04)');
-  gH.addColorStop(0.5,'rgba(236,216,168,0.08)');
-  gH.addColorStop(1, 'rgba(236,216,168,0.0)');
-  ctx.fillStyle = gH;
-  ctx.fillRect(x0, y0 + bandH*0.35, x1-x0, hwY);
+  const [, laneTopY]   = proj(0, 200 + cam.y); // y in stage coords after main
+  const [, laneBotY]   = proj(0, 360 + cam.y); // meter at y=330
+  const laneH = laneBotY - laneTopY;
+  // asphalt band
+  const gRoad = ctx.createLinearGradient(0, laneTopY, 0, laneBotY);
+  gRoad.addColorStop(0,   'rgba(18,16,24,0.0)');
+  gRoad.addColorStop(0.1, 'rgba(24,20,30,0.65)');
+  gRoad.addColorStop(0.5, 'rgba(30,26,38,0.75)');
+  gRoad.addColorStop(0.9, 'rgba(24,20,30,0.65)');
+  gRoad.addColorStop(1,   'rgba(18,16,24,0.0)');
+  ctx.fillStyle = gRoad;
+  ctx.fillRect(x0, laneTopY, x1-x0, laneH);
+
+  // dashed center line (double-yellow) + edge lines
+  ctx.strokeStyle = 'rgba(216,180,110,0.42)';
+  ctx.lineWidth = 1.2;
+  const midY = (laneTopY + laneBotY)/2;
+  const dashLen = 24 * s, gapLen = 22 * s;
+  ctx.setLineDash([dashLen, gapLen]);
+  ctx.beginPath(); ctx.moveTo(x0, midY - 3*s); ctx.lineTo(x1, midY - 3*s); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x0, midY + 3*s); ctx.lineTo(x1, midY + 3*s); ctx.stroke();
+  ctx.setLineDash([]);
+  // shoulder fog lines (white-ish)
+  ctx.strokeStyle = 'rgba(236,216,168,0.22)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x0, laneTopY + laneH*0.18); ctx.lineTo(x1, laneTopY + laneH*0.18); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x0, laneBotY - laneH*0.18); ctx.lineTo(x1, laneBotY - laneH*0.18); ctx.stroke();
+
+  // --- sidewalk (parchment stripe) ---
+  const [, sideTopY] = proj(0, 360 + cam.y);
+  const [, sideBotY] = proj(0, 395 + cam.y);
+  const gSide = ctx.createLinearGradient(0, sideTopY, 0, sideBotY);
+  gSide.addColorStop(0, 'rgba(236,216,168,0.05)');
+  gSide.addColorStop(0.5,'rgba(236,216,168,0.10)');
+  gSide.addColorStop(1, 'rgba(236,216,168,0.03)');
+  ctx.fillStyle = gSide;
+  ctx.fillRect(x0, sideTopY, x1-x0, sideBotY - sideTopY);
+  // sidewalk seams
+  ctx.strokeStyle = 'rgba(236,216,168,0.12)';
+  ctx.lineWidth = 0.6;
+  for (let xi = 60*s; xi < x1-x0; xi += 80*s){
+    ctx.beginPath(); ctx.moveTo(x0 + xi, sideTopY); ctx.lineTo(x0 + xi, sideBotY); ctx.stroke();
+  }
+
+  // --- ditch (shadowy dip between sidewalk and meter) ---
+  const [, ditchTopY] = proj(0, 395 + cam.y);
+  const [, ditchBotY] = proj(0, 445 + cam.y);
+  const gDitch = ctx.createLinearGradient(0, ditchTopY, 0, ditchBotY);
+  gDitch.addColorStop(0,  'rgba(15,22,28,0.0)');
+  gDitch.addColorStop(0.5,'rgba(28,42,48,0.45)');
+  gDitch.addColorStop(1,  'rgba(15,22,28,0.0)');
+  ctx.fillStyle = gDitch;
+  ctx.fillRect(x0, ditchTopY, x1-x0, ditchBotY - ditchTopY);
   ctx.restore();
 
   // Current-rate indicator (label)
@@ -1216,6 +1327,9 @@ function loop(){
   // pipes then nodes
   for (const e of EDGES) drawPipe(e);
   for (const k of Object.keys(NODES)) drawNode(k);
+
+  // tooltip on top
+  drawTooltip();
 
   // register refresh @ ~10 Hz
   regRebuildTimer += perfDelta;
