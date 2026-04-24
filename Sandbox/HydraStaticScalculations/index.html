@@ -1,0 +1,1266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>HydraStaticScalculations — a hydrostatic register of a house</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Cinzel:wght@400;500;600&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg-0:#08070e;
+    --bg-1:#120f1d;
+    --bg-2:#1b1730;
+    --gilt:#dcc48a;
+    --gilt-dim:#8d7a4f;
+    --parchment:#ecd8a8;
+    --parchment-dim:#a89775;
+    --ink:#1a1325;
+    --cold-deep:#356b7a;
+    --cold-mid:#6bb2b1;
+    --cold-hi:#c9efe6;
+    --hot-deep:#7a3a46;
+    --hot-mid:#c77a66;
+    --hot-hi:#f2c9a0;
+    --main-river:#2a4f70;
+    --main-river-hi:#7fb1d0;
+    --pressure:#d08fb6;
+    --teal:#86c0b8;
+    --periwinkle:#8f94c9;
+    --magenta:#b46a90;
+    --violet:#6d4d8c;
+    --sage:#9fb58e;
+    --amber:#d8a670;
+    --rose:#c98a9f;
+  }
+  * { box-sizing: border-box; }
+  html,body{margin:0;padding:0;height:100%;background:var(--bg-0);color:var(--parchment);font-family:'Cormorant Garamond',serif;overflow:hidden;}
+  body{
+    background:
+      radial-gradient(1200px 900px at 30% 20%, #1c1633 0%, #0e0b1a 60%, #06050c 100%),
+      radial-gradient(900px 700px at 80% 90%, #231a2f 0%, #0b0814 70%);
+    background-blend-mode:screen;
+  }
+  #stage{position:fixed;inset:0;display:block;}
+  .overlay{position:fixed;inset:0;pointer-events:none;display:grid;
+    grid-template-rows:auto 1fr auto;
+    grid-template-columns:auto 1fr auto;
+    grid-template-areas:
+      "header header header"
+      "left   .      right"
+      "legend .      osc";
+    gap:10px; padding:12px 14px;
+  }
+  .overlay > *{pointer-events:auto;}
+
+  /* Top header bar (title + controls) — single row, no overlap */
+  .topbar{
+    grid-area:header;
+    display:flex; align-items:center; justify-content:space-between;
+    gap:14px; padding:0 4px;
+  }
+  .title{ text-align:left; letter-spacing:.08em; }
+  .title h1{
+    font-family:'Cinzel',serif;font-weight:500;font-size:clamp(16px, 2.1vw, 24px);margin:0;line-height:1.15;
+    color:var(--gilt); text-shadow:0 0 14px rgba(220,196,138,.35);
+    white-space:nowrap;
+  }
+  .title .sub{
+    font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:300;
+    color:var(--parchment-dim);font-size:clamp(11px, 1.2vw, 15px);margin-top:3px;letter-spacing:.04em;
+  }
+
+  /* Controls row */
+  .controls{
+    display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center;
+  }
+  .ctrl{
+    background:linear-gradient(180deg,rgba(40,32,58,.72),rgba(18,14,30,.72));
+    border:1px solid rgba(220,196,138,.3);
+    color:var(--parchment);
+    font-family:'Cinzel',serif;font-size:13px;letter-spacing:.1em;
+    padding:9px 13px;border-radius:2px;cursor:pointer;
+    backdrop-filter:blur(6px);
+    transition:all .25s ease;
+  }
+  .ctrl:hover{border-color:var(--gilt);color:var(--gilt);box-shadow:0 0 12px rgba(220,196,138,.25);}
+  .ctrl.active{background:linear-gradient(180deg,rgba(90,64,120,.55),rgba(36,26,58,.65));border-color:var(--gilt);color:var(--gilt);}
+
+  /* Second row under header: source slider (left) */
+  .source{
+    grid-area:left; align-self:start;
+    font-family:'Cormorant Garamond',serif;color:var(--parchment);
+    font-size:14px;letter-spacing:.04em;
+    background:linear-gradient(180deg,rgba(40,32,58,.6),rgba(18,14,30,.6));
+    border:1px solid rgba(220,196,138,.22);
+    padding:10px 14px;border-radius:2px;backdrop-filter:blur(6px);
+    display:inline-flex;align-items:center;gap:12px; justify-self:start;
+  }
+  .source label{font-variant:small-caps;letter-spacing:.14em;color:var(--parchment-dim);font-size:13px;}
+  .source input[type=range]{width:180px;accent-color:var(--gilt);}
+  .source .val{font-family:'JetBrains Mono',monospace;color:var(--gilt);min-width:70px;text-align:right;font-size:14px;}
+
+  /* Register panel (hydrostatic read-out) */
+  .register{
+    grid-area:right; align-self:start; justify-self:end;
+    width:380px;max-height:calc(100vh - 180px);
+    overflow:auto;
+    background:linear-gradient(180deg,rgba(22,18,36,.82),rgba(10,8,18,.82));
+    border:1px solid rgba(220,196,138,.25);
+    border-radius:3px;
+    padding:14px 14px 12px;
+    backdrop-filter:blur(8px);
+    font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--parchment);
+    box-shadow:0 0 40px rgba(0,0,0,.35), inset 0 0 20px rgba(60,40,90,.15);
+    transition:opacity .4s ease, transform .4s ease;
+  }
+  .register.hidden{opacity:0;transform:translateX(12px);pointer-events:none;}
+  .register .howto{
+    font-family:'Cormorant Garamond',serif; font-style:italic; font-size:13px;
+    color:var(--parchment-dim); line-height:1.35; letter-spacing:.02em;
+    margin:0 0 10px; padding:0 2px;
+  }
+  .register h2{
+    font-family:'Cinzel',serif;font-weight:500;font-size:13px;letter-spacing:.18em;
+    color:var(--gilt);margin:0 0 8px;border-bottom:1px solid rgba(220,196,138,.2);padding-bottom:6px;
+    text-align:center;
+  }
+  .register h3{
+    font-family:'Cormorant Garamond',serif;font-weight:500;font-size:15px;letter-spacing:.08em;
+    color:var(--parchment);margin:12px 0 4px;
+  }
+  .register table{width:100%;border-collapse:collapse;font-size:12px;}
+  .register td{padding:2px 4px;border-bottom:1px dotted rgba(220,196,138,.09);}
+  .register td.k{color:var(--parchment-dim);}
+  .register td.v{color:var(--gilt);text-align:right;font-variant-numeric:tabular-nums;}
+  .register td.v.hot{color:var(--hot-hi);}
+  .register td.v.cold{color:var(--cold-hi);}
+  .register .flowing td.v{color:#ffe3ad;text-shadow:0 0 6px rgba(255,210,130,.25);}
+
+  /* Legend */
+  .legend{
+    grid-area:legend; align-self:end;
+    font-family:'Cormorant Garamond',serif;font-size:14px;letter-spacing:.02em;
+    color:var(--parchment);max-width:380px;line-height:1.5;
+    background:linear-gradient(180deg,rgba(22,18,36,.7),rgba(10,8,18,.7));
+    border:1px solid rgba(220,196,138,.22);padding:10px 14px;border-radius:2px;backdrop-filter:blur(6px);
+  }
+  .legend b{color:var(--gilt);font-family:'Cinzel',serif;font-weight:500;letter-spacing:.14em;font-size:12px;display:block;margin-bottom:4px;}
+  .legend .sw{display:inline-block;width:18px;height:4px;border-radius:2px;vertical-align:middle;margin-right:8px;}
+  .legend .dot{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle;margin-right:8px;box-shadow:0 0 6px currentColor;}
+  .legend i{color:var(--parchment-dim);}
+
+  /* OSC preview (tail) */
+  .osc{
+    grid-area:osc; align-self:end; justify-self:end;
+    font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--parchment-dim);
+    background:linear-gradient(180deg,rgba(22,18,36,.7),rgba(10,8,18,.7));
+    border:1px solid rgba(220,196,138,.22);padding:10px 12px;border-radius:2px;backdrop-filter:blur(6px);
+    width:420px;max-height:170px;overflow:hidden;
+  }
+  .osc .hd{font-family:'Cinzel',serif;letter-spacing:.18em;color:var(--gilt);font-size:12px;margin-bottom:6px;}
+  .osc pre{margin:0;white-space:pre-wrap;line-height:1.35;color:var(--parchment-dim);font-size:11px;}
+  .osc.hidden{display:none;}
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<div class="overlay">
+  <div class="topbar">
+    <div class="title">
+      <h1>H Y D R A S T A T I C S C A L C U L A T I O N S</h1>
+      <div class="sub">— from the sixteen-inch main, beneath the highway, into a house and its sprinklers · click any hydrant or valve —</div>
+    </div>
+    <div class="controls">
+      <button class="ctrl" id="btn-data" title="toggle the hydrostatic register — every pipe, flow, velocity, pressure drop">register</button>
+      <button class="ctrl" id="btn-audio">audio</button>
+      <button class="ctrl" id="btn-osc">osc preview</button>
+      <button class="ctrl" id="btn-open-all">open all</button>
+      <button class="ctrl" id="btn-close-all">close all</button>
+    </div>
+  </div>
+
+  <div class="source">
+    <label>street pressure</label>
+    <input type="range" id="psi" min="30" max="90" step="1" value="65"/>
+    <span class="val" id="psi-val">65 psi</span>
+  </div>
+
+  <aside class="register hidden" id="register">
+    <h2>HYDROSTATIC REGISTER</h2>
+    <div class="howto">every pipe diameter, length, friction coefficient, flow, velocity and pressure drop — recomputed each frame. click a hydrant or valve in the drawing to open it and watch the whole system respond.</div>
+    <div id="register-body"></div>
+  </aside>
+
+  <div class="legend">
+    <b>AQUATIC CARTOGRAPHY</b>
+    <span class="sw" style="background:linear-gradient(90deg,#2a4f70,#7fb1d0)"></span>16″ city main (distant current)<br/>
+    <span class="sw" style="background:linear-gradient(90deg,#6bb2b1,#c9efe6)"></span>cold water — velocity = particle speed<br/>
+    <span class="sw" style="background:linear-gradient(90deg,#c77a66,#f2c9a0)"></span>hot water — after heat-orb (≈120 °F)<br/>
+    <span class="dot" style="color:#dcc48a"></span>brass organ (meter · valves · manifolds)<br/>
+    <span class="dot" style="color:#d08fb6"></span>pressure halo — wider glow = higher head<br/>
+    <i>click an iris-valve or yard-hydrant to open it.</i>
+  </div>
+
+  <div class="osc hidden" id="osc">
+    <div class="hd">OSC · /hydra/&lt;node&gt;</div>
+    <pre id="osc-body"></pre>
+  </div>
+</div>
+
+<script>
+/* =======================================================================
+   HydraStaticScalculations
+   --------------------------------------------------------------------
+   A baroqueadelic hydrostatic register of a real home plumbing system:
+
+       16″ city main  →  3/4″ service under highway  →
+       5/8×3/4 meter  →  main shutoff  →  1″ PVC outside  →
+         ├─ 30 ft branch → yard hydrant 1 (w/ valve)
+         └─ side-of-house tee (two iris valves)
+               ├─ branch to yard hydrants 2 & 3
+               └─ under-slab → main in-house shutoff →
+                     ├─ hot leg: 3/4″ → shutoff → pressure tank /
+                     │   hot-water heater (radiant orb) → hot manifold
+                     └─ cold leg: 3/4″ → cold manifold
+
+   Physics:
+     Hazen-Williams friction losses, minor losses from K coefficients,
+     continuity at every tee. Tree-network iterative solver. Outlets
+     emit as Q = K·√P (sprinkler K-factor model). Values match a
+     fire-sprinkler hydrostatic calc sheet.
+
+   Aesthetic:
+     Baroqueadelic — jewel-toned, polyphonic motion (sum of prime-ratio
+     sinusoids), no pure LFOs, mass-spring-damper mouse coupling.
+   ======================================================================= */
+
+const $ = s => document.querySelector(s);
+const canvas = $('#stage');
+const ctx = canvas.getContext('2d');
+
+let W = 0, H = 0, DPR = Math.min(window.devicePixelRatio||1, 2);
+function resize(){
+  W = innerWidth; H = innerHeight;
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  canvas.style.width = W+'px'; canvas.style.height = H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+addEventListener('resize', resize); resize();
+
+/* ----------------------------- NODE GRAPH ----------------------------- */
+/* Logical coordinates on a 1600×1000 stage; we map to window via `proj`. */
+const STAGE_W = 1600, STAGE_H = 1000;
+/* Reserve space for overlay panels (top bar, right register when open,
+   bottom legend/osc). We fit the stage into a window-inset area so the
+   drawing never slides under the panels. Measured live from the DOM. */
+function getFit(){
+  // Measure actual overlay element positions — the canvas lives in the
+  // open rectangle between them so nothing overlaps on any screen size.
+  const pad = 14;
+  const topEl = document.querySelector('.topbar');
+  const srcEl = document.querySelector('.source');
+  const legEl = document.querySelector('.legend');
+  const oscEl = document.querySelector('.osc:not(.hidden)');
+  const regEl = document.querySelector('.register:not(.hidden)');
+  let topPad = 80, bottomPad = 140, leftPad = 20, rightPad = 20;
+  if (topEl){ topPad = Math.max(topPad, topEl.getBoundingClientRect().bottom + pad); }
+  if (srcEl){ topPad = Math.max(topPad, srcEl.getBoundingClientRect().bottom + pad); }
+  if (legEl){ bottomPad = Math.max(bottomPad, H - legEl.getBoundingClientRect().top + pad); }
+  if (oscEl){ bottomPad = Math.max(bottomPad, H - oscEl.getBoundingClientRect().top + pad); }
+  if (regEl){ rightPad = Math.max(rightPad, W - regEl.getBoundingClientRect().left + pad); }
+  const availW = Math.max(280, W - leftPad - rightPad);
+  const availH = Math.max(200, H - topPad - bottomPad);
+  const s = Math.min(availW/STAGE_W, availH/STAGE_H);
+  const ox = leftPad + (availW - STAGE_W*s)/2;
+  const oy = topPad  + (availH - STAGE_H*s)/2;
+  return [s, ox, oy];
+}
+function proj(x,y){
+  const [s, ox, oy] = getFit();
+  return [ox + x*s, oy + y*s, s];
+}
+function unproj(px,py){
+  const [s, ox, oy] = getFit();
+  return [(px-ox)/s, (py-oy)/s];
+}
+
+const NODES = {
+  // --- source & street ---
+  main:          {x:  80, y:  90, kind:'source',    label:'16″ city main · street pressure',        small:'SOURCE'},
+  tap:           {x: 240, y: 170, kind:'tap',       label:'service tap · 3/4″',                      small:'TAP · 3/4"'},
+  // --- meter & outside shutoff ---
+  meter:         {x: 420, y: 290, kind:'meter',     label:'5/8″×3/4″ house meter',                   small:'METER'},
+  mainshutoff:   {x: 540, y: 340, kind:'valve',     label:'outside main shutoff',                    small:'OUTSIDE SHUT'},
+  outside_tee:   {x: 640, y: 400, kind:'tee',       label:'outside tee · becomes 1″ PVC',            small:'TEE'},
+  // --- yard hydrants 1 (south branch) ---
+  yh1:           {x: 360, y: 720, kind:'hydrant',   label:'yard hydrant № 1 · 30 ft branch',         small:'YH 1'},
+  // --- side of house ---
+  side_tee:      {x: 800, y: 440, kind:'tee',       label:'side-of-house tee · two iris valves',     small:'SIDE TEE'},
+  yh_branch_tee: {x: 900, y: 640, kind:'tee',       label:'yard-hydrant branch tee',                 small:'YH TEE'},
+  yh2:           {x: 770, y: 820, kind:'hydrant',   label:'yard hydrant № 2',                        small:'YH 2'},
+  yh3:           {x:1040, y: 820, kind:'hydrant',   label:'yard hydrant № 3',                        small:'YH 3'},
+  under_house:   {x: 960, y: 440, kind:'valve',     label:'under-slab valve · under the house',      small:'UNDER-SLAB'},
+  main_in_house: {x:1100, y: 440, kind:'valve',     label:'main in-house shutoff',                   small:'MAIN IN-HOUSE'},
+  in_tee:        {x:1180, y: 440, kind:'tee',       label:'in-house tee · hot & cold legs',          small:'IN-HOUSE TEE'},
+  hot_shutoff:   {x:1230, y: 560, kind:'valve',     label:'hot-leg shutoff',                         small:'HOT SHUT'},
+  hwh:           {x:1340, y: 640, kind:'heater',    label:'pressure tank · hot-water heater',        small:'HEAT ORB'},
+  hot_manifold:  {x:1500, y: 560, kind:'manifold',  label:'HOT manifold',                            small:'HOT MAN.'},
+  cold_manifold: {x:1500, y: 320, kind:'manifold',  label:'COLD manifold',                           small:'COLD MAN.'},
+};
+
+/* EDGES — a directed tree rooted at `main`.
+   D = inner diameter (in), L = length (ft), C = Hazen-Williams, Kminor = sum of fitting K's.
+   hot=true after the HWH.                                                           */
+const EDGES_DEF = [
+  {id:'main→tap',          a:'main',          b:'tap',           D:0.75, L: 8, C:130, Km:2.0, material:'tap saddle to 3/4″ copper service'},
+  {id:'tap→meter',         a:'tap',           b:'meter',         D:0.75, L:55, C:130, Km:1.2, material:'3/4″ service under the highway'},
+  {id:'meter→out_shut',    a:'meter',         b:'mainshutoff',   D:0.625,L: 1, C:100, Km:8.0, material:'5/8×3/4 meter body'},
+  {id:'out_shut→out_tee',  a:'mainshutoff',   b:'outside_tee',   D:0.75, L: 2, C:150, Km:0.3, material:'ball valve → 1″ PVC transition'},
+  {id:'out_tee→yh1',       a:'outside_tee',   b:'yh1',           D:1.00, L:30, C:150, Km:2.0, material:'1″ PVC · 30 ft branch'},
+  {id:'out_tee→side',      a:'outside_tee',   b:'side_tee',      D:1.00, L:40, C:150, Km:1.2, material:'1″ PVC to side of house'},
+  {id:'side→yhbranch',     a:'side_tee',      b:'yh_branch_tee', D:1.00, L:22, C:150, Km:1.0, material:'1″ PVC (valve · yard branch)'},
+  {id:'yhbranch→yh2',      a:'yh_branch_tee', b:'yh2',           D:1.00, L:18, C:150, Km:1.2, material:'1″ PVC → YH2'},
+  {id:'yhbranch→yh3',      a:'yh_branch_tee', b:'yh3',           D:1.00, L:30, C:150, Km:1.5, material:'1″ PVC → YH3'},
+  {id:'side→under',        a:'side_tee',      b:'under_house',   D:1.00, L:18, C:150, Km:1.5, material:'1″ PVC · under slab (valve)'},
+  {id:'under→mih',         a:'under_house',   b:'main_in_house', D:1.00, L:10, C:150, Km:0.8, material:'1″ PVC → in-house'},
+  {id:'mih→intee',         a:'main_in_house', b:'in_tee',        D:1.00, L: 4, C:140, Km:1.0, material:'1″ transition to copper'},
+  {id:'intee→hot_shut',    a:'in_tee',        b:'hot_shutoff',   D:0.75, L: 6, C:140, Km:0.6, material:'3/4″ copper (hot leg)'},
+  {id:'hot_shut→hwh',      a:'hot_shutoff',   b:'hwh',           D:0.75, L: 6, C:140, Km:1.4, material:'PRV + expansion tank + heater'},
+  {id:'hwh→hot_man',       a:'hwh',           b:'hot_manifold',  D:0.75, L:25, C:140, Km:1.0, material:'3/4″ copper — hot', hot:true},
+  {id:'intee→cold_man',    a:'in_tee',        b:'cold_manifold', D:0.75, L:30, C:140, Km:1.2, material:'3/4″ copper — cold'},
+];
+
+// Materialize edges with mutable state. Also seed each NODE with default
+// P / T / Qtotal so the register render and any solver-agnostic code can
+// read them even before the very first solve() runs.
+const EDGES = EDGES_DEF.map(e => Object.assign({Q:0, V:0, dP:0, hot:!!e.hot}, e));
+for (const k of Object.keys(NODES)){
+  const n = NODES[k];
+  if (n.P == null)      n.P = 65;
+  if (n.T == null)      n.T = (k === 'hwh' || k === 'hot_manifold') ? 120 : 58;
+  if (n.Qtotal == null) n.Qtotal = 0;
+}
+
+// Build adjacency: parent-of-node (tree), and children-of-node.
+const PARENT = {};
+const CHILDREN = {};
+for (const k of Object.keys(NODES)) CHILDREN[k] = [];
+for (const e of EDGES){
+  PARENT[e.b] = e;
+  CHILDREN[e.a].push(e);
+}
+
+/* OUTLETS — sprinkler/hydrant K-factor model: Q(gpm) = K * sqrt(P_residual in psi). */
+const OUTLETS = [
+  {id:'YH1', node:'yh1',           K:3.2, open:false, label:'yard hydrant № 1'},
+  {id:'YH2', node:'yh2',           K:3.2, open:false, label:'yard hydrant № 2'},
+  {id:'YH3', node:'yh3',           K:3.2, open:false, label:'yard hydrant № 3'},
+  {id:'HOT', node:'hot_manifold',  K:4.2, open:false, label:'hot manifold draw (1 sprinkler eqv.)'},
+  {id:'COLD',node:'cold_manifold', K:4.2, open:false, label:'cold manifold draw (1 sprinkler eqv.)'},
+];
+
+/* Iris-valves on the system — closing one isolates its downstream subtree. */
+const VALVES = {
+  mainshutoff:   {open:true, label:'outside main'},
+  under_house:   {open:true, label:'under-slab'},
+  main_in_house: {open:true, label:'main in-house'},
+  hot_shutoff:   {open:true, label:'hot-leg'},
+};
+
+/* ----------------------------- PHYSICS -------------------------------- */
+/*
+  Hazen-Williams (imperial):
+     hf (ft per 100 ft) = 0.2083 * (100/C)^1.852 * Q_gpm^1.852 / D_in^4.8655
+  Velocity (ft/s): V = 0.408 * Q_gpm / D_in^2
+  Minor loss (ft): hf = K * V^2 / (2g)       g = 32.174 ft/s^2
+  Head ↔ pressure: 1 ft water ≈ 0.4335 psi
+*/
+const g_ft = 32.174;
+const FT_PER_PSI = 1/0.4335;
+
+function headloss_ft(Q, L, D, C){
+  if (Q <= 1e-6) return 0;
+  const per100 = 0.2083 * Math.pow(100/C, 1.852) * Math.pow(Q, 1.852) / Math.pow(D, 4.8655);
+  return per100 * L / 100;
+}
+function velocity_fps(Q, D){ return 0.408 * Q / (D*D); }
+function minor_ft(Km, V){ return Km * V*V / (2*g_ft); }
+function edge_dP_psi(e, Q){
+  const hf = headloss_ft(Q, e.L, e.D, e.C);
+  const V = velocity_fps(Q, e.D);
+  const hm = minor_ft(e.Km, V);
+  return (hf + hm) / FT_PER_PSI;
+}
+
+let P_SOURCE = 65; // psi at the tap side of the 16″ main (input)
+let P_MAIN_STATIC = 65; // the distant main itself (we treat as infinite reservoir at this pressure)
+
+function valveIsOpen(nodeId){
+  const v = VALVES[nodeId]; return !v || v.open;
+}
+function edgeIsAllowed(e){
+  // Edge allowed only if the valve-nodes on either end are open
+  return valveIsOpen(e.a) && valveIsOpen(e.b);
+}
+function nodeReachable(nodeId){
+  // Walk up the tree; if any intermediate valve is closed, outlet is isolated.
+  let n = nodeId;
+  while (n !== 'main'){
+    const pe = PARENT[n];
+    if (!pe) return false;
+    if (!edgeIsAllowed(pe)) return false;
+    n = pe.a;
+  }
+  return true;
+}
+
+/* Tree solver:
+   1) Seed each node.P with P_SOURCE.
+   2) For each outlet: Q_out = open ? K·√max(0, P_node) : 0.
+   3) Post-order sum: each edge Q = sum of outlet flows in its subtree.
+   4) Pre-order: for each child edge, P_child = P_parent − dP(edge).
+   5) Iterate with under-relaxation until P_node converges.
+*/
+function solve(){
+  const nodeKeys = Object.keys(NODES);
+  // Node P init
+  for (const k of nodeKeys){ NODES[k].P = P_SOURCE; NODES[k].Qtotal = 0; }
+  NODES.main.P = P_SOURCE;
+
+  // Post-order traversal (children before parent). Our tree is small; compute order by DFS.
+  const order = [];
+  (function dfs(n){ for (const e of CHILDREN[n]) dfs(e.b); order.push(n); })('main');
+  const preOrder = order.slice().reverse();
+
+  for (let iter=0; iter<200; iter++){
+    // 2) Set outlet Q's from current node pressures — under-relaxed
+    // to stabilize when many outlets are open and the system is heavily
+    // demand-limited (which oscillates between flood / starved otherwise).
+    for (const o of OUTLETS){
+      const p = Math.max(0, NODES[o.node].P);
+      const targetQ = (o.open && nodeReachable(o.node)) ? o.K * Math.sqrt(p) : 0;
+      const oldQ = o.Q || 0;
+      o.Q = oldQ + 0.45 * (targetQ - oldQ);
+    }
+    // 3) Sum flows up — walk in post-order; each edge Q is sum of downstream outlet Q and downstream edge flows.
+    for (const e of EDGES) e.Q = 0;
+    for (const n of order){
+      let Qsum = 0;
+      for (const e of CHILDREN[n]) Qsum += e.Q;
+      // plus any outlet located at this node
+      for (const o of OUTLETS) if (o.node === n) Qsum += o.Q;
+      NODES[n].Qtotal = Qsum;
+      if (PARENT[n]) PARENT[n].Q = Qsum;
+    }
+    // 4) Edge pressure drops and node pressures — pre-order.
+    for (const e of EDGES){
+      if (!edgeIsAllowed(e)) { e.Q = 0; e.dP = 0; e.V = 0; continue; }
+      e.dP = edge_dP_psi(e, e.Q);
+      e.V = velocity_fps(e.Q, e.D);
+    }
+    let maxDelta = 0;
+    for (const n of preOrder){
+      if (n === 'main') continue;
+      const pe = PARENT[n];
+      const Pnew = edgeIsAllowed(pe) ? (NODES[pe.a].P - pe.dP) : NODES[pe.a].P;
+      const Pold = NODES[n].P;
+      const Pmix = Pold + 0.6 * (Pnew - Pold);
+      NODES[n].P = Pmix;
+      if (Math.abs(Pnew - Pold) > maxDelta) maxDelta = Math.abs(Pnew - Pold);
+    }
+    if (maxDelta < 0.005) break;
+  }
+
+  // Residual pressures (psi) and clamp
+  for (const k of nodeKeys) NODES[k].P = Math.max(0, NODES[k].P);
+
+  // Temperature propagation — crude but expressive.
+  // Cold = inlet temp; Hot = heater set-point; elsewhere is cold.
+  const T_IN = 58;
+  const T_HOT = 120;
+  for (const k of nodeKeys) NODES[k].T = T_IN;
+  NODES.hwh.T = T_HOT;
+  NODES.hot_manifold.T = T_HOT;
+  for (const e of EDGES) e.T = e.hot ? T_HOT : T_IN;
+}
+
+/* ------------------------------ MOUSE --------------------------------- */
+const mouse = {x:W/2, y:H/2, tx:W/2, ty:H/2, vx:0, vy:0, down:false};
+addEventListener('mousemove', e => { mouse.tx = e.clientX; mouse.ty = e.clientY; });
+addEventListener('mousedown', () => mouse.down = true);
+addEventListener('mouseup',   () => mouse.down = false);
+
+/* Mass-spring-damper anchor: camera offset follows mouse, critically damped.
+   (per the baroqueadelic rule — no mere velocity reactivity.)            */
+const cam = {x:0, y:0, vx:0, vy:0};
+function updateCam(dt){
+  // target offset: small parallax in logical coords
+  const [mx, my] = unproj(mouse.tx, mouse.ty);
+  const tx = (mx - STAGE_W/2) * 0.010;
+  const ty = (my - STAGE_H/2) * 0.010;
+  const k = 14, c = 2*Math.sqrt(k); // critically damped-ish
+  const ax = k*(tx - cam.x) - c*cam.vx;
+  const ay = k*(ty - cam.y) - c*cam.vy;
+  cam.vx += ax*dt; cam.vy += ay*dt;
+  cam.x  += cam.vx*dt; cam.y  += cam.vy*dt;
+}
+
+/* ----------------------------- HIT-TEST ------------------------------- */
+function hitNode(px, py){
+  for (const k of Object.keys(NODES)){
+    const n = NODES[k];
+    const [nx, ny] = proj(n.x + cam.x, n.y + cam.y);
+    const r = 28;
+    if ((px-nx)*(px-nx) + (py-ny)*(py-ny) < r*r) return k;
+  }
+  return null;
+}
+canvas.addEventListener('click', e => {
+  const id = hitNode(e.clientX, e.clientY);
+  if (!id) return;
+  // Toggle: outlets & valves both clickable.
+  const o = OUTLETS.find(o => o.node === id);
+  if (o){ o.open = !o.open; emitOSC(o.node, 'open', o.open ? 1 : 0); return; }
+  if (VALVES[id]){ VALVES[id].open = !VALVES[id].open; emitOSC(id, 'valve', VALVES[id].open ? 1 : 0); return; }
+});
+
+/* ---------------------------- SOURCE SLIDER --------------------------- */
+const psiInput = $('#psi'), psiVal = $('#psi-val');
+psiInput.addEventListener('input', () => {
+  P_SOURCE = P_MAIN_STATIC = +psiInput.value;
+  psiVal.textContent = P_SOURCE.toFixed(0)+' psi';
+});
+
+/* ------------------------------ CONTROLS ------------------------------ */
+$('#btn-data').addEventListener('click', () => {
+  $('#register').classList.toggle('hidden');
+  $('#btn-data').classList.toggle('active');
+});
+$('#btn-osc').addEventListener('click', () => {
+  $('#osc').classList.toggle('hidden');
+  $('#btn-osc').classList.toggle('active');
+});
+$('#btn-open-all').addEventListener('click', () => { for (const o of OUTLETS) o.open = true; });
+$('#btn-close-all').addEventListener('click',() => { for (const o of OUTLETS) o.open = false; });
+
+/* ------------------------------ AUDIO --------------------------------- */
+let audioEnabled = false;
+let audio = null;
+function initAudio(){
+  const ac = new (window.AudioContext || window.webkitAudioContext)();
+  // --- master chain ---
+  const master = ac.createGain(); master.gain.value = 0.25; master.connect(ac.destination);
+  // --- 16" river: heavy filtered pink-ish noise ---
+  const buffer = ac.createBuffer(1, ac.sampleRate*4, ac.sampleRate);
+  const d = buffer.getChannelData(0);
+  let b0=0,b1=0,b2=0;
+  for (let i=0;i<d.length;i++){
+    const white = Math.random()*2-1;
+    b0 = 0.99765*b0 + white*0.0990460;
+    b1 = 0.96300*b1 + white*0.2965164;
+    b2 = 0.57000*b2 + white*1.0526913;
+    d[i] = (b0+b1+b2 + white*0.1848) * 0.18;
+  }
+  const src = ac.createBufferSource(); src.buffer = buffer; src.loop = true; src.start();
+  const bp = ac.createBiquadFilter(); bp.type='lowpass'; bp.frequency.value = 300; bp.Q.value = 0.6;
+  const riverGain = ac.createGain(); riverGain.gain.value = 0.10;
+  src.connect(bp).connect(riverGain).connect(master);
+
+  // --- heater drone ---
+  const osc1 = ac.createOscillator(); osc1.type='sine'; osc1.frequency.value = 58;
+  const osc2 = ac.createOscillator(); osc2.type='sine'; osc2.frequency.value = 58*2*1.005;
+  const heaterGain = ac.createGain(); heaterGain.gain.value = 0;
+  const heaterLP = ac.createBiquadFilter(); heaterLP.type='lowpass'; heaterLP.frequency.value=400; heaterLP.Q.value=.7;
+  osc1.connect(heaterGain); osc2.connect(heaterGain); heaterGain.connect(heaterLP).connect(master);
+  osc1.start(); osc2.start();
+
+  // --- per-outlet stream (noise through bandpass modulated by flow) ---
+  const outletNodes = {};
+  for (const o of OUTLETS){
+    const nsrc = ac.createBufferSource(); nsrc.buffer = buffer; nsrc.loop = true; nsrc.start();
+    const bp2 = ac.createBiquadFilter(); bp2.type='bandpass'; bp2.frequency.value = 900; bp2.Q.value = 2.2;
+    const gain = ac.createGain(); gain.gain.value = 0;
+    nsrc.connect(bp2).connect(gain).connect(master);
+    outletNodes[o.id] = {bp:bp2, gain};
+  }
+
+  audio = { ac, master, riverGain, heaterGain, heaterLP, outletNodes };
+}
+$('#btn-audio').addEventListener('click', async () => {
+  if (!audio){ initAudio(); }
+  if (audio.ac.state === 'suspended') await audio.ac.resume();
+  audioEnabled = !audioEnabled;
+  $('#btn-audio').classList.toggle('active', audioEnabled);
+  audio.master.gain.value = audioEnabled ? 0.28 : 0.0001;
+});
+
+/* ------------------------------ OSC (preview) ------------------------- */
+const oscLog = [];
+function emitOSC(target, kind, value){
+  const t = (performance.now()/1000).toFixed(2);
+  oscLog.unshift(`${t}s  /hydra/${target}/${kind}  ${value}`);
+  oscLog.length = Math.min(oscLog.length, 14);
+  renderOSC();
+}
+function renderOSC(){
+  $('#osc-body').textContent = oscLog.join('\n');
+}
+// Periodic telemetry
+setInterval(() => {
+  if ($('#osc').classList.contains('hidden')) return;
+  // emit residual pressure at each outlet node + Q
+  for (const o of OUTLETS){
+    const p = NODES[o.node].P.toFixed(1);
+    const q = (o.Q||0).toFixed(2);
+    const t = (performance.now()/1000).toFixed(2);
+    oscLog.unshift(`${t}s  /hydra/${o.id}/p_q  ${p} ${q}`);
+  }
+  oscLog.length = Math.min(oscLog.length, 14);
+  renderOSC();
+}, 900);
+
+/* ============================= RENDERING ============================== */
+
+/* Utility: polyphonic drift — sum of prime-ratio sines, mouse-biased. */
+const PRIMES = [0.37, 0.583, 1.0/Math.PI, 1.0/Math.SQRT2, 1.0/Math.E, 1.618];
+function poly(t, phase=0, amp=1){
+  let s = 0;
+  for (let i=0;i<PRIMES.length;i++){
+    s += Math.sin(t*PRIMES[i] + phase + i*2.7) / (i+1.5);
+  }
+  return s * amp * 0.5;
+}
+
+/* Draw gilded / baroque filigree ring. */
+function filigreeRing(x,y,r, t, hue){
+  const ctx2 = ctx;
+  ctx2.save(); ctx2.translate(x,y);
+  // outer faint halo
+  const g = ctx2.createRadialGradient(0,0,r*0.4, 0,0, r*3.5);
+  g.addColorStop(0, hue+'28');
+  g.addColorStop(0.5, hue+'10');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx2.fillStyle = g; ctx2.beginPath(); ctx2.arc(0,0, r*3.5, 0, Math.PI*2); ctx2.fill();
+
+  ctx2.strokeStyle = '#dcc48a'; ctx2.lineWidth = 0.8; ctx2.globalAlpha = 0.55;
+  ctx2.beginPath(); ctx2.arc(0,0, r*1.05, 0, Math.PI*2); ctx2.stroke();
+  ctx2.globalAlpha = 0.35;
+  ctx2.beginPath(); ctx2.arc(0,0, r*1.35, 0, Math.PI*2); ctx2.stroke();
+
+  const petals = 8;
+  ctx2.globalAlpha = 0.45;
+  for (let i=0;i<petals;i++){
+    const a = i/petals * Math.PI*2 + t*0.02 + poly(t*0.001, i, 0.2);
+    const x1 = Math.cos(a)*r*1.35;
+    const y1 = Math.sin(a)*r*1.35;
+    const x2 = Math.cos(a)*r*1.75;
+    const y2 = Math.sin(a)*r*1.75;
+    ctx2.beginPath(); ctx2.moveTo(x1,y1); ctx2.lineTo(x2,y2); ctx2.stroke();
+  }
+  ctx2.restore();
+}
+
+/* Particle pool — per edge. Position stored as normalized 0..1 along edge path. */
+const EDGE_PARTICLES = {};
+for (const e of EDGES){
+  const base = Math.max(10, Math.round(e.L * 1.1));
+  EDGE_PARTICLES[e.id] = Array.from({length: base}, () => ({
+    u: Math.random(), jitter: (Math.random()-0.5)*0.4, size: 1.2 + Math.random()*1.6
+  }));
+}
+
+/* Build a curved path for each edge (quadratic) using a control-point
+   offset perpendicular to the straight segment — organic, vein-like. */
+function edgeCurve(e){
+  const a = NODES[e.a], b = NODES[e.b];
+  const ax = a.x + cam.x, ay = a.y + cam.y;
+  const bx = b.x + cam.x, by = b.y + cam.y;
+  const mx = (ax+bx)/2, my = (ay+by)/2;
+  const dx = bx-ax, dy = by-ay;
+  const len = Math.hypot(dx,dy);
+  const nx = -dy/len, ny = dx/len;
+  // control-point offset — stable per edge, gently modulated
+  if (e._off == null){
+    // deterministic-ish offset based on id hash
+    let h = 0; for (let i=0;i<e.id.length;i++) h = ((h<<5)-h + e.id.charCodeAt(i))|0;
+    e._off = ((h%100)/100 - 0.5) * 0.35 * len;
+  }
+  const phase = (parseInt(e.id.charCodeAt(0))||0) * 0.3;
+  const wobble = poly(perfNow*0.0008, phase, 1) * 4;
+  const off = e._off + wobble;
+  const cx = mx + nx*off, cy = my + ny*off;
+  return {ax,ay,bx,by,cx,cy,len};
+}
+function quadPoint(c, t){
+  const it = 1 - t;
+  return [
+    it*it*c.ax + 2*it*t*c.cx + t*t*c.bx,
+    it*it*c.ay + 2*it*t*c.cy + t*t*c.by
+  ];
+}
+function quadTangent(c, t){
+  const dx = 2*(1-t)*(c.cx-c.ax) + 2*t*(c.bx-c.cx);
+  const dy = 2*(1-t)*(c.cy-c.ay) + 2*t*(c.by-c.cy);
+  const l = Math.hypot(dx,dy) || 1;
+  return [dx/l, dy/l];
+}
+
+/* Pipe stroke with temperature/pressure-aware gradient. */
+function pipeColors(e){
+  // Color by temperature; intensity by pressure (avg of ends).
+  const Pavg = (NODES[e.a].P + NODES[e.b].P) / 2;
+  const pressBoost = Math.min(1, Math.max(0, Pavg/P_MAIN_STATIC));
+  const flowing = e.Q > 0.01;
+  if (e.a === 'main' && e.b === 'tap'){
+    // city main tap
+    return {core:'#7fb1d0', glow:'#2a4f70', pressBoost, flowing};
+  }
+  if (e.hot){
+    return {core:'#f2c9a0', glow:'#c77a66', pressBoost, flowing};
+  }
+  return {core:'#c9efe6', glow:'#6bb2b1', pressBoost, flowing};
+}
+
+function drawPipe(e){
+  const [axp, ayp, s] = proj(NODES[e.a].x + cam.x, NODES[e.a].y + cam.y);
+  const [bxp, byp]    = proj(NODES[e.b].x + cam.x, NODES[e.b].y + cam.y);
+  const c = edgeCurve(e);
+  const [cxp, cyp] = proj(c.cx, c.cy);
+  const colors = pipeColors(e);
+
+  const isolated = !edgeIsAllowed(e);
+
+  // width ≈ to log(diameter)+flow halo
+  const base = (2.4 + Math.log(e.D+0.2)*5.2) * s;
+  const glowW = base * (3.2 + colors.pressBoost*1.8);
+
+  // Pressure halo
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  if (!isolated){
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = 'rgba(208,143,182,'+(0.06 + colors.pressBoost*0.14)+')';
+    ctx.lineWidth = glowW*1.6;
+    ctx.beginPath(); ctx.moveTo(axp,ayp); ctx.quadraticCurveTo(cxp,cyp, bxp,byp); ctx.stroke();
+  }
+
+  // Outer soft glow
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.strokeStyle = colors.glow + (isolated ? '30' : '55');
+  ctx.lineWidth = glowW;
+  ctx.beginPath(); ctx.moveTo(axp,ayp); ctx.quadraticCurveTo(cxp,cyp, bxp,byp); ctx.stroke();
+
+  // Inner pipe body
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.strokeStyle = isolated ? 'rgba(120,110,145,.35)' : colors.core;
+  ctx.lineWidth = base;
+  ctx.beginPath(); ctx.moveTo(axp,ayp); ctx.quadraticCurveTo(cxp,cyp, bxp,byp); ctx.stroke();
+
+  // Gilded hairline
+  ctx.strokeStyle = isolated ? 'rgba(200,190,170,.10)' : 'rgba(236,216,168,.28)';
+  ctx.lineWidth = Math.max(0.5, base*0.22);
+  ctx.beginPath(); ctx.moveTo(axp,ayp); ctx.quadraticCurveTo(cxp,cyp, bxp,byp); ctx.stroke();
+
+  ctx.restore();
+
+  // Particles — always visible. Even at zero flow, a gentle perfusion drifts.
+  if (!isolated){
+    const parts = EDGE_PARTICLES[e.id];
+    const V = e.V;                                       // ft/s
+    const baseDrift = 0.0004;                            // creep even at rest
+    const flowMul  = 0.0022;                             // flow contribution
+    const speedFactor = Math.min(0.05, baseDrift + flowMul * V);
+    const dt = perfDelta;
+    for (const p of parts){
+      p.u += speedFactor * dt;
+      if (p.u >= 1) p.u -= 1;
+    }
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const coreColor = colors.core;
+    for (const p of parts){
+      const t = (p.u + p.jitter*0.05) % 1;
+      const [x, y] = quadPoint({ax:axp,ay:ayp,cx:cxp,cy:cyp,bx:bxp,by:byp}, t);
+      const sz = (p.size*1.6 + 0.8*Math.sin(t*Math.PI)) * s * (e.D<1 ? 0.9 : 1.2);
+      const grd = ctx.createRadialGradient(x,y, 0, x,y, sz*4);
+      grd.addColorStop(0, coreColor);
+      grd.addColorStop(0.3, coreColor+'a0');
+      grd.addColorStop(1, coreColor+'00');
+      ctx.fillStyle = grd;
+      ctx.beginPath(); ctx.arc(x,y, sz*3.2, 0, Math.PI*2); ctx.fill();
+      // bright core pip
+      ctx.fillStyle = 'rgba(255,255,255,'+(0.35 + Math.min(0.5, V*0.05))+')';
+      ctx.beginPath(); ctx.arc(x,y, sz*0.9, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+function drawCityMain(){
+  // A horizontal distant current along the top ~10% — abstraction of
+  // the 16″ main "on the other side of the highway".
+  const stageYTop = 10;
+  const [x0, y0, s] = proj(0 + cam.x, stageYTop + cam.y);
+  const [x1, y1]    = proj(STAGE_W + cam.x, stageYTop + cam.y);
+  const bandH = 110 * s;
+  const g = ctx.createLinearGradient(x0, y0-bandH/2, x0, y0+bandH/2);
+  g.addColorStop(0,    'rgba(42,79,112,0.0)');
+  g.addColorStop(0.3,  'rgba(42,79,112,0.45)');
+  g.addColorStop(0.5,  'rgba(127,177,208,0.55)');
+  g.addColorStop(0.7,  'rgba(42,79,112,0.45)');
+  g.addColorStop(1,    'rgba(42,79,112,0.0)');
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = g;
+  ctx.fillRect(x0, y0-bandH/2, x1-x0, bandH);
+
+  // Flowing ripples — summed prime-ratio sines
+  ctx.strokeStyle = 'rgba(127,177,208,0.30)';
+  ctx.lineWidth = 0.9;
+  const N = 5;
+  for (let k=0;k<N;k++){
+    ctx.beginPath();
+    const yOff = (k - (N-1)/2) * (bandH*0.09);
+    for (let xi=0; xi<=80; xi++){
+      const tt = xi/80;
+      const xx = x0 + (x1-x0)*tt;
+      const wob = Math.sin(tt*8.3 + perfNow*0.0015 + k*0.9) * 4
+                + poly(perfNow*0.0006, k+xi*0.12, 3);
+      const yy = y0 + yOff + wob;
+      if (xi===0) ctx.moveTo(xx, yy); else ctx.lineTo(xx, yy);
+    }
+    ctx.stroke();
+  }
+
+  // "Highway" insinuation: a subtle parchment band below the river.
+  const hwY = 90 * s;
+  ctx.globalCompositeOperation = 'source-over';
+  const gH = ctx.createLinearGradient(0, y0 + bandH*0.35, 0, y0 + bandH*0.35 + hwY);
+  gH.addColorStop(0, 'rgba(236,216,168,0.04)');
+  gH.addColorStop(0.5,'rgba(236,216,168,0.08)');
+  gH.addColorStop(1, 'rgba(236,216,168,0.0)');
+  ctx.fillStyle = gH;
+  ctx.fillRect(x0, y0 + bandH*0.35, x1-x0, hwY);
+  ctx.restore();
+
+  // Current-rate indicator (label)
+  ctx.save();
+  ctx.fillStyle = 'rgba(236,216,168,0.55)';
+  ctx.font = 'italic 300 '+Math.round(11*s+6)+'px "Cormorant Garamond", serif';
+  ctx.textAlign = 'center';
+  const [tx,ty] = proj(STAGE_W/2 + cam.x, stageYTop - 28 + cam.y);
+  ctx.fillText('— sixteen-inch municipal current · ' + P_MAIN_STATIC.toFixed(0) + ' psi static —', tx, ty);
+  ctx.restore();
+}
+
+/* Nodes — different shapes per kind */
+function drawNode(id){
+  const n = NODES[id];
+  const [x, y, s] = proj(n.x + cam.x, n.y + cam.y);
+  const t = perfNow;
+
+  // click affordance ring
+  const clickable = !!OUTLETS.find(o => o.node === id) || !!VALVES[id];
+  if (clickable){
+    ctx.save();
+    ctx.strokeStyle = 'rgba(236,216,168,0.10)';
+    ctx.setLineDash([2,4]);
+    ctx.lineWidth = 0.8;
+    ctx.beginPath(); ctx.arc(x,y, 28*s, 0, Math.PI*2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  const hue = '#dcc48a';
+  switch (n.kind){
+    case 'source': {
+      // concentric ripple — the "aquifer origin"
+      for (let k=0;k<4;k++){
+        const rr = (10+k*8)*s + poly(t*0.0009, k, 3)*s;
+        ctx.strokeStyle = 'rgba(127,177,208,'+(0.25-k*0.05)+')';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(x,y, rr, 0, Math.PI*2); ctx.stroke();
+      }
+      break;
+    }
+    case 'tap': {
+      filigreeRing(x,y, 8*s, t, '#6bb2b1');
+      ctx.fillStyle = '#c9efe6';
+      ctx.beginPath(); ctx.arc(x,y, 5*s, 0, Math.PI*2); ctx.fill();
+      break;
+    }
+    case 'meter': {
+      // clockwork meter: filigree + spinning dial; speed = flow.
+      filigreeRing(x,y, 16*s, t, '#dcc48a');
+      ctx.save(); ctx.translate(x,y);
+      // dial
+      ctx.fillStyle = 'rgba(26,19,37,.85)';
+      ctx.strokeStyle = '#dcc48a'; ctx.lineWidth = 1.1;
+      ctx.beginPath(); ctx.arc(0,0, 15*s, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      // spinning needle proportional to flow at meter
+      const qm = Math.max(0, NODES.meter.Qtotal);
+      const angle = t*0.003 * (0.4 + qm*0.9);
+      ctx.rotate(angle);
+      ctx.strokeStyle = '#ecd8a8';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(13*s,0); ctx.stroke();
+      // tick marks
+      ctx.rotate(-angle);
+      ctx.strokeStyle = 'rgba(236,216,168,.4)';
+      for (let k=0;k<12;k++){
+        const a = k/12*Math.PI*2;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a)*12*s, Math.sin(a)*12*s);
+        ctx.lineTo(Math.cos(a)*14*s, Math.sin(a)*14*s);
+        ctx.stroke();
+      }
+      ctx.restore();
+      break;
+    }
+    case 'valve': {
+      const v = VALVES[id]; const open = v ? v.open : true;
+      // iris diaphragm: 6 blades
+      const r = 13*s;
+      ctx.save(); ctx.translate(x,y);
+      // body
+      const grd = ctx.createRadialGradient(0,0, r*0.2, 0,0, r*1.8);
+      grd.addColorStop(0, open ? 'rgba(220,196,138,0.35)' : 'rgba(80,60,90,0.50)');
+      grd.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grd;
+      ctx.beginPath(); ctx.arc(0,0, r*1.8, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = '#dcc48a'; ctx.lineWidth = 1.1;
+      ctx.beginPath(); ctx.arc(0,0, r, 0, Math.PI*2); ctx.stroke();
+      // blades
+      const blades = 6;
+      const aperture = open ? 0.85 : 0.04;
+      for (let k=0;k<blades;k++){
+        const a = k/blades * Math.PI*2 + t*(open?0.0004:0);
+        ctx.save(); ctx.rotate(a);
+        ctx.fillStyle = open ? 'rgba(200,230,220,0.35)' : 'rgba(90,60,110,0.65)';
+        ctx.strokeStyle = 'rgba(236,216,168,.5)'; ctx.lineWidth = .6;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(r*0.95, -r*0.35);
+        ctx.lineTo(r*0.95 * (1-aperture*0.8), r*0.15);
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+        ctx.restore();
+      }
+      ctx.restore();
+      break;
+    }
+    case 'tee': {
+      // small trefoil
+      filigreeRing(x,y, 9*s, t, '#9fb58e');
+      ctx.fillStyle = '#ecd8a8'; ctx.strokeStyle = '#dcc48a'; ctx.lineWidth = 0.8;
+      ctx.save(); ctx.translate(x,y);
+      for (let k=0;k<3;k++){
+        ctx.save(); ctx.rotate(k*Math.PI*2/3);
+        ctx.beginPath();
+        ctx.arc(7*s, 0, 3*s, 0, Math.PI*2);
+        ctx.fill(); ctx.stroke();
+        ctx.restore();
+      }
+      ctx.beginPath(); ctx.arc(0,0, 2.6*s,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.restore();
+      break;
+    }
+    case 'hydrant': {
+      const o = OUTLETS.find(o => o.node === id);
+      const open = o && o.open;
+      // a tall bell/totem with a spout that blooms when open
+      ctx.save(); ctx.translate(x,y);
+      // base stem
+      ctx.fillStyle = 'rgba(26,19,37,.85)';
+      ctx.strokeStyle = '#8d7a4f';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.rect(-3*s, -2*s, 6*s, 18*s); ctx.fill(); ctx.stroke();
+      // bell head
+      filigreeRing(0,-6*s, 8*s, t, open? '#c9efe6' : '#8f94c9');
+      const gx = ctx.createRadialGradient(0,-6*s,0.5*s, 0,-6*s, 10*s);
+      gx.addColorStop(0, open? '#c9efe6' : '#1b1730');
+      gx.addColorStop(1, 'rgba(40,30,60,0.1)');
+      ctx.fillStyle = gx;
+      ctx.beginPath(); ctx.arc(0,-6*s, 8*s, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = '#dcc48a'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(0,-6*s, 8*s, 0, Math.PI*2); ctx.stroke();
+
+      // spray plume when open
+      if (open && o && o.Q > 0.01){
+        const Q = o.Q;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const spread = 0.6 + Math.min(1.2, Q*0.06);
+        const len = 10 + Math.min(80, Q*2.1);
+        for (let k=0;k<44;k++){
+          const a = (Math.random()-0.5)*spread + Math.PI/2 + poly(t*0.001,k,0.2);
+          const d = (Math.random()*len + 4) * s;
+          const px = Math.cos(a-Math.PI/2)*d;
+          const py = Math.sin(a-Math.PI/2)*d;
+          const alp = (1 - d/(len*s)) * 0.5;
+          const grd = ctx.createRadialGradient(px, py, 0, px, py, 4*s);
+          grd.addColorStop(0,'rgba(201,239,230,'+alp+')');
+          grd.addColorStop(1,'rgba(201,239,230,0)');
+          ctx.fillStyle = grd;
+          ctx.beginPath(); ctx.arc(px,py, 4*s, 0, Math.PI*2); ctx.fill();
+        }
+        ctx.restore();
+      }
+      ctx.restore();
+      break;
+    }
+    case 'heater': {
+      // radiant orb with convective ripples & ornate dome
+      ctx.save(); ctx.translate(x,y);
+      const R = 24*s + Math.sin(t*0.0012)*1.3*s;
+      // outer heat radiance
+      const rg = ctx.createRadialGradient(0,0, R*0.3, 0,0, R*3.6);
+      rg.addColorStop(0, 'rgba(242,201,160,0.55)');
+      rg.addColorStop(0.35,'rgba(199,122,102,0.25)');
+      rg.addColorStop(1, 'rgba(100,40,60,0.00)');
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = rg;
+      ctx.beginPath(); ctx.arc(0,0, R*3.6, 0, Math.PI*2); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+
+      // orb body
+      const g2 = ctx.createRadialGradient(-R*0.3, -R*0.3, R*0.1, 0,0, R);
+      g2.addColorStop(0,'#ffe3bd'); g2.addColorStop(0.4,'#dda37a'); g2.addColorStop(1,'#6a2c3a');
+      ctx.fillStyle = g2;
+      ctx.beginPath(); ctx.arc(0,0, R, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = '#dcc48a'; ctx.lineWidth = 1.1;
+      ctx.beginPath(); ctx.arc(0,0, R, 0, Math.PI*2); ctx.stroke();
+
+      // convective ripples (sum of prime-ratio sines)
+      ctx.globalCompositeOperation = 'lighter';
+      for (let k=0; k<4; k++){
+        const rr = R*(0.35 + k*0.16) + poly(t*0.0009, k*1.3, 1.5)*s;
+        ctx.strokeStyle = 'rgba(255,220,170,'+(0.35-k*0.07)+')';
+        ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.arc(0,0, rr, 0, Math.PI*2); ctx.stroke();
+      }
+      // little dome / crown
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = '#dcc48a'; ctx.lineWidth = 1.0;
+      ctx.beginPath();
+      ctx.moveTo(-R*0.8, -R*0.2);
+      ctx.quadraticCurveTo(0, -R*1.6, R*0.8, -R*0.2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-R*0.25, -R*1.1);
+      ctx.lineTo(R*0.25, -R*1.1);
+      ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, -R*1.2, R*0.1, 0, Math.PI*2); ctx.stroke();
+      ctx.restore();
+      break;
+    }
+    case 'manifold': {
+      // neural-ganglion — radial burst of capillaries
+      ctx.save(); ctx.translate(x,y);
+      const isHot = id === 'hot_manifold';
+      const col = isHot ? '#f2c9a0' : '#c9efe6';
+      const glow = isHot ? '#c77a66' : '#6bb2b1';
+      const R = 18*s;
+      filigreeRing(0,0, 12*s, t, glow);
+      // body
+      const g = ctx.createRadialGradient(0,0, 1, 0,0, R);
+      g.addColorStop(0, col); g.addColorStop(0.4, glow); g.addColorStop(1, 'rgba(20,14,30,0)');
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(0,0, R, 0, Math.PI*2); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = '#dcc48a'; ctx.lineWidth = 1.0;
+      ctx.beginPath(); ctx.arc(0,0, R*0.55, 0, Math.PI*2); ctx.stroke();
+      // outgoing capillaries (decorative)
+      ctx.strokeStyle = col + '66';
+      ctx.lineWidth = 0.9;
+      const N = 10;
+      for (let k=0;k<N;k++){
+        const a = (k/N)*Math.PI*2 + poly(t*0.0007, k, 0.35);
+        const r1 = R*0.6, r2 = R*(1.5 + Math.sin(t*0.001+k)*0.3);
+        const x1 = Math.cos(a)*r1, y1 = Math.sin(a)*r1;
+        const x2 = Math.cos(a)*r2, y2 = Math.sin(a)*r2;
+        ctx.beginPath(); ctx.moveTo(x1,y1);
+        ctx.quadraticCurveTo(x2*0.6 + Math.cos(a+0.3)*r2*0.3, y2*0.6 + Math.sin(a+0.3)*r2*0.3, x2, y2);
+        ctx.stroke();
+      }
+      ctx.restore();
+      break;
+    }
+  }
+
+  // Data-layer labels (toggle via 'register' layer later)
+  drawLabel(id, x, y, s);
+}
+
+function drawLabel(id, x, y, s){
+  const n = NODES[id];
+  const tx = x; const ty = y + 46*s;
+  ctx.save();
+  ctx.font = '400 '+Math.max(12, 12*s+4)+'px "Cormorant Garamond", serif';
+  ctx.textAlign='center';
+  ctx.fillStyle = 'rgba(236,216,168,.88)';
+  ctx.fillText(n.small, tx, ty);
+  // pressure & flow
+  const p = NODES[id].P.toFixed(1);
+  const q = NODES[id].Qtotal.toFixed(2);
+  ctx.font = '400 '+Math.max(11, 11*s+3)+'px "JetBrains Mono", monospace';
+  ctx.fillStyle = 'rgba(208,143,182,.88)';
+  ctx.fillText(p+' psi', tx, ty + 15*s + 5);
+  if (NODES[id].Qtotal > 0.02){
+    ctx.fillStyle = 'rgba(255,210,130,.95)';
+    ctx.fillText(q+' gpm', tx, ty + 28*s + 10);
+  }
+  ctx.restore();
+}
+
+/* Register DOM rebuild */
+const regBody = $('#register-body');
+function rebuildRegister(){
+  let html = '<h3>NODES</h3><table>';
+  for (const k of Object.keys(NODES)){
+    const n = NODES[k];
+    const isHot = k==='hwh' || k==='hot_manifold';
+    const hotCls = isHot ? 'hot' : (k==='cold_manifold' ? 'cold' : '');
+    const q = n.Qtotal>0.01 ? ' · <i>'+n.Qtotal.toFixed(2)+' gpm</i>' : '';
+    html += `<tr><td class="k">${n.small}</td><td class="v ${hotCls}">${n.P.toFixed(1)} psi · ${n.T.toFixed(0)}°F${q}</td></tr>`;
+  }
+  html += '</table>';
+
+  html += '<h3>EDGES · friction &amp; velocity</h3><table>';
+  for (const e of EDGES){
+    const flow = e.Q>0.01 ? 'flowing' : '';
+    html += `<tr class="${flow}"><td class="k">${e.id}<br><i style="color:var(--parchment-dim)">${e.D}″ · ${e.L} ft · C=${e.C}</i></td>`
+          + `<td class="v">${e.Q.toFixed(2)} gpm<br>${e.V.toFixed(2)} ft/s<br>${e.dP.toFixed(2)} psi drop</td></tr>`;
+  }
+  html += '</table>';
+
+  html += '<h3>OUTLETS · K-factor model</h3><table>';
+  for (const o of OUTLETS){
+    const state = o.open ? '<span style="color:#ffdb99">OPEN</span>' : '<span style="color:var(--parchment-dim)">closed</span>';
+    html += `<tr><td class="k">${o.id} · K=${o.K}</td><td class="v">${state}<br>${(o.Q||0).toFixed(2)} gpm @ ${(NODES[o.node].P||0).toFixed(1)} psi</td></tr>`;
+  }
+  html += '</table>';
+
+  // total demand / main flow
+  const Qtot = OUTLETS.reduce((s,o)=>s + (o.Q||0), 0);
+  const P_min = Math.min(...OUTLETS.filter(o=>o.open).map(o=>NODES[o.node].P), Infinity);
+  html += '<h3>SYSTEM TOTALS</h3><table>';
+  html += `<tr><td class="k">street pressure</td><td class="v">${P_SOURCE.toFixed(1)} psi</td></tr>`;
+  html += `<tr><td class="k">meter flow</td><td class="v">${NODES.meter.Qtotal.toFixed(2)} gpm</td></tr>`;
+  html += `<tr><td class="k">total demand</td><td class="v">${Qtot.toFixed(2)} gpm</td></tr>`;
+  if (isFinite(P_min)) html += `<tr><td class="k">worst residual</td><td class="v">${P_min.toFixed(1)} psi</td></tr>`;
+  html += '</table>';
+
+  regBody.innerHTML = html;
+}
+
+/* ========================== MAIN LOOP ================================ */
+let perfPrev = performance.now();
+let perfNow  = perfPrev;
+let perfDelta = 0;
+let regRebuildTimer = 0;
+
+function loop(){
+  perfNow = performance.now();
+  perfDelta = Math.min(40, perfNow - perfPrev);
+  perfPrev = perfNow;
+  const dt = perfDelta/1000;
+
+  // physics + camera
+  solve();
+  updateCam(dt);
+
+  // audio
+  if (audio && audioEnabled){
+    const qMeter = NODES.meter.Qtotal;
+    audio.riverGain.gain.value = 0.09 + Math.min(0.14, qMeter*0.02);
+    // heater drone rises when hot manifold is pulling
+    const qHot = (OUTLETS.find(o=>o.id==='HOT').Q || 0);
+    audio.heaterGain.gain.value = 0.02 + Math.min(0.12, qHot*0.02);
+    audio.heaterLP.frequency.value = 280 + qHot*80;
+    for (const o of OUTLETS){
+      const n = audio.outletNodes[o.id];
+      if (!n) continue;
+      const q = o.Q || 0;
+      const v = velocity_fps(q, 0.75); // nominal at outlet
+      n.bp.frequency.value = 600 + v*180;
+      n.gain.gain.value = Math.min(0.25, q*0.02);
+    }
+  }
+
+  // ---- RENDER ----
+  // Deep baroque vignette ground
+  ctx.save();
+  ctx.fillStyle = 'rgba(8,7,14,0.38)'; // motion trail
+  ctx.fillRect(0,0,W,H);
+  ctx.restore();
+
+  // star-dust / parchment flecks (distant dim)
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (let k=0;k<18;k++){
+    const xi = (Math.sin(perfNow*0.00009 + k*1.7)*.5+.5)*W;
+    const yi = (Math.cos(perfNow*0.00012 + k*2.3)*.5+.5)*H;
+    ctx.fillStyle = 'rgba(236,216,168,0.04)';
+    ctx.beginPath(); ctx.arc(xi,yi, 0.8, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+
+  drawCityMain();
+
+  // pipes then nodes
+  for (const e of EDGES) drawPipe(e);
+  for (const k of Object.keys(NODES)) drawNode(k);
+
+  // register refresh @ ~10 Hz
+  regRebuildTimer += perfDelta;
+  if (regRebuildTimer > 95){ regRebuildTimer = 0; rebuildRegister(); }
+}
+
+/* Render triggers — we can't rely on rAF alone because the Claude Code
+   preview panel (and some other embedded webviews) mark the iframe as
+   hidden, which pauses rAF AND throttles setInterval to near-zero.
+   Strategy: tick from every possible driver — rAF (smooth when visible),
+   setInterval (backup), resize, user interaction, font-ready — with a
+   re-entrancy lock so only one invocation runs at a time. */
+let ticking = false;
+function tick(){
+  if (ticking) return;
+  ticking = true;
+  try { loop(); } catch(e){ console.error(e); }
+  ticking = false;
+}
+function resizeAndTick(){ resize(); tick(); }
+
+rebuildRegister();
+
+// Primary animation driver (60 Hz when tab is visible)
+(function raf(){ tick(); requestAnimationFrame(raf); })();
+// Safety net — keeps ticking if rAF stalls. Even throttled to 1 Hz in hidden
+// tabs, a once-a-second tick is dramatically better than a blank screen.
+setInterval(tick, 33);
+
+// Event-driven redraw — every user interaction triggers a render. Resize
+// also re-sizes the canvas first (setting canvas.width clears it).
+addEventListener('resize',     resizeAndTick);
+addEventListener('mousemove',  tick, {passive:true});
+addEventListener('mousedown',  tick, {passive:true});
+addEventListener('click',      tick, {passive:true});
+addEventListener('input',      tick, {passive:true});
+addEventListener('focus',      tick);
+document.addEventListener('visibilitychange', tick);
+
+// Draw once fonts are ready, and at a few early timestamps to cover
+// layout settling (fonts loading can shift overlay bounds).
+if (document.fonts && document.fonts.ready){ document.fonts.ready.then(tick); }
+setTimeout(tick, 50);
+setTimeout(tick, 250);
+setTimeout(tick, 800);
+</script>
+</body>
+</html>
