@@ -1,0 +1,27 @@
+{
+  "_note": "Operational config for the Phase 2 watch-and-propose flow. Adjust freely — the weekly agent reads this each run.",
+  "digest": {
+    "day_of_week": "wednesday",
+    "hour_local": 18,
+    "timezone": "America/Los_Angeles",
+    "max_proposals": 10,
+    "max_per_genre_fraction": 0.40,
+    "enrichment": {
+      "summary_sentences": "2-3",
+      "include_artist_link": true,
+      "include_image_url_when_visual": true,
+      "include_tickets_url": true
+    }
+  },
+  "approvals": {
+    "token_length": 24,
+    "post_approved_to_gcal": true,
+    "gcal_calendar_id": "avevo01daqtr562e54q1c8uu7c@group.calendar.google.com",
+    "gcal_calendar_name": "Public Events"
+  },
+  "agent_behavior": {
+    "diversity_preference": "Spread the 10 picks across mediums/genres. A week of 10 music-only proposals should be rejected by the agent itself — re-filter if that happens. Aim for a mix: music (jazz/experimental/rock/world), dance, theater-experimental, festivals, other.",
+    "short_circuit_on_obvious_pass": "Chapel/Wayward and The Royal Room are ~always worth surfacing. VCA, Seattle Symphony, The Showbox etc. need harder filtering.",
+    "never_repeat": "Skip anything present in seen.json (by id). Skip anything present in rejected.json. Skip anything already in Public Events GCal (avoid duplicates)."
+  }
+}

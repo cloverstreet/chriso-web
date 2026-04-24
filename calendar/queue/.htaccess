@@ -1,0 +1,10 @@
+# Block direct web access to queue state files.
+# decide.php and the scheduled agent's queue.php endpoint still read/write them server-side.
+# The agent-prompt.txt is a special exception — the cloud-scheduled agent
+# fetches it via HTTPS each run.
+<FilesMatch "\.json$">
+    Require all denied
+</FilesMatch>
+<Files "agent-prompt.txt">
+    Require all granted
+</Files>

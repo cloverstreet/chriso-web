@@ -1,0 +1,4 @@
+{
+  "_note": "Events Christopher has approved but NOT yet posted to his Public Events Google Calendar. The scheduled agent drains this queue at the start of each run (weekly Wed + optional daily sweep). Each entry is a full event object plus {approved_at, approved_via}.",
+  "events": []
+}

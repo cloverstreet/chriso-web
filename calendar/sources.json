@@ -1,0 +1,264 @@
+{
+  "_note": "Watch list for the Phase 2 proposal engine. The weekly scheduled agent iterates these, fetches upcoming events, applies the taste filter (see chriso.org memory: project_calendar_taste.md), diffs against seen.json, enriches candidates, and emails Christopher a digest. Add new sources by appending to this array; flag items that need human input with status: 'needs-*'.",
+  "_schema": {
+    "id": "stable kebab-case id",
+    "name": "display name",
+    "city": "City, ST",
+    "on_island": "boolean — Vashon or not",
+    "url": "main website (or null)",
+    "ical_url": "iCal/ICS feed if discoverable (else null — agent will scrape)",
+    "filter_notes": "per-source guidance the agent should apply when filtering",
+    "status": "active | needs-confirmation | needs-url | paused",
+    "notes": "freeform"
+  },
+  "sources": [
+    {
+      "id": "vca",
+      "name": "Vashon Center for the Arts",
+      "city": "Vashon, WA",
+      "on_island": true,
+      "url": "https://vashoncenterforthearts.org",
+      "ical_url": null,
+      "filter_notes": "On-island; HIGH BAR for the mainstream acoustic-folk bookings the venue tends toward. Surface only genuinely unexpected programming — a string quartet playing Shostakovich here WOULD make the cut, a mainstream folk-acoustic night would NOT. 90%+ under-18 free (4Culture).",
+      "status": "active"
+    },
+    {
+      "id": "o-space",
+      "name": "Open Space for Arts & Community (O Space)",
+      "city": "Vashon, WA",
+      "on_island": true,
+      "url": "https://www.openspacevashon.com",
+      "ical_url": null,
+      "events_url": "https://www.openspacevashon.com/events",
+      "filter_notes": "On-island multi-use venue — music, performance, physical arts (UMO School), community. Low bar for inclusion; most programming is interesting-by-default. No iCal feed — agent must scrape the /events page each run.",
+      "status": "active"
+    },
+    {
+      "id": "the-coup",
+      "name": "The Coup",
+      "city": "Vashon, WA",
+      "on_island": true,
+      "url": null,
+      "ical_url": null,
+      "filter_notes": "On-island DIY venue. Same low bar as O Space.",
+      "status": "needs-confirmation",
+      "notes": "Christopher confirmed as a source 2026-04-23. Web search 2026-04-23 did NOT find a venue by this name — possibly private/invite-only, a newer space, or the name is slightly different. Christopher to clarify (nickname? correct spelling?)."
+    },
+    {
+      "id": "vashon-early-music",
+      "name": "Salish Sea Early Music Festival — Vashon Island",
+      "city": "Vashon, WA",
+      "on_island": true,
+      "url": "https://www.salishseafestival.org/vashon.html",
+      "ical_url": null,
+      "filter_notes": "Renaissance + early baroque repertoire on period instruments. Vashon concerts are Mondays at 12:00 noon, typically at Bethel Church. Suggested donation $15/$20/$25; free under 18. Generally passes — consistent taste match.",
+      "status": "active",
+      "notes": "No iCal feed. Email list: salishseafestival@aol.com — consider subscribing claude@chriso.org (once that exists) for announcements. Known 2026 Vashon dates: Jan 19, Feb 16, Feb 23, Mar 23, Apr 27, May 11, Jun 8, Jun 29."
+    },
+    {
+      "id": "martin-koenig-recs",
+      "name": "Martin Koenig — Balkan / folk traditions, Vashon",
+      "city": "Vashon, WA",
+      "on_island": true,
+      "url": "https://eefc.org/teacher/martin-koenig/",
+      "ical_url": null,
+      "filter_notes": "NOT A VENUE — Martin Koenig is the Vashon ethnomusicologist/folk-dance specialist Christopher mentioned. His 1968 recording of 'Izlel e Delyu' (sung by Valya Balkanska) is on the Voyager Golden Record. Founder of Balkan Arts Center → Center for Traditional Music and Dance. Christopher wants anything Martin produces/promotes to be surfaced. Ingestion channel still TBD — Christopher said he doesn't know how Martin advertises his events.",
+      "status": "identity-confirmed-channel-tbd",
+      "notes": "Identity confirmed via web research 2026-04-23. Ingestion mechanism pending: possibilities include (a) checking East European Folklife Center listings / Jack Straw Cultural Center artist page, (b) watching for Vashon Beachcomber mentions, (c) Christopher asking Martin to forward announcements to a future claude@chriso.org address. Agent should web-search 'Martin Koenig' + 'Vashon' + upcoming events each run."
+    },
+    {
+      "id": "earshot-jazz",
+      "name": "Earshot Jazz",
+      "city": "Seattle, WA",
+      "on_island": false,
+      "url": "https://earshot.org",
+      "ical_url": null,
+      "filter_notes": "Jazz focus — presents shows year-round + annual fall festival. Prefer adventurous programming, NIME-adjacent, improvisation-heavy, composer-led. Straight-ahead standards sets only if by a marquee player.",
+      "status": "active"
+    },
+    {
+      "id": "the-crocodile",
+      "name": "The Crocodile",
+      "city": "Seattle, WA",
+      "on_island": false,
+      "url": "https://thecrocodile.com",
+      "ical_url": null,
+      "filter_notes": "Indie rock / heavy / experimental shows welcome. Skip generic pop bookings.",
+      "status": "active"
+    },
+    {
+      "id": "neumos",
+      "name": "Neumos",
+      "city": "Seattle, WA",
+      "on_island": false,
+      "url": "https://www.neumos.com",
+      "ical_url": null,
+      "filter_notes": "Similar bar to The Crocodile.",
+      "status": "active"
+    },
+    {
+      "id": "the-showbox",
+      "name": "The Showbox",
+      "city": "Seattle, WA",
+      "on_island": false,
+      "url": "https://showboxpresents.com",
+      "ical_url": null,
+      "filter_notes": "Larger room — occasionally books the interesting stuff (Tomahawk/Melvins). Skip mainstream pop.",
+      "status": "active"
+    },
+    {
+      "id": "chapel-wayward",
+      "name": "Chapel Performance Space — Wayward Music Series",
+      "city": "Seattle, WA",
+      "on_island": false,
+      "url": "https://www.waywardmusic.org",
+      "ical_url": null,
+      "filter_notes": "Experimental / contemporary classical / improvised. Almost everything here passes the taste filter by default.",
+      "status": "active"
+    },
+    {
+      "id": "seattle-symphony",
+      "name": "Seattle Symphony",
+      "city": "Seattle, WA",
+      "on_island": false,
+      "url": "https://www.seattlesymphony.org",
+      "ical_url": null,
+      "filter_notes": "SELECTIVE — apply mainstream-presenter calibration from taste-filter memory. PASS: Zappa, Messiaen, video-game-music, Miyazaki (barely), William Shatner performances, contemporary / experimental / multimedia programs. DOES NOT PASS: Harry Potter, Lord of the Rings, Beatles songbook, folk-pop crossovers. EXCEPTION: unusual framing (e.g. live score to a Beatles film) may flip a would-be reject.",
+      "status": "active"
+    },
+    {
+      "id": "velocity-dance",
+      "name": "Velocity Dance Center",
+      "city": "Seattle, WA",
+      "on_island": false,
+      "url": "https://velocitydancecenter.org",
+      "ical_url": null,
+      "filter_notes": "Contemporary dance + improvisation. Good default.",
+      "status": "active"
+    },
+    {
+      "id": "on-the-boards",
+      "name": "On the Boards",
+      "city": "Seattle, WA",
+      "on_island": false,
+      "url": "https://www.ontheboards.org",
+      "ical_url": null,
+      "filter_notes": "Experimental performance — music, dance, theater. Good default.",
+      "status": "active"
+    },
+    {
+      "id": "royal-room",
+      "name": "The Royal Room (Wayne Horvitz's club)",
+      "city": "Seattle, WA — Columbia City",
+      "on_island": false,
+      "url": "https://theroyalroomseattle.com",
+      "ical_url": null,
+      "filter_notes": "Wayne Horvitz's venue — jazz, improv, experimental. Most shows pass.",
+      "status": "active"
+    },
+    {
+      "id": "freehold-theater",
+      "name": "Freehold Theater",
+      "city": "Seattle, WA",
+      "on_island": false,
+      "url": "https://www.freeholdtheatre.org",
+      "ical_url": null,
+      "filter_notes": "Theater — experimental / movement-based only (per genre scope; no straight plays). Verify still has a performance space running.",
+      "status": "needs-confirmation",
+      "notes": "Christopher flagged 'if that still exists'; confirm before activating."
+    },
+    {
+      "id": "meany-hall",
+      "name": "Meany Hall / UW World Series",
+      "city": "Seattle, WA",
+      "on_island": false,
+      "url": "https://www.meanycenter.org",
+      "ical_url": null,
+      "filter_notes": "UW's flagship performing-arts series — dance, world music, chamber, experimental. Usually passes the filter; they curate at a high bar.",
+      "status": "active"
+    },
+    {
+      "id": "cornish-college",
+      "name": "Cornish College of the Arts (now at Seattle University)",
+      "city": "Seattle, WA",
+      "on_island": false,
+      "url": "https://www.cornish.edu/cornish-college-event-calendar/",
+      "ical_url": null,
+      "secondary_url": "https://events.seattleu.edu/group/cornish-college-of-the-arts",
+      "filter_notes": "Cornish merged into Seattle University in 2025 — events now appear on BOTH the cornish.edu calendar AND events.seattleu.edu. Historically Cornish ran free noon-concert and student/faculty recital series with lots of challenging work. Status of the legacy noon-concert series is UNCLEAR after the merger — Christopher asked to verify. Contact: tickets@cornish.edu. Agent should scrape both URLs each run and flag anything that looks noon-concert-series-adjacent.",
+      "status": "active",
+      "notes": "Christopher questioned 'primary feed?' framing — the noon-concert status is uncertain post-merger. Treat as a normal source until we verify the noon-concert pipeline is intact."
+    },
+    {
+      "id": "uw-dxarts",
+      "name": "UW DXARTS",
+      "city": "Seattle, WA",
+      "on_island": false,
+      "url": "https://dxarts.washington.edu/events",
+      "ical_url": null,
+      "filter_notes": "Digital Arts and Experimental Media at UW — electronic/computer-music performances, sound art, experimental media. Almost all passes.",
+      "status": "active",
+      "notes": "Christopher confirmed 2026-04-23: 'Darts' = DXARTS."
+    },
+    {
+      "id": "centrum-port-townsend",
+      "name": "Centrum (Port Townsend) — Jazz, Chamber, Voiceworks",
+      "city": "Port Townsend, WA",
+      "on_island": false,
+      "url": "https://centrum.org",
+      "ical_url": null,
+      "filter_notes": "Festival + workshops programming at Fort Worden. The Jazz Port Townsend festival (late July) is a flagship event. Dawn Clement is the new AD (succeeded John Clayton).",
+      "status": "active"
+    },
+    {
+      "id": "substation",
+      "name": "Substation",
+      "city": "Seattle, WA (Ballard)",
+      "on_island": false,
+      "url": "https://www.substationseattle.com",
+      "ical_url": null,
+      "filter_notes": "Small Ballard venue — heavy, experimental, metal, punk, weird rock. Most bookings pass the taste filter. Confirmed source 2026-04-24 (Sleepytime Gorilla Museum 5/30 show on their calendar).",
+      "status": "active"
+    }
+  ],
+  "artist_watches": [
+    {
+      "id": "rinde-eckert",
+      "name": "Rinde Eckert",
+      "kind": "composer-performer",
+      "notes": "Avant-garde theater + music. Watch for any performance featuring him — any venue, any city within reasonable travel."
+    },
+    {
+      "id": "meredith-monk",
+      "name": "Meredith Monk",
+      "kind": "composer-performer-choreographer",
+      "notes": "Watch for any performance featuring her or her ensemble — any venue."
+    },
+    {
+      "id": "gamelan-pacifica",
+      "name": "Gamelan Pacifica",
+      "kind": "ensemble",
+      "url": "https://www.gamelanpacifica.org",
+      "notes": "Resident at Cornish. Christopher noted they may have a 'resource about new albums' that often includes performance listings — check their site/blog/news during each run. All Gamelan Pacifica performances pass by default."
+    },
+    {
+      "id": "modern-choreographers",
+      "name": "Significant contemporary choreographers",
+      "kind": "category",
+      "notes": "Watch for touring work by living choreographers doing challenging modern dance — examples: Ohad Naharin, William Forsythe, Crystal Pite, Akram Khan, Ralph Lemon, Trisha Brown Dance Company, Mark Morris Dance Group, Stephen Petronio, Kyle Abraham / A.I.M, Faye Driscoll, etc. Not exhaustive — use taste. Traditional classical ballet does NOT pass unless the choreography is the draw."
+    },
+    {
+      "id": "bandsintown-spotify-suggestions",
+      "name": "Bandsintown / Spotify concert suggestions",
+      "kind": "recommendation-channel",
+      "notes": "Christopher uses Bandsintown and Spotify's concert suggestions (based on his listening history). Hit rate is mixed — 'often gives me great suggestions (and often not)'. Mechanism for getting these into the weekly proposal flow is TBD — ideas: (a) Christopher forwards notable suggestions to a claude@chriso.org once that exists, (b) Bandsintown has a public API (https://app.bandsintown.com/docs) — if Christopher gives us a list of 'artists I follow', the agent can poll that directly, (c) the agent can crawl Bandsintown's public artist pages for the artists in our artist_watches[] list. Filter notes: apply the normal taste bar; many Spotify/Bandsintown suggestions will be mainstream pop that doesn't pass.",
+      "status": "ingestion-tbd"
+    },
+    {
+      "id": "martin-koenig-recs",
+      "name": "Martin Koenig — recommendations",
+      "kind": "person-ingestion",
+      "notes": "Identity confirmed 2026-04-23 via web research. See sources entry martin-koenig-recs for details. Ingestion mechanism still TBD."
+    }
+  ]
+}

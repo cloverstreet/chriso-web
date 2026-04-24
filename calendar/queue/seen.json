@@ -1,0 +1,4 @@
+{
+  "_note": "Event IDs already seen by the agent (whether proposed, approved, or rejected). Prevents the weekly digest from repeating proposals. Scheduled agent appends to this each run.",
+  "events": {}
+}

@@ -1,0 +1,5 @@
+{
+  "_note": "Latest weekly digest. Written by the scheduled agent every Wed evening and read by decide.php to validate approve/reject tokens. Overwritten each week.",
+  "generated_at": null,
+  "proposals": []
+}

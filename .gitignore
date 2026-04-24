@@ -1,6 +1,7 @@
 # ── Credentials — NEVER commit ───────────────────────────────
 **/.vscode/sftp.json
 .vscode/sftp.json
+calendar/api/config.local.php
 
 # ── Dependencies ──────────────────────────────────────────────
 **/node_modules/

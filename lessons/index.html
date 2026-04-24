@@ -6,27 +6,78 @@
 <title>lessons — chriso.org</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { background:#081818; width:100vw; height:100vh; overflow:hidden; }
+  body { background:#081818; width:100vw; height:100vh; overflow:hidden;
+         font-family:'Courier New',monospace; color:#ede3c8; }
   canvas { display:block; position:fixed; top:0; left:0; }
   #back {
     position:fixed; top:24px; left:28px;
-    font-family:'Courier New',monospace; font-size:.72rem;
-    letter-spacing:.14em; color:#333; text-decoration:none;
+    font-size:.72rem;
+    letter-spacing:.14em; color:#7a7468; text-decoration:none;
     text-transform:lowercase; transition:color .25s;
+    z-index:5;
   }
-  #back:hover { color:#888; }
+  #back:hover { color:#dccfae; }
   #label {
     position:fixed; bottom:32px; left:50%; transform:translateX(-50%);
-    font-family:'Courier New',monospace; font-size:.68rem;
-    letter-spacing:.22em; color:#222; text-transform:lowercase;
+    font-size:.68rem;
+    letter-spacing:.22em; color:#3d3a32; text-transform:lowercase;
     pointer-events:none;
   }
+
+  /* ── Recommended shows teaser ─────────────────────────────── */
+  #rec-teaser {
+    position:fixed; top:24px; right:28px;
+    max-width: 320px;
+    font-size:.72rem; letter-spacing:.1em; line-height:1.55;
+    color: rgba(237,227,200,0.55);
+    text-align:right;
+    z-index:5;
+    pointer-events:auto;
+  }
+  #rec-teaser .heading {
+    color: #e07394;
+    letter-spacing:.18em;
+    text-transform:lowercase;
+    font-weight:700;
+    font-size:.66rem;
+    margin-bottom: 10px;
+  }
+  #rec-teaser a {
+    display:block;
+    color: rgba(237,227,200,0.75);
+    text-decoration:none;
+    margin-bottom: 10px;
+    transition: color .25s;
+  }
+  #rec-teaser a:hover { color: #f2d8dd; }
+  #rec-teaser .ev-date {
+    font-size:.6rem;
+    color: rgba(237,227,200,0.45);
+    letter-spacing:.16em;
+  }
+  #rec-teaser .see-all {
+    display:inline-block;
+    margin-top:6px;
+    font-size:.62rem;
+    letter-spacing:.2em;
+    color: rgba(237,227,200,0.45);
+    border-bottom: 1px solid rgba(237,227,200,0.2);
+    padding-bottom: 2px;
+    text-transform:lowercase;
+  }
+  #rec-teaser .see-all:hover { color:#dccfae; border-color:#dccfae; }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <a id="back" href="/glitchpage/">← chriso.org</a>
 <div id="label">coming soon</div>
+
+<aside id="rec-teaser" aria-label="Recommended shows">
+  <div class="heading">recommended shows</div>
+  <div id="rec-list"><!-- populated by JS --></div>
+  <a class="see-all" href="/calendar/">see all ↗</a>
+</aside>
 <script>
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
@@ -85,6 +136,50 @@ function loop() {
   ctx.drawImage(off, 0, 0);
 }
 loop();
+
+// ── Recommended shows teaser — fetch from /calendar/events.json ──
+(async () => {
+  try {
+    const res = await fetch('/calendar/events.json', { cache: 'no-store' });
+    if (!res.ok) return;
+    const data = await res.json();
+    const now = Date.now();
+    // New schema uses date_start; old seed used date. De-emphasize own
+    // performances if present (christopher_performing: true). Show next 2.
+    const upcoming = (data.events || [])
+      .filter(e => {
+        const iso = e.date_start || e.date;
+        if (!iso) return false;
+        if (e.christopher_performing) return false;
+        return new Date(iso).getTime() >= now;
+      })
+      .sort((a, b) => new Date(a.date_start || a.date) - new Date(b.date_start || b.date))
+      .slice(0, 2);
+
+    const list = document.getElementById('rec-list');
+    if (!list) return;
+    if (upcoming.length === 0) {
+      list.innerHTML = '<div style="color:rgba(237,227,200,0.35);font-size:.66rem;">none scheduled yet</div>';
+      return;
+    }
+    const escapeHTML = s => String(s ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+    for (const ev of upcoming) {
+      const dateIso = ev.date_start || ev.date;     // old manual seed used 'date'
+      if (!dateIso) continue;
+      const d = new Date(dateIso);
+      const dateStr = d.toLocaleDateString('en-US', { month:'short', day:'numeric' }) +
+        ' · ' + d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+      const a = document.createElement('a');
+      a.href = '/calendar/';
+      const cleanTitle = String(ev.title || '').replace(/^\[Placeholder\]\s*/, '');
+      a.innerHTML = `<span class="ev-date">${escapeHTML(dateStr)}</span><br>${escapeHTML(cleanTitle)}`;
+      list.appendChild(a);
+    }
+  } catch (e) { /* silent — teaser is optional */ }
+})();
 </script>
 </body>
 </html>
