@@ -228,15 +228,21 @@ function connectToHost() {
 function handleGuestSideMessage(msg) {
   switch (msg.type) {
     case 'admitted': {
-      setRoomState('admitted · connecting peers…', 'connecting');
       addPeerEntry(HOST_PEER_ID, msg.hostName || 'Host');
-      callPeer(HOST_PEER_ID);  // call host
+      callPeer(HOST_PEER_ID);  // call host (queues if mic not open yet)
       for (const p of (msg.peers || [])) {
         if (p.peerId === peer.id) continue;
         addPeerEntry(p.peerId, p.name);
         callPeer(p.peerId);
       }
-      setRoomState('in room', 'connected');
+      // If the user hasn't opened their mic yet, our calls were queued by
+      // callPeer(). drainPendingCalls() in openMic() will fire them. Tell the
+      // user that's the next thing they need to do.
+      if (!myStream) {
+        setRoomState('admitted · open your mic to connect', 'connecting');
+      } else {
+        setRoomState('in room', 'connected');
+      }
       break;
     }
     case 'rejected':
@@ -341,11 +347,32 @@ function validateCode(code) {
 }
 
 // ── Outbound call to a peer ───────────────────────────
+// Calls attempted before the mic is open get queued here and drained from
+// openMic() once myStream exists. Without this, a guest admitted before they
+// click "Open Mic" stays admitted but silently disconnected from everyone.
+const pendingCallIds = new Set();
+
 function callPeer(peerId) {
-  if (!myStream) { console.warn('callPeer before mic open'); return; }
+  if (!myStream) {
+    pendingCallIds.add(peerId);
+    console.warn('[room] callPeer queued (mic not open yet):', peerId);
+    return;
+  }
   const call = peer.call(peerId, myStream);
   if (!call) return;
   bindMediaCall(call);
+}
+
+function drainPendingCalls() {
+  if (!myStream || pendingCallIds.size === 0) return;
+  console.log('[room] draining', pendingCallIds.size, 'queued calls');
+  for (const peerId of pendingCallIds) {
+    const call = peer.call(peerId, myStream);
+    if (call) bindMediaCall(call);
+  }
+  pendingCallIds.clear();
+  // If we were a guest stuck in "open your mic to connect", we're in now.
+  if (!IS_HOST) setRoomState('in room', 'connected');
 }
 
 function bindMediaCall(mediaCall) {
@@ -413,9 +440,18 @@ function attachRemoteAudio(peerObj, remoteStream) {
 }
 
 // ── Peer roster + UI ──────────────────────────────────
+// addPeerEntry handles three cases:
+//   1. No roster entry yet  → create entry + card (most common path)
+//   2. Entry exists with cardEl already → just rename + return
+//   3. Entry seeded from signaling (host pre-populates dataConn before card
+//      gets built) → build card and ATTACH to the existing entry without
+//      blowing away dataConn/mediaCall fields. Without this third case,
+//      attachRemoteAudio later does cardEl.querySelector(...) and crashes.
 function addPeerEntry(peerId, name) {
-  if (peers.has(peerId)) {
-    peers.get(peerId).name = name;
+  let entry = peers.get(peerId);
+
+  if (entry && entry.cardEl) {
+    entry.name = name;
     renderPeerName(peerId);
     return;
   }
@@ -436,13 +472,19 @@ function addPeerEntry(peerId, name) {
   `;
   peersMount.appendChild(card);
 
-  peers.set(peerId, {
-    peerId,
-    name,
-    dataConn: peers.has(peerId) ? peers.get(peerId).dataConn : null,
-    mediaCall: null,
-    source: null, gain: null, meter: null, cardEl: card,
-  });
+  if (entry) {
+    // Case 3: mutate existing entry; do NOT reset dataConn/mediaCall.
+    entry.name   = name;
+    entry.cardEl = card;
+  } else {
+    // Case 1: brand-new entry.
+    peers.set(peerId, {
+      peerId, name,
+      dataConn: null, mediaCall: null,
+      source: null, gain: null, meter: null,
+      cardEl: card,
+    });
+  }
 
   updatePeerCount();
 }
@@ -560,12 +602,10 @@ async function openMic() {
   $('openMicBtn').textContent = '✓ Mic Open';
   $('muteSelfBtn').disabled = false;
 
-  // If we already have peers admitted (e.g. host opened mic late), call them now
-  if (!IS_HOST) {
-    // Guests don't initiate calls until after admission; admission triggers callPeer.
-  } else {
-    // Host: existing data-conn peers haven't been called by us; they call us.
-  }
+  // Drain any peer calls that were queued before the mic was open. Most common
+  // path: a guest gets admitted (which fires callPeer for host + existing peers)
+  // before they've clicked "Open Mic". Those calls were queued; now we make them.
+  drainPendingCalls();
 }
 
 $('muteSelfBtn').addEventListener('click', () => {
