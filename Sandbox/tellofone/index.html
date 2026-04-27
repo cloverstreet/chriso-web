@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Tellofone</title>
+<link rel="stylesheet" href="../../TestCases/_shared/audio-widgets.css">
+<style>
+  body { padding: 60px 16px; }
+  .hero { text-align:center; padding-bottom:8px; }
+  .hero-title {
+    font-family:'Courier New',monospace;
+    font-size:2.4rem; color:var(--amber); letter-spacing:.18em;
+    text-transform:uppercase;
+  }
+  .hero-sub {
+    font-size:.62rem; color:var(--text-muted); letter-spacing:.24em;
+    text-transform:uppercase; margin-top:6px;
+  }
+  .module { width: 360px; }
+  .req-link {
+    font-size:.62rem; color:var(--text-2nd); letter-spacing:.1em;
+    text-align:center; padding:6px 0;
+  }
+  .req-link a { color:var(--amber); text-decoration:none; }
+  .req-link a:hover { color:var(--amber-bright); text-decoration:underline; }
+  .docs { font-size:.62rem; line-height:1.7; color:var(--text-2nd); padding:8px 4px; }
+  .docs em { color:var(--amber); font-style:normal; }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-title">Tellofone</div>
+  <div class="hero-sub">an audio room · invite-only · bring headphones</div>
+</div>
+
+<div class="row">
+  <div class="module">
+    <div class="mod-head">Join</div>
+    <div class="mod-body">
+      <div class="lbl">Your name</div>
+      <input type="text" id="name" placeholder="how others see you" autocomplete="given-name">
+      <div class="lbl">Invite code</div>
+      <input type="text" id="code" placeholder="from Christophero" autocomplete="off">
+      <button id="joinBtn">Join the Room</button>
+      <div class="req-link">
+        Don't have a code? <a id="requestLink" href="#">Request one</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="module">
+    <div class="mod-head">What this is</div>
+    <div class="mod-body">
+      <div class="docs">
+        A small audio room. <em>3-5 people</em>, peer-to-peer, no install, no signup. All audio processing is off — what you say is what they hear, mic-true.
+        <br><br>
+        <em>Bring headphones.</em> Plug into ethernet, or a strong wifi-6/7. Use a real mic if you have one.
+        <br><br>
+        Latency is honest browser-WebRTC quality — better than Zoom, not as tight as a Jamulus rehearsal session. Conversational ensemble works. Tight rhythmic ensemble does not (yet).
+        <br><br>
+        The room is alive only when its host is online.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="foot">v0.1 · chriso.org/Sandbox/tellofone</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+
+// Generate a request ID for the email so Christophero can track invites
+const reqId = (Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 6))
+  .toUpperCase();
+
+const subject = encodeURIComponent('Tellofone invite request — ' + reqId);
+const body = encodeURIComponent(
+  'Hi Christophero,\n\n' +
+  "I'd like an invite to tellofone.\n\n" +
+  'Name (how I want to appear in the room): \n' +
+  'Approximate time(s) I want to use it: \n' +
+  'Why / context: \n\n' +
+  'Request ID: ' + reqId + '\n\n' +
+  'Thanks.'
+);
+$('requestLink').href = 'mailto:cloverstreet@gmail.com?subject=' + subject + '&body=' + body;
+
+$('joinBtn').addEventListener('click', () => {
+  const name = $('name').value.trim();
+  const code = $('code').value.trim();
+  if (!name) { alert('Enter your name.'); $('name').focus(); return; }
+  if (!code) { alert('Enter an invite code, or request one.'); $('code').focus(); return; }
+  const url = 'room.html?code=' + encodeURIComponent(code) + '&name=' + encodeURIComponent(name);
+  window.location.href = url;
+});
+
+// Submit on Enter from either field
+['name','code'].forEach(id => {
+  $(id).addEventListener('keydown', e => { if (e.key === 'Enter') $('joinBtn').click(); });
+});
+
+// Restore last-used name
+const last = localStorage.getItem('tellofone.lastName');
+if (last) $('name').value = last;
+$('name').addEventListener('change', () => {
+  localStorage.setItem('tellofone.lastName', $('name').value.trim());
+});
+
+// Hidden host link: clicking the title 5x within 2s reveals host entry
+let titleClicks = 0, lastClick = 0;
+document.querySelector('.hero-title').addEventListener('click', () => {
+  const now = Date.now();
+  if (now - lastClick > 2000) titleClicks = 0;
+  lastClick = now; titleClicks++;
+  if (titleClicks >= 5) {
+    if (confirm('Open as host? You will claim the tellofone-room-host PeerJS ID.')) {
+      window.location.href = 'room.html?host=1';
+    }
+    titleClicks = 0;
+  }
+});
+</script>
+</body>
+</html>

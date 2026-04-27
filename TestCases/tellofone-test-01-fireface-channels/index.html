@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Tellofone TC#01 — Fireface Channel Selector</title>
+<link rel="stylesheet" href="../_shared/audio-widgets.css">
+<style>
+  /* TC#01-specific tweaks: per-channel input rack */
+  .ch-rack {
+    display:flex; gap:4px; padding:8px;
+    background:var(--bg-page); border:1px solid var(--border-dim);
+    flex-wrap:wrap; max-width:780px;
+  }
+  .ch {
+    width:42px; display:flex; flex-direction:column; align-items:center;
+    gap:4px; padding:6px 0 4px; background:var(--bg-module); border:1px solid var(--border-dim);
+  }
+  .ch-num { font-size:.62rem; color:var(--text-dim); letter-spacing:.08em; }
+  .ch.armed { border-color:var(--green); box-shadow:0 0 4px #2a9a2a44; }
+  .ch.armed .ch-num { color:var(--green); }
+  .ch-meter { position:relative; width:14px; height:140px; background:var(--bg-inset); border:1px solid var(--border-dim); overflow:hidden; }
+  .ch-meter-fill { position:absolute; bottom:0; left:0; right:0; height:0%;
+    background:linear-gradient(to top,#1a5a1a 0%,#2a9a2a 68%,#7ab020 80%,#c83010 96%,#e02020 100%); }
+  .ch-meter-peak { position:absolute; left:0; right:0; height:2px; background:#fff; opacity:0; bottom:0; }
+  .ch-meter-peak.active { opacity:1; }
+  .ch-gain {
+    font-family:'Courier New',monospace; font-size:.58rem; color:var(--text-2nd);
+    background:var(--bg-inset); border:1px solid var(--border-dim);
+    width:34px; padding:1px 2px; text-align:center; outline:none;
+  }
+  .ch-gain:focus { border-color:var(--amber); }
+  .ch-arm {
+    font-size:.6rem; padding:2px 6px; background:none;
+    border:1px solid var(--border-mute); color:var(--text-dim);
+    letter-spacing:.06em; cursor:pointer;
+  }
+  .ch-arm:hover { border-color:var(--amber); color:var(--amber); }
+  .ch-arm.on    { border-color:var(--green); color:var(--green); }
+  .empty-rack   { padding:14px; font-size:.62rem; color:var(--text-muted); letter-spacing:.14em; }
+  .docs         { font-size:.62rem; line-height:1.7; color:var(--text-2nd); max-width:580px; }
+  .docs em      { color:var(--amber); font-style:normal; }
+</style>
+</head>
+<body>
+
+<div class="title">Tellofone TC#01 · Fireface Channel Selector</div>
+<div class="subtitle">verify per-channel mic capture · web audio + getusermedia · all dsp off</div>
+
+<div class="warn">⚠ Wear headphones before arming any channel — open speakers + live mic = feedback.</div>
+
+<div class="row">
+  <div class="col">
+
+    <div class="module">
+      <div class="mod-head">Setup</div>
+      <div class="mod-body">
+        <button id="permBtn">1 · Grant Mic Access</button>
+        <div class="lbl">Input Device</div>
+        <select id="deviceSel" disabled><option>—</option></select>
+        <button id="openBtn" disabled>2 · Open Stream</button>
+        <button id="closeBtn" disabled>Stop Stream</button>
+      </div>
+    </div>
+
+    <div class="module">
+      <div class="mod-head">Stream Info</div>
+      <div class="mod-body">
+        <div class="kv"><span class="lbl">Channels</span>      <span class="val" id="vCh">—</span></div>
+        <div class="kv"><span class="lbl">Sample rate</span>   <span class="val" id="vSR">—</span></div>
+        <div class="kv"><span class="lbl">Echo cancel</span>   <span class="val" id="vEC">—</span></div>
+        <div class="kv"><span class="lbl">Noise suppr</span>   <span class="val" id="vNS">—</span></div>
+        <div class="kv"><span class="lbl">Auto gain</span>     <span class="val" id="vAGC">—</span></div>
+        <div class="kv"><span class="lbl">Base latency</span>  <span class="val" id="vBase">—</span></div>
+        <div class="kv"><span class="lbl">Output latency</span><span class="val" id="vOut">—</span></div>
+      </div>
+    </div>
+
+    <div class="module">
+      <div class="mod-head">Output Routing</div>
+      <div class="mod-body">
+        <div class="lbl">Output Device</div>
+        <select id="outDeviceSel" disabled><option>—</option></select>
+        <div class="lbl">Channel Pair</div>
+        <select id="outChannelSel" disabled><option>Ch 1-2</option></select>
+        <div class="kv"><span class="lbl">Max channels</span><span class="val" id="vMaxCh">—</span></div>
+      </div>
+    </div>
+
+    <div class="module">
+      <div class="mod-head">Master Monitor</div>
+      <div class="mod-body">
+        <button id="monBtn" disabled>Monitor: OFF</button>
+        <div id="masterMeterMount"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="col">
+    <div class="module">
+      <div class="mod-head">Channels</div>
+      <div class="ch-rack" id="rack"><div class="empty-rack">no stream open</div></div>
+    </div>
+
+    <div class="module">
+      <div class="mod-head">How to use</div>
+      <div class="mod-body">
+        <div class="docs">
+          1. Click <em>Grant Mic Access</em> to expose device labels.<br>
+          2. Pick your Fireface from the dropdown.<br>
+          3. Click <em>Open Stream</em>. Note: <em>Chrome caps audio input at 2 channels</em> regardless of device. To get inputs 9-12 (or wherever your mics are) into the browser, route them in TotalMix FX → "Software Playback 1-2" so they appear as the first 2 channels.<br>
+          4. The rack to the right shows one strip per channel: meter + gain in dB + ARM button.<br>
+          5. ARMing a channel routes it through its gain into the master monitor sum. Output Routing picks where that sum goes — pick your output device, then which physical channel pair (output side has no 2-ch cap).<br>
+          6. <em>Base + Output latency</em> is the browser audio pipeline floor. Total tellofone latency = this ×2 + WebRTC jitter buffer + network RTT.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="foot">
+  Chrome only · Safari caps channelCount at 2 always · DSP forced off · output channel routing mirrors FX Processor pattern · v0.2
+</div>
+
+<script src="../_shared/audio-widgets.js"></script>
+<script>
+'use strict';
+
+const W = window.AudioWidgets;
+const $ = id => document.getElementById(id);
+
+let stream = null, audioCtx = null;
+let sourceNode = null, splitter = null;
+let masterMon = null;          // sums all armed channels
+let masterMeter = null;        // MeterStrip on masterMon
+let outRouter = null;          // shared makeOutputRouter
+let channelStrips = [];
+let monitoring = false;
+let rafId = null;
+
+const setVal = (k, v) => { $('v'+k).textContent = v; };
+
+// ── Permission ──────────────────────────────────────
+$('permBtn').addEventListener('click', async () => {
+  try {
+    const tmp = await navigator.mediaDevices.getUserMedia({audio: true});
+    tmp.getTracks().forEach(t => t.stop());
+    await populateDevices();
+    $('permBtn').classList.add('active');
+    $('permBtn').textContent = '✓ Mic Access Granted';
+    $('deviceSel').disabled = false;
+    $('openBtn').disabled = false;
+  } catch (e) { alert('Mic access denied: ' + e.message); }
+});
+
+async function populateDevices() {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const inputs  = devices.filter(d => d.kind === 'audioinput');
+  const outputs = devices.filter(d => d.kind === 'audiooutput');
+
+  const inSel = $('deviceSel');
+  inSel.innerHTML = '';
+  if (inputs.length === 0) {
+    inSel.innerHTML = '<option>(no input devices)</option>';
+  } else {
+    inputs.forEach((d, i) => {
+      const opt = document.createElement('option');
+      opt.value = W.deviceIdValue(d);
+      opt.textContent = W.formatDeviceLabel(d, i, 'Input');
+      inSel.appendChild(opt);
+    });
+  }
+
+  const outSel = $('outDeviceSel');
+  outSel.innerHTML = '';
+  if (outputs.length === 0) {
+    outSel.innerHTML = '<option>(no output devices)</option>';
+  } else {
+    outputs.forEach((d, i) => {
+      const opt = document.createElement('option');
+      opt.value = W.deviceIdValue(d);
+      opt.textContent = W.formatDeviceLabel(d, i, 'Output');
+      outSel.appendChild(opt);
+    });
+    outSel.disabled = false;
+  }
+
+  console.log('[TC01] inputs:',  inputs.map(d => ({id: d.deviceId, label: d.label})));
+  console.log('[TC01] outputs:', outputs.map(d => ({id: d.deviceId, label: d.label})));
+}
+
+// ── Stream open/close ───────────────────────────────
+$('openBtn').addEventListener('click', openStream);
+$('closeBtn').addEventListener('click', closeStream);
+
+async function openStream() {
+  if (stream) closeStream();
+  const deviceId = $('deviceSel').value;
+  const constraints = W.micConstraints(deviceId, 32);  // ask high; browser delivers what it can
+  // Translate ideal-counted channels: tells Chrome we'd take more if available
+  constraints.audio.channelCount = { ideal: 32 };
+
+  try {
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+  } catch (e) { alert('getUserMedia failed: ' + e.message); return; }
+
+  audioCtx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
+
+  if ($('outDeviceSel').value && audioCtx.setSinkId) {
+    try { await audioCtx.setSinkId($('outDeviceSel').value); } catch(e) { console.warn('setSinkId:', e); }
+  }
+
+  const settings = stream.getAudioTracks()[0].getSettings();
+  const numCh    = settings.channelCount || 1;
+
+  setVal('Ch',   String(numCh));
+  setVal('SR',   (settings.sampleRate || audioCtx.sampleRate) + ' Hz');
+  setVal('EC',   String(settings.echoCancellation));
+  setVal('NS',   String(settings.noiseSuppression));
+  setVal('AGC',  String(settings.autoGainControl));
+  setVal('Base', (audioCtx.baseLatency * 1000).toFixed(2) + ' ms');
+  setVal('Out',  (audioCtx.outputLatency * 1000).toFixed(2) + ' ms');
+
+  sourceNode = audioCtx.createMediaStreamSource(stream);
+  splitter   = audioCtx.createChannelSplitter(numCh);
+  sourceNode.connect(splitter);
+
+  masterMon = audioCtx.createGain();
+  masterMon.gain.value = W.dbToGain(0);
+
+  // Master output router: masterMon → split(2) → merge(maxCh) → destination
+  outRouter = W.makeOutputRouter(audioCtx, masterMon, [0, 1]);
+  W.populateChannelPairs($('outChannelSel'), outRouter.maxCh);
+  $('outChannelSel').disabled = false;
+  $('vMaxCh').textContent = outRouter.maxCh + ' ch';
+
+  // Master meter strip — taps masterMon, slider drives masterMon.gain
+  $('masterMeterMount').innerHTML = '';
+  masterMeter = new W.MeterStrip($('masterMeterMount'), masterMon, {
+    label: 'OUT',
+    gainNode: masterMon,
+    gainMin: -60, gainMax: 12, gainDefault: 0,
+    height: 100,
+  });
+  masterMeter.start();
+
+  buildRack(numCh);
+
+  $('openBtn').disabled = true;
+  $('closeBtn').disabled = false;
+  $('monBtn').disabled = false;
+}
+
+function closeStream() {
+  if (rafId) cancelAnimationFrame(rafId);
+  rafId = null;
+  if (masterMeter) { masterMeter.destroy(); masterMeter = null; }
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  if (audioCtx) audioCtx.close();
+  stream = null; audioCtx = null; sourceNode = null; splitter = null;
+  masterMon = null; outRouter = null; channelStrips = [];
+  $('rack').innerHTML = '<div class="empty-rack">no stream open</div>';
+  $('masterMeterMount').innerHTML = '';
+  ['Ch','SR','EC','NS','AGC','Base','Out'].forEach(k => setVal(k,'—'));
+  $('vMaxCh').textContent = '—';
+  $('outChannelSel').disabled = true;
+  $('outChannelSel').innerHTML = '<option>Ch 1-2</option>';
+  $('openBtn').disabled = false;
+  $('closeBtn').disabled = true;
+  $('monBtn').disabled  = true;
+  $('monBtn').classList.remove('active');
+  $('monBtn').textContent = 'Monitor: OFF';
+  monitoring = false;
+}
+
+// ── Output routing handlers ─────────────────────────
+$('outChannelSel').addEventListener('change', () => {
+  if (!outRouter) return;
+  const v = parseInt($('outChannelSel').value);
+  outRouter.setPair([v, v + 1]);
+});
+$('outDeviceSel').addEventListener('change', async () => {
+  if (!audioCtx || !audioCtx.setSinkId) return;
+  try {
+    await audioCtx.setSinkId($('outDeviceSel').value);
+    W.populateChannelPairs($('outChannelSel'), outRouter.maxCh);
+    $('outChannelSel').value = '0';
+    outRouter.setPair([0, 1]);
+    $('vMaxCh').textContent = outRouter.maxCh + ' ch';
+  } catch(e) { console.warn('setSinkId:', e); }
+});
+
+// ── Master monitor toggle ───────────────────────────
+$('monBtn').addEventListener('click', () => {
+  if (!outRouter) return;
+  monitoring = !monitoring;
+  if (monitoring) {
+    outRouter.enable();
+    $('monBtn').classList.add('active');
+    $('monBtn').textContent = 'Monitor: ON';
+  } else {
+    outRouter.disable();
+    $('monBtn').classList.remove('active');
+    $('monBtn').textContent = 'Monitor: OFF';
+  }
+});
+
+// ── Channel rack ────────────────────────────────────
+function buildRack(numCh) {
+  const rack = $('rack');
+  rack.innerHTML = '';
+  channelStrips = [];
+  for (let i = 0; i < numCh; i++) {
+    const strip = document.createElement('div');
+    strip.className = 'ch';
+    strip.innerHTML = `
+      <div class="ch-num">${(i+1).toString().padStart(2,'0')}</div>
+      <div class="ch-meter">
+        <div class="ch-meter-fill"></div>
+        <div class="ch-meter-peak"></div>
+      </div>
+      <input class="ch-gain" type="text" value="0.0">
+      <button class="ch-arm">ARM</button>
+    `;
+    rack.appendChild(strip);
+
+    const fillEl = strip.querySelector('.ch-meter-fill');
+    const peakEl = strip.querySelector('.ch-meter-peak');
+    const gainEl = strip.querySelector('.ch-gain');
+    const armEl  = strip.querySelector('.ch-arm');
+
+    const gain = audioCtx.createGain();
+    gain.gain.value = 1.0;
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 1024; analyser.smoothingTimeConstant = 0;
+
+    splitter.connect(gain, i);
+    gain.connect(analyser);
+
+    const obj = {
+      gain, analyser, armed:false, fillEl, peakEl, stripEl:strip,
+      buf: new Float32Array(analyser.fftSize), peakHold:0, peakDecay:0,
+    };
+
+    armEl.addEventListener('click', () => {
+      obj.armed = !obj.armed;
+      if (obj.armed) {
+        gain.connect(masterMon);
+        armEl.classList.add('on'); strip.classList.add('armed');
+      } else {
+        try { gain.disconnect(masterMon); } catch(e) {}
+        armEl.classList.remove('on'); strip.classList.remove('armed');
+      }
+    });
+
+    gainEl.addEventListener('change', () => {
+      const db = parseFloat(gainEl.value);
+      if (!isFinite(db)) { gainEl.value = W.gainToDb(gain.gain.value).toFixed(1); return; }
+      gain.gain.value = W.dbToGain(db);
+      gainEl.value = db.toFixed(1);
+    });
+
+    channelStrips.push(obj);
+  }
+  startChMeterLoop();
+}
+
+function startChMeterLoop() {
+  const tick = () => {
+    rafId = requestAnimationFrame(tick);
+    for (const s of channelStrips) {
+      s.analyser.getFloatTimeDomainData(s.buf);
+      let peak = 0;
+      for (let i = 0; i < s.buf.length; i++) {
+        const v = Math.abs(s.buf[i]); if (v > peak) peak = v;
+      }
+      const db   = 20 * Math.log10(Math.max(peak, 1e-5));
+      const pct  = Math.max(0, Math.min(1, (db + 60) / 60));
+      s.fillEl.style.height = (pct * 100) + '%';
+      if (peak > s.peakHold) { s.peakHold = peak; s.peakDecay = 30; }
+      else if (s.peakDecay > 0) { s.peakDecay--; }
+      else { s.peakHold *= 0.95; }
+      const pdb  = 20 * Math.log10(Math.max(s.peakHold, 1e-5));
+      const ppct = Math.max(0, Math.min(1, (pdb + 60) / 60));
+      s.peakEl.style.bottom = (ppct * 100) + '%';
+      s.peakEl.classList.toggle('active', s.peakHold > 0.001);
+    }
+  };
+  tick();
+}
+</script>
+</body>
+</html>
