@@ -1,0 +1,223 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   audio-widgets.css
+   Shared design tokens + canonical widgets for tellofone / FX Processor /
+   any chriso.org audio project. Spec source: Notion "FX Processor — UI
+   Standards & Component Specs" (33bdbb52227681c3bbd1d8692d67c9a8).
+
+   All numeric values lifted from the FX Processor inline CSS so widgets
+   are visually identical across instruments.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* ── Design tokens ──────────────────────────────────────────────────────── */
+:root {
+  --bg-page:      #0d0d0d;
+  --bg-module:    #111;
+  --bg-inset:     #0a0a0a;
+  --border:       #242424;
+  --border-dim:   #1a1a1a;
+  --border-mute:  #333;
+
+  --amber:        #c8a854;
+  --amber-bright: #e8c874;
+  --blue:         #6aaee0;
+  --green:        #2a9a2a;
+  --green-dark:   #1a5a1a;
+  --red:          #e02020;
+  --red-bright:   #ff4040;
+
+  --text-primary: #d0d0d0;
+  --text-2nd:     #aaa;
+  --text-dim:     #666;
+  --text-muted:   #555;
+  --text-faint:   #333;
+}
+
+/* ── Reset + page chrome ────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg-page); color: var(--text-primary);
+  font-family: 'Courier New', monospace;
+  padding: 24px 16px; min-height: 100vh;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+}
+
+/* ── Typography ─────────────────────────────────────────────────────────── */
+.title    { font-size: .78rem; color: var(--amber);    letter-spacing: .24em; text-transform: uppercase; }
+.subtitle { font-size: .58rem; color: var(--text-muted); letter-spacing: .18em; text-transform: uppercase; }
+.lbl      { font-size: .58rem; color: var(--text-muted); letter-spacing: .14em; text-transform: uppercase; }
+.val      { font-size: .62rem; color: var(--text-2nd); }
+.val.big  { font-size: 1.2rem; color: var(--amber); letter-spacing: .04em; }
+.val.good { color: var(--green); }
+.val.bad  { color: var(--red); }
+.val.id   { font-size: .78rem; color: var(--amber); letter-spacing: .08em; user-select: all; cursor: text; }
+.foot     { font-size: .56rem; color: var(--text-muted); letter-spacing: .12em; text-align: center; max-width: 780px; line-height: 1.7; }
+
+/* ── Layout primitives ──────────────────────────────────────────────────── */
+.row { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; justify-content: center; }
+.col { display: flex; flex-direction: column; gap: 6px; }
+.kv  { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+
+/* ── Module shell ───────────────────────────────────────────────────────── */
+.module {
+  background: var(--bg-module); border: 1px solid var(--border);
+  display: flex; flex-direction: column; min-width: 240px;
+}
+.mod-head {
+  padding: 5px 8px; border-bottom: 1px solid var(--border-dim);
+  font-size: .72rem; color: #bbb; letter-spacing: .16em;
+  text-transform: uppercase; text-align: center;
+}
+.mod-body { padding: 10px; display: flex; flex-direction: column; gap: 7px; }
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+button {
+  font-family: 'Courier New', monospace; font-size: .66rem;
+  letter-spacing: .12em; text-transform: uppercase;
+  background: none; border: 1px solid var(--amber); color: var(--amber);
+  padding: 6px 10px; cursor: pointer; transition: all .12s;
+}
+button:hover:not(:disabled)        { border-color: var(--amber-bright); color: var(--amber-bright); box-shadow: 0 0 6px #c8a85444; }
+button.active                       { border-color: var(--green); color: var(--green); box-shadow: 0 0 4px #2a9a2a44; }
+button.danger                       { border-color: var(--red); color: var(--red); }
+button.danger:hover:not(:disabled)  { color: var(--red-bright); box-shadow: 0 0 6px #e0202044; }
+button.danger.active                { border-color: var(--red); color: var(--red); box-shadow: 0 0 4px #e0202044; }
+button:disabled                     { border-color: var(--border-mute); color: var(--text-muted); cursor: not-allowed; box-shadow: none; }
+.copy-btn { font-size: .58rem; padding: 3px 6px; }
+
+/* ── Form controls ──────────────────────────────────────────────────────── */
+select, input[type=text] {
+  font-family: 'Courier New', monospace; font-size: .62rem; color: var(--text-2nd);
+  background: var(--bg-page); border: 1px solid var(--border); padding: 4px 6px;
+  width: 100%; outline: none; appearance: none; -webkit-appearance: none;
+}
+select:focus, input[type=text]:focus { border-color: var(--amber); }
+select option { background: var(--bg-module); color: var(--text-2nd); }
+select:disabled { color: var(--text-faint); border-color: var(--border-mute); }
+
+/* horizontal range slider (for non-canonical gain controls) */
+input[type=range] {
+  -webkit-appearance: none; appearance: none;
+  background: transparent; width: 100%; cursor: pointer;
+}
+input[type=range]::-webkit-slider-runnable-track { height: 3px; background: var(--border); }
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 14px; background: var(--amber); margin-top: -6px; border-radius: 0;
+}
+
+/* ── Banners ────────────────────────────────────────────────────────────── */
+.warn {
+  background: #2a1a0d; border: 1px solid var(--amber); color: var(--amber-bright);
+  font-size: .62rem; letter-spacing: .1em; padding: 8px 14px; max-width: 760px; text-align: center;
+}
+.warn.danger { background: #2a0d0d; border-color: var(--red); color: #ff8080; }
+
+/* ── State pill ─────────────────────────────────────────────────────────── */
+.state {
+  font-size: .7rem; color: var(--text-2nd); text-align: center; padding: 6px;
+  background: var(--bg-inset); border: 1px solid var(--border-dim);
+  letter-spacing: .08em; text-transform: uppercase;
+}
+.state.connecting { color: var(--amber-bright); border-color: var(--amber); }
+.state.connected  { color: var(--green);        border-color: var(--green); }
+.state.failed     { color: var(--red);          border-color: var(--red); }
+
+/* ── Canonical gain/meter strip ─────────────────────────────────────────────
+   Spec: 22px wrap × full-height, two 7px L/R bars + 8px gap = 22px total.
+   Vertical slider overlaid (writing-mode: vertical-lr; direction: rtl) so its
+   thumb (26px × 5px blue) acts as the gain control. Per FX Processor:
+   - --zero-db CSS var positions a horizontal reference line at 0 dB (default
+     83.33% which is the position for 0 dB on a -60→+12 dB range).
+   - Peak-hold bar (2px white) decays after ~1.6s (handled in JS).
+   - Clip dot lights when fill >= 98%.
+   ─────────────────────────────────────────────────────────────────────── */
+.gain-meter-wrap {
+  position: relative;
+  width: 22px; height: 100%;
+  flex-shrink: 0;
+}
+.gain-meter-bg {
+  position: absolute; inset: 0;
+  display: flex; gap: 8px;
+}
+/* 0 dB reference mark */
+.gain-meter-wrap::before {
+  content: ""; position: absolute;
+  left: -2px; right: -2px;
+  bottom: var(--zero-db, 83.33%); height: 1px;
+  background: rgba(200, 200, 100, 0.45);
+  z-index: 1; pointer-events: none;
+}
+.gain-meter-wrap::after {
+  content: "0"; position: absolute;
+  left: -11px;
+  bottom: calc(var(--zero-db, 83.33%) - 5px);
+  font-family: 'Courier New', monospace; font-size: .46rem;
+  color: rgba(200, 200, 100, 0.55); line-height: 1;
+  z-index: 1; pointer-events: none;
+}
+.gain-meter-bar {
+  flex: 1; position: relative;
+  background: linear-gradient(to top, #0d1a0d 0%, #121f12 80%, #0f0f0f 100%);
+  border-radius: 2px; overflow: hidden;
+}
+.gain-meter-level {
+  position: absolute; bottom: 0; left: 0; width: 100%; height: 0%;
+  background: linear-gradient(
+    to top,
+    #1a5a1a 0%, #2a9a2a 68%, #7ab020 78%, #b89010 85%,
+    #c06010 91%, #c83010 96%, #e02020 100%);
+  transition: height .04s linear;
+}
+.gain-meter-peak {
+  position: absolute; left: 0; width: 100%; height: 2px;
+  background: rgba(255, 255, 255, .6);
+  bottom: 0; opacity: 0;
+  transition: bottom .12s linear;
+}
+.gain-meter-peak.active { opacity: 1; }
+input.gain-meter-slider {
+  position: absolute; top: 0; left: 0; z-index: 2;
+  writing-mode: vertical-lr; direction: rtl;
+  width: 100%; height: 100%;
+  background: transparent; -webkit-appearance: none; cursor: pointer; outline: none;
+}
+input.gain-meter-slider::-webkit-slider-runnable-track { background: transparent; }
+input.gain-meter-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 26px; height: 5px;
+  background: var(--blue); border-radius: 1px; cursor: pointer;
+  box-shadow: 0 0 4px rgba(100, 160, 220, 0.5);
+}
+
+/* The full strip cell (used inside a module footer): label row + meter + readouts */
+.gain-strip {
+  display: flex; flex-direction: column; gap: 4px; padding: 6px 0;
+}
+.gain-strip .ctrl-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+}
+.gain-strip .ctrl-lbl { font-size: .66rem; color: var(--text-2nd); letter-spacing: .12em; text-transform: uppercase; }
+.gain-strip .ctrl-val { font-size: .72rem; color: var(--amber); cursor: text; }
+.gain-strip .meter-row {
+  display: flex; align-items: stretch; gap: 8px;
+  height: var(--strip-height, 80px);
+}
+.gain-strip .clip-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--bg-inset); border: 1px solid var(--border-mute);
+  flex-shrink: 0; margin-top: 2px;
+}
+.gain-strip .clip-dot.clip { background: var(--red); border-color: var(--red-bright); box-shadow: 0 0 4px #e0202088; }
+.gain-strip .db-readout { font-size: .62rem; color: var(--text-muted); text-align: center; }
+
+/* Horizontal mini-meter (compact rows, level-only no gain) */
+.hmeter {
+  position: relative; width: 100%; height: 14px;
+  background: var(--bg-inset); border: 1px solid var(--border-dim); overflow: hidden;
+}
+.hmeter-fill {
+  position: absolute; top: 0; bottom: 0; left: 0; width: 0%;
+  background: linear-gradient(to right,
+    #1a5a1a 0%, #2a9a2a 68%, #7ab020 80%, #c83010 96%, #e02020 100%);
+  transition: width .04s linear;
+}

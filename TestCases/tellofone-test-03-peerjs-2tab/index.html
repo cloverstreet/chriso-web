@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Tellofone TC#03 — PeerJS 2-Tab WebRTC Audio</title>
+<link rel="stylesheet" href="../_shared/audio-widgets.css">
+<style>
+  .docs { font-size:.62rem; line-height:1.7; color:var(--text-2nd); max-width:580px; }
+  .docs em { color:var(--amber); font-style:normal; }
+</style>
+</head>
+<body>
+
+<div class="title">Tellofone TC#03 · PeerJS 2-Tab WebRTC Audio</div>
+<div class="subtitle">prove signaling + p2p audio + per-peer gain · open in two tabs</div>
+
+<div class="warn">⚠ Headphones required when both tabs are on the same machine — speaker → mic → speaker → mic = feedback loop.</div>
+
+<div class="row">
+
+  <div class="col">
+    <div class="module">
+      <div class="mod-head">Identity</div>
+      <div class="mod-body">
+        <div class="lbl">Your peer ID</div>
+        <div class="kv">
+          <span class="val id" id="myId">…connecting…</span>
+          <button class="copy-btn" id="copyBtn" disabled>Copy</button>
+        </div>
+        <div class="state" id="brokerState">connecting to broker</div>
+      </div>
+    </div>
+
+    <div class="module">
+      <div class="mod-head">Connect to Peer</div>
+      <div class="mod-body">
+        <div class="lbl">Remote peer ID</div>
+        <input id="remoteId" type="text" placeholder="paste from other tab">
+        <button id="connectBtn" disabled>Connect</button>
+        <button id="disconnectBtn" class="danger" disabled>Disconnect</button>
+        <div class="state" id="callState">idle</div>
+      </div>
+    </div>
+
+    <div class="module">
+      <div class="mod-head">Mic Setup</div>
+      <div class="mod-body">
+        <button id="permBtn">Grant Mic Access</button>
+        <div class="lbl">Input Device</div>
+        <select id="deviceSel" disabled><option>—</option></select>
+        <button id="openMicBtn" disabled>Open Mic</button>
+        <button id="muteBtn" class="danger" disabled>Mute Self</button>
+      </div>
+    </div>
+
+    <div class="module">
+      <div class="mod-head">Output Routing</div>
+      <div class="mod-body">
+        <div class="lbl">Output Device</div>
+        <select id="outDeviceSel" disabled><option>—</option></select>
+        <div class="lbl">Channel Pair</div>
+        <select id="outChannelSel" disabled><option>Ch 1-2</option></select>
+        <div class="kv"><span class="lbl">Max channels</span><span class="val" id="vMaxCh">—</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="module">
+      <div class="mod-head">Outbound (your mic → peer)</div>
+      <div class="mod-body">
+        <div class="kv"><span class="lbl">Echo cancel</span><span class="val" id="vEC">—</span></div>
+        <div class="kv"><span class="lbl">Noise suppr</span><span class="val" id="vNS">—</span></div>
+        <div class="kv"><span class="lbl">Auto gain</span> <span class="val" id="vAGC">—</span></div>
+        <div id="sendMeterMount"></div>
+      </div>
+    </div>
+
+    <div class="module">
+      <div class="mod-head">Inbound (peer → your ears)</div>
+      <div class="mod-body">
+        <button id="mutePeerBtn" class="danger" disabled>Mute Peer</button>
+        <div id="recvMeterMount"></div>
+      </div>
+    </div>
+
+    <div class="module">
+      <div class="mod-head">Connection Stats</div>
+      <div class="mod-body">
+        <div class="kv"><span class="lbl">RTT</span>            <span class="val" id="vRtt">—</span></div>
+        <div class="kv"><span class="lbl">Jitter</span>         <span class="val" id="vJitter">—</span></div>
+        <div class="kv"><span class="lbl">Packets lost</span>   <span class="val" id="vLoss">—</span></div>
+        <div class="kv"><span class="lbl">Codec</span>          <span class="val" id="vCodec">—</span></div>
+        <div class="kv"><span class="lbl">Local candidate</span><span class="val" id="vLocal">—</span></div>
+        <div class="kv"><span class="lbl">Remote candidate</span><span class="val" id="vRemote">—</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="module">
+      <div class="mod-head">How to use</div>
+      <div class="mod-body">
+        <div class="docs">
+          1. Open this page in <em>two tabs</em>. Each gets a unique peer ID via the public PeerJS broker.<br>
+          2. In <em>both</em> tabs: Grant Mic Access → pick device → Open Mic.<br>
+          3. In tab A: copy your peer ID. Switch to tab B: paste into <em>Remote peer ID</em>, click Connect. Tab A auto-answers.<br>
+          4. Audio flows both ways, peer-to-peer (broker is only used for handshake — actual audio is direct).<br>
+          5. Drag the gain thumb on the OUT meter (your mic → peer) and IN meter (peer → your ears) to adjust levels.<br>
+          6. Stats panel shows RTT, jitter, codec, ICE candidate types — useful for diagnosing whether the connection is direct (host/srflx) or relayed (relay).
+          <br><br>
+          <em>What you're proving:</em> signaling works, two-way audio works peer-to-peer, per-peer gain control on the receive side. The room (Sandbox/tellofone) generalizes this to N peers.
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="foot">PeerJS 1.5 · public broker (cloud.peerjs.com) · Google STUN · Opus codec · DSP off · v0.2 (shared widgets)</div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="../_shared/audio-widgets.js"></script>
+<script>
+'use strict';
+const W = window.AudioWidgets;
+const $ = id => document.getElementById(id);
+
+let peer = null;
+let myStream = null;       // MediaStream we send (taps from micGain via micDest)
+let audioCtx = null;
+let micSource = null, micGain = null, micDest = null;
+let activeCall = null;
+let remoteSource = null, peerGain = null;
+let outRouter = null;      // routes peerGain to selected output channel pair
+let sendMeter = null, recvMeter = null;
+let statsTimer = null;
+let muted = false, peerMuted = false;
+let savedPeerGainDb = 0;
+
+// ── PeerJS bootstrap ───────────────────────────────────
+function initPeer() {
+  peer = new Peer({
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+      ]
+    }
+  });
+  peer.on('open', id => {
+    $('myId').textContent = id;
+    $('copyBtn').disabled = false;
+    $('connectBtn').disabled = false;
+    setBrokerState('connected to broker', 'connected');
+  });
+  peer.on('error', err => {
+    console.error('peer error', err);
+    setBrokerState('broker: ' + err.type, 'failed');
+  });
+  peer.on('disconnected', () => setBrokerState('broker disconnected', 'failed'));
+  peer.on('close',        () => setBrokerState('broker closed', 'failed'));
+  peer.on('call', incomingCall => {
+    if (!myStream) { alert('Open mic first, then ask peer to retry.'); return; }
+    incomingCall.answer(myStream);
+    bindCall(incomingCall);
+  });
+}
+
+function setBrokerState(text, cls) {
+  $('brokerState').textContent = text;
+  $('brokerState').className = 'state ' + (cls || '');
+}
+function setCallState(text, cls) {
+  $('callState').textContent = text;
+  $('callState').className = 'state ' + (cls || '');
+}
+
+$('copyBtn').addEventListener('click', () => {
+  navigator.clipboard.writeText($('myId').textContent);
+  $('copyBtn').textContent = '✓';
+  setTimeout(() => $('copyBtn').textContent = 'Copy', 800);
+});
+
+// ── Mic setup ──────────────────────────────────────────
+$('permBtn').addEventListener('click', async () => {
+  try {
+    const tmp = await navigator.mediaDevices.getUserMedia({audio: true});
+    tmp.getTracks().forEach(t => t.stop());
+    await populateDevices();
+    $('deviceSel').disabled = false;
+    $('openMicBtn').disabled = false;
+    $('permBtn').classList.add('active');
+    $('permBtn').textContent = '✓ Mic Access';
+  } catch (e) { alert('Mic access denied: ' + e.message); }
+});
+
+async function populateDevices() {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const inputs  = devices.filter(d => d.kind === 'audioinput');
+  const outputs = devices.filter(d => d.kind === 'audiooutput');
+
+  const inSel = $('deviceSel');
+  inSel.innerHTML = '';
+  inputs.forEach((d, i) => {
+    const opt = document.createElement('option');
+    opt.value = W.deviceIdValue(d);
+    opt.textContent = W.formatDeviceLabel(d, i, 'Input');
+    inSel.appendChild(opt);
+  });
+
+  const outSel = $('outDeviceSel');
+  outSel.innerHTML = '';
+  outputs.forEach((d, i) => {
+    const opt = document.createElement('option');
+    opt.value = W.deviceIdValue(d);
+    opt.textContent = W.formatDeviceLabel(d, i, 'Output');
+    outSel.appendChild(opt);
+  });
+  outSel.disabled = false;
+
+  console.log('[TC03] inputs:',  inputs.map(d => ({id: d.deviceId, label: d.label})));
+  console.log('[TC03] outputs:', outputs.map(d => ({id: d.deviceId, label: d.label})));
+}
+
+$('openMicBtn').addEventListener('click', openMic);
+
+async function openMic() {
+  if (myStream) myStream.getTracks().forEach(t => t.stop());
+  if (sendMeter) { sendMeter.destroy(); sendMeter = null; }
+  if (audioCtx) await audioCtx.close();
+
+  const deviceId = $('deviceSel').value;
+  let rawStream;
+  try {
+    rawStream = await navigator.mediaDevices.getUserMedia(W.micConstraints(deviceId, 1));
+  } catch (e) { alert('getUserMedia failed: ' + e.message); return; }
+
+  audioCtx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
+  if ($('outDeviceSel').value && audioCtx.setSinkId) {
+    try { await audioCtx.setSinkId($('outDeviceSel').value); } catch(e) { console.warn('setSinkId:', e); }
+  }
+
+  const settings = rawStream.getAudioTracks()[0].getSettings();
+  $('vEC').textContent  = String(settings.echoCancellation);
+  $('vNS').textContent  = String(settings.noiseSuppression);
+  $('vAGC').textContent = String(settings.autoGainControl);
+
+  // Outbound graph: rawStream → micSource → micGain → micDest (= MediaStream we send)
+  micSource = audioCtx.createMediaStreamSource(rawStream);
+  micGain   = audioCtx.createGain(); micGain.gain.value = W.dbToGain(0);
+  micDest   = audioCtx.createMediaStreamDestination();
+  micSource.connect(micGain).connect(micDest);
+  myStream  = micDest.stream;
+
+  // Send-side meter — taps post-gain
+  $('sendMeterMount').innerHTML = '';
+  sendMeter = new W.MeterStrip($('sendMeterMount'), micGain, {
+    label: 'OUT (TO PEER)', gainNode: micGain,
+    gainMin: -30, gainMax: 12, gainDefault: 0,
+    height: 100, stereo: false,
+  });
+  sendMeter.start();
+
+  $('openMicBtn').classList.add('active');
+  $('openMicBtn').textContent = '✓ Mic Open';
+  $('muteBtn').disabled = false;
+
+  // If a call is active, hot-swap the outbound track
+  if (activeCall && activeCall.peerConnection) {
+    const audioSender = activeCall.peerConnection.getSenders()
+      .find(s => s.track && s.track.kind === 'audio');
+    const newTrack = myStream.getAudioTracks()[0];
+    if (audioSender && newTrack) audioSender.replaceTrack(newTrack);
+  }
+}
+
+$('muteBtn').addEventListener('click', () => {
+  muted = !muted;
+  if (myStream) myStream.getAudioTracks().forEach(t => t.enabled = !muted);
+  $('muteBtn').textContent = muted ? '✓ Self Muted' : 'Mute Self';
+  $('muteBtn').classList.toggle('active', muted);
+});
+
+$('mutePeerBtn').addEventListener('click', () => {
+  if (!peerGain || !recvMeter) return;
+  peerMuted = !peerMuted;
+  if (peerMuted) {
+    savedPeerGainDb = W.gainToDb(peerGain.gain.value);
+    recvMeter.setGainDb(-60);
+  } else {
+    recvMeter.setGainDb(savedPeerGainDb);
+  }
+  $('mutePeerBtn').textContent = peerMuted ? '✓ Peer Muted' : 'Mute Peer';
+  $('mutePeerBtn').classList.toggle('active', peerMuted);
+});
+
+// ── Output routing (after first call connects, since destination is needed) ─
+$('outChannelSel').addEventListener('change', () => {
+  if (!outRouter) return;
+  const v = parseInt($('outChannelSel').value);
+  outRouter.setPair([v, v + 1]);
+});
+$('outDeviceSel').addEventListener('change', async () => {
+  if (!audioCtx || !audioCtx.setSinkId) return;
+  try { await audioCtx.setSinkId($('outDeviceSel').value); }
+  catch(e) { console.warn('setSinkId:', e); }
+});
+
+// ── Connect / disconnect ───────────────────────────────
+$('connectBtn').addEventListener('click', () => {
+  if (!myStream) { alert('Open mic first.'); return; }
+  const remoteId = $('remoteId').value.trim();
+  if (!remoteId) return;
+  setCallState('calling…', 'connecting');
+  const call = peer.call(remoteId, myStream);
+  if (!call) { setCallState('call failed (peer not ready?)', 'failed'); return; }
+  bindCall(call);
+});
+
+$('disconnectBtn').addEventListener('click', () => {
+  if (activeCall) activeCall.close();
+});
+
+function bindCall(call) {
+  if (activeCall) { try { activeCall.close(); } catch(e) {} }
+  activeCall = call;
+  setCallState('connecting…', 'connecting');
+  $('disconnectBtn').disabled = false;
+  $('connectBtn').disabled = true;
+
+  call.on('stream', remoteStream => {
+    setCallState('connected', 'connected');
+    setupRemoteAudio(remoteStream);
+    $('mutePeerBtn').disabled = false;
+    startStatsLoop();
+  });
+
+  call.on('close', () => {
+    setCallState('disconnected', 'failed');
+    teardownRemote();
+    activeCall = null;
+    $('disconnectBtn').disabled = true;
+    $('connectBtn').disabled = false;
+    $('mutePeerBtn').disabled = true;
+    if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }
+  });
+
+  call.on('error', err => {
+    console.error('call error', err);
+    setCallState('error: ' + err.message, 'failed');
+  });
+}
+
+function setupRemoteAudio(remoteStream) {
+  if (!audioCtx) audioCtx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
+  if (peerGain) try { peerGain.disconnect(); } catch(e) {}
+  if (recvMeter) { recvMeter.destroy(); recvMeter = null; }
+
+  remoteSource = audioCtx.createMediaStreamSource(remoteStream);
+  peerGain = audioCtx.createGain(); peerGain.gain.value = W.dbToGain(0);
+  remoteSource.connect(peerGain);
+
+  // Output router on peerGain → splitter(2) → merger(maxCh) → destination
+  outRouter = W.makeOutputRouter(audioCtx, peerGain, [0, 1]);
+  W.populateChannelPairs($('outChannelSel'), outRouter.maxCh);
+  $('outChannelSel').disabled = false;
+  $('vMaxCh').textContent = outRouter.maxCh + ' ch';
+  outRouter.enable();  // immediately route to destination so peer is audible
+
+  // Receive meter
+  $('recvMeterMount').innerHTML = '';
+  recvMeter = new W.MeterStrip($('recvMeterMount'), peerGain, {
+    label: 'IN (FROM PEER)', gainNode: peerGain,
+    gainMin: -60, gainMax: 12, gainDefault: 0,
+    height: 100, stereo: false,
+  });
+  recvMeter.start();
+
+  // Chrome workaround: remote MediaStream needs an attached <audio> element to flow
+  // even though we route via Web Audio.
+  const ghost = document.createElement('audio');
+  ghost.srcObject = remoteStream;
+  ghost.muted = true;
+  ghost.autoplay = true;
+  document.body.appendChild(ghost);
+}
+
+function teardownRemote() {
+  if (recvMeter) { recvMeter.destroy(); recvMeter = null; }
+  if (outRouter) outRouter.disable();
+  if (peerGain) try { peerGain.disconnect(); } catch(e) {}
+  remoteSource = null; peerGain = null; outRouter = null;
+  $('vRtt').textContent = '—';
+  $('vJitter').textContent = '—';
+  $('vLoss').textContent = '—';
+  $('vCodec').textContent = '—';
+  $('vLocal').textContent = '—';
+  $('vRemote').textContent = '—';
+  $('vMaxCh').textContent = '—';
+  $('outChannelSel').disabled = true;
+  $('outChannelSel').innerHTML = '<option>Ch 1-2</option>';
+  $('recvMeterMount').innerHTML = '';
+}
+
+// ── Stats ──────────────────────────────────────────────
+function startStatsLoop() {
+  if (statsTimer) clearInterval(statsTimer);
+  statsTimer = setInterval(async () => {
+    if (!activeCall || !activeCall.peerConnection) return;
+    const stats = await activeCall.peerConnection.getStats();
+    let rtt = null, jitter = null, lost = null, codecId = null, codec = null;
+    let localCand = null, remoteCand = null, candPair = null;
+    stats.forEach(s => {
+      if (s.type === 'inbound-rtp' && s.kind === 'audio') {
+        jitter = s.jitter; lost = s.packetsLost; codecId = s.codecId;
+      }
+      if (s.type === 'codec' && codecId && s.id === codecId) codec = s.mimeType;
+      if (s.type === 'candidate-pair' && s.state === 'succeeded' && s.nominated) {
+        rtt = s.currentRoundTripTime; candPair = s;
+      }
+    });
+    if (candPair) {
+      stats.forEach(s => {
+        if (s.id === candPair.localCandidateId)  localCand  = `${s.candidateType} ${s.protocol||''}`;
+        if (s.id === candPair.remoteCandidateId) remoteCand = `${s.candidateType} ${s.protocol||''}`;
+      });
+    }
+    $('vRtt').textContent    = rtt    != null ? (rtt * 1000).toFixed(1) + ' ms' : '—';
+    $('vJitter').textContent = jitter != null ? (jitter * 1000).toFixed(2) + ' ms' : '—';
+    $('vLoss').textContent   = lost   != null ? String(lost) : '—';
+    $('vCodec').textContent  = codec || '—';
+    $('vLocal').textContent  = localCand  || '—';
+    $('vRemote').textContent = remoteCand || '—';
+  }, 1000);
+}
+
+initPeer();
+</script>
+</body>
+</html>

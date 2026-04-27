@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Tellofone TC#02 — Mic Loopback + Round-Trip Latency Probe</title>
+<link rel="stylesheet" href="../_shared/audio-widgets.css">
+<style>
+  .probe-status {
+    font-size:.7rem; color:var(--text-2nd); text-align:center; padding:6px;
+    background:var(--bg-inset); border:1px solid var(--border-dim); min-height:28px;
+    letter-spacing:.08em;
+  }
+  .probe-status.armed   { color:var(--amber-bright); border-color:var(--amber); }
+  .probe-status.firing  { color:#ff8080; border-color:var(--red); animation:pulse .3s ease-in-out infinite alternate; }
+  .probe-status.done    { color:var(--green); border-color:var(--green); }
+  .probe-status.fail    { color:var(--red);   border-color:var(--red); }
+  @keyframes pulse { from { opacity:.4; } to { opacity:1; } }
+  .history { font-size:.58rem; color:var(--text-dim); line-height:1.6; max-height:120px; overflow-y:auto;
+             background:var(--bg-inset); border:1px solid var(--border-dim); padding:6px; }
+  .history-row { display:flex; justify-content:space-between; gap:8px; }
+  .docs { font-size:.62rem; line-height:1.7; color:var(--text-2nd); max-width:580px; }
+  .docs em { color:var(--amber); font-style:normal; }
+</style>
+</head>
+<body>
+
+<div class="title">Tellofone TC#02 · Mic Loopback + Round-Trip Latency Probe</div>
+<div class="subtitle">verify monitor path · measure your local audio i/o floor</div>
+
+<div class="warn">⚠ Headphones for Monitor mode · speakers (no headphones) for Probe mode — different rules per panel.</div>
+
+<div class="row">
+
+  <div class="col">
+    <div class="module">
+      <div class="mod-head">Setup</div>
+      <div class="mod-body">
+        <button id="permBtn">1 · Grant Mic Access</button>
+        <div class="lbl">Input Device</div>
+        <select id="deviceSel" disabled><option>—</option></select>
+        <button id="openBtn" disabled>2 · Open Stream</button>
+        <button id="closeBtn" disabled>Stop Stream</button>
+      </div>
+    </div>
+
+    <div class="module">
+      <div class="mod-head">Stream Info</div>
+      <div class="mod-body">
+        <div class="kv"><span class="lbl">Channels</span>      <span class="val" id="vCh">—</span></div>
+        <div class="kv"><span class="lbl">Sample rate</span>   <span class="val" id="vSR">—</span></div>
+        <div class="kv"><span class="lbl">Base latency</span>  <span class="val" id="vBase">—</span></div>
+        <div class="kv"><span class="lbl">Output latency</span><span class="val" id="vOut">—</span></div>
+        <div class="kv"><span class="lbl">Reported total</span><span class="val" id="vReport">—</span></div>
+      </div>
+    </div>
+
+    <div class="module">
+      <div class="mod-head">Output Routing</div>
+      <div class="mod-body">
+        <div class="lbl">Output Device</div>
+        <select id="outDeviceSel" disabled><option>—</option></select>
+        <div class="lbl">Channel Pair</div>
+        <select id="outChannelSel" disabled><option>Ch 1-2</option></select>
+        <div class="kv"><span class="lbl">Max channels</span><span class="val" id="vMaxCh">—</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="module">
+      <div class="mod-head">Mic Loopback Monitor</div>
+      <div class="mod-body">
+        <div class="warn" style="font-size:.58rem; padding:5px 8px;">Headphones required.</div>
+        <button id="monBtn" disabled>Monitor: OFF</button>
+        <div id="monMeterMount"></div>
+      </div>
+    </div>
+
+    <div class="module">
+      <div class="mod-head">Round-Trip Probe</div>
+      <div class="mod-body">
+        <div class="warn danger" style="font-size:.58rem; padding:5px 8px;">Speakers ON, headphones OFF. Measures speaker → air → mic → return.</div>
+        <button id="probeBtn" disabled>Run Probe</button>
+        <div class="probe-status" id="probeStatus">idle</div>
+        <div class="kv"><span class="lbl">Round-trip</span><span class="val big" id="vRt">— ms</span></div>
+        <div class="kv"><span class="lbl">— acoustic est</span><span class="val" id="vAir">— ms</span></div>
+        <div class="kv"><span class="lbl">— electrical</span><span class="val" id="vElec">— ms</span></div>
+        <div class="kv"><span class="lbl">Mic distance</span><span class="val" id="vDist">1.0 m</span></div>
+        <input id="distSlider" type="range" min="0.1" max="3.0" step="0.1" value="1.0">
+        <div class="lbl">History</div>
+        <div class="history" id="history">no probes yet</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="module">
+      <div class="mod-head">How to use</div>
+      <div class="mod-body">
+        <div class="docs">
+          <strong style="color:var(--amber)">Monitor mode</strong> — headphones on, hear yourself. Drag the gain thumb on the OUT meter to set monitor level. The signal bypasses every WebRTC/network stage, so the latency you hear is your local audio I/O budget alone (≈ <em>baseLatency + outputLatency</em>).
+          <br><br>
+          <strong style="color:var(--red)">Probe mode</strong> — speakers on, headphones off. Click <em>Run Probe</em>. A 4 kHz click fires; the worklet captures the mic for 0.5 s and finds the click in the returned audio. Round-trip = (click index ÷ sample rate). Subtract acoustic propagation (3.4 ms / m × distance) to isolate the electrical path through your machine.
+          <br><br>
+          What "electrical" tells you: the floor your hardware adds — driver buffers, ADC, DAC, OS scheduling. This is the irreducible piece tellofone has to add network latency on top of. Tighter floor = better madrigal odds.
+          <br><br>
+          Fireface at small buffer sizes (32-64 samples) should land electrical near 5-15 ms. Built-in macbook mic at default buffer often hits 30-50 ms.
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="foot">Chrome only · DSP forced off · AudioWorklet for sample-accurate capture · v0.2 (shared widgets)</div>
+
+<script src="../_shared/audio-widgets.js"></script>
+<script>
+'use strict';
+const W = window.AudioWidgets;
+const $ = id => document.getElementById(id);
+
+let stream = null, audioCtx = null;
+let micSource = null, monGain = null;
+let recorderNode = null;
+let outRouter = null, monMeter = null;
+let monitoring = false;
+let probeHistory = [];
+
+const setVal = (k, v) => { $('v'+k).textContent = v; };
+
+// ── AudioWorklet source (inline) ───────────────────────
+const WORKLET_SRC = `
+class ProbeRecorder extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.armed = false; this.recording = false;
+    this.startTime = 0; this.captureLen = 0;
+    this.buffer = null; this.writePos = 0;
+    this.firstSampleTime = 0;
+    this.port.onmessage = e => {
+      const m = e.data;
+      if (m.cmd === 'arm') {
+        this.startTime  = m.startTime;
+        this.captureLen = m.captureSamples;
+        this.buffer     = new Float32Array(this.captureLen);
+        this.writePos   = 0;
+        this.armed      = true;
+        this.recording  = false;
+      } else if (m.cmd === 'cancel') {
+        this.armed = false; this.recording = false;
+      }
+    };
+  }
+  process(inputs) {
+    const input = inputs[0];
+    if (!input || !input[0]) return true;
+    const ch = input[0];
+    if (this.armed && !this.recording && currentTime >= this.startTime) {
+      this.recording = true; this.firstSampleTime = currentTime;
+    }
+    if (this.recording) {
+      const remaining = this.captureLen - this.writePos;
+      const toCopy = Math.min(ch.length, remaining);
+      this.buffer.set(ch.subarray(0, toCopy), this.writePos);
+      this.writePos += toCopy;
+      if (this.writePos >= this.captureLen) {
+        this.recording = false; this.armed = false;
+        this.port.postMessage({
+          cmd: 'data',
+          buffer: this.buffer.slice(0, this.writePos),
+          firstSampleTime: this.firstSampleTime,
+          requestedStart: this.startTime,
+        });
+      }
+    }
+    return true;
+  }
+}
+registerProcessor('probe-recorder', ProbeRecorder);
+`;
+
+// ── Permission / device ──────────────────────────────
+$('permBtn').addEventListener('click', async () => {
+  try {
+    const tmp = await navigator.mediaDevices.getUserMedia({audio: true});
+    tmp.getTracks().forEach(t => t.stop());
+    await populateDevices();
+    $('deviceSel').disabled = false;
+    $('openBtn').disabled = false;
+    $('permBtn').classList.add('active');
+    $('permBtn').textContent = '✓ Mic Access Granted';
+  } catch (e) { alert('Mic access denied: ' + e.message); }
+});
+
+async function populateDevices() {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const inputs  = devices.filter(d => d.kind === 'audioinput');
+  const outputs = devices.filter(d => d.kind === 'audiooutput');
+
+  const inSel = $('deviceSel');
+  inSel.innerHTML = '';
+  inputs.forEach((d, i) => {
+    const opt = document.createElement('option');
+    opt.value = W.deviceIdValue(d);
+    opt.textContent = W.formatDeviceLabel(d, i, 'Input');
+    inSel.appendChild(opt);
+  });
+
+  const outSel = $('outDeviceSel');
+  outSel.innerHTML = '';
+  outputs.forEach((d, i) => {
+    const opt = document.createElement('option');
+    opt.value = W.deviceIdValue(d);
+    opt.textContent = W.formatDeviceLabel(d, i, 'Output');
+    outSel.appendChild(opt);
+  });
+  outSel.disabled = false;
+
+  console.log('[TC02] inputs:',  inputs.map(d => ({id: d.deviceId, label: d.label})));
+  console.log('[TC02] outputs:', outputs.map(d => ({id: d.deviceId, label: d.label})));
+}
+
+// ── Stream open/close ────────────────────────────────
+$('openBtn').addEventListener('click', openStream);
+$('closeBtn').addEventListener('click', closeStream);
+
+async function openStream() {
+  if (stream) closeStream();
+  const deviceId = $('deviceSel').value;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia(W.micConstraints(deviceId, 1));
+  } catch (e) { alert('getUserMedia failed: ' + e.message); return; }
+
+  audioCtx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
+  if ($('outDeviceSel').value && audioCtx.setSinkId) {
+    try { await audioCtx.setSinkId($('outDeviceSel').value); } catch(e) { console.warn('setSinkId:', e); }
+  }
+
+  const blob = new Blob([WORKLET_SRC], {type: 'application/javascript'});
+  await audioCtx.audioWorklet.addModule(URL.createObjectURL(blob));
+
+  const settings = stream.getAudioTracks()[0].getSettings();
+  setVal('Ch',     String(settings.channelCount || 1));
+  setVal('SR',     (settings.sampleRate || audioCtx.sampleRate) + ' Hz');
+  setVal('Base',   (audioCtx.baseLatency   * 1000).toFixed(2) + ' ms');
+  setVal('Out',    (audioCtx.outputLatency * 1000).toFixed(2) + ' ms');
+  setVal('Report', ((audioCtx.baseLatency + audioCtx.outputLatency) * 1000).toFixed(2) + ' ms');
+
+  micSource = audioCtx.createMediaStreamSource(stream);
+  monGain = audioCtx.createGain();
+  monGain.gain.value = W.dbToGain(-12);
+  micSource.connect(monGain);
+
+  // Output router on monGain → splitter(2) → merger(maxCh) → destination
+  outRouter = W.makeOutputRouter(audioCtx, monGain, [0, 1]);
+  W.populateChannelPairs($('outChannelSel'), outRouter.maxCh);
+  $('outChannelSel').disabled = false;
+  $('vMaxCh').textContent = outRouter.maxCh + ' ch';
+
+  // Monitor meter — taps monGain so it shows post-gain level; thumb controls monGain
+  $('monMeterMount').innerHTML = '';
+  monMeter = new W.MeterStrip($('monMeterMount'), monGain, {
+    label: 'OUT', gainNode: monGain,
+    gainMin: -60, gainMax: 12, gainDefault: -12,
+    height: 100, stereo: false,
+  });
+  monMeter.start();
+
+  // Recorder worklet — sees raw mic (pre-gain) for accurate latency probe
+  recorderNode = new AudioWorkletNode(audioCtx, 'probe-recorder');
+  micSource.connect(recorderNode);
+  const silent = audioCtx.createGain(); silent.gain.value = 0;
+  recorderNode.connect(silent).connect(audioCtx.destination);
+  recorderNode.port.onmessage = handleProbeData;
+
+  $('openBtn').disabled  = true;
+  $('closeBtn').disabled = false;
+  $('monBtn').disabled   = false;
+  $('probeBtn').disabled = false;
+}
+
+function closeStream() {
+  if (monMeter) { monMeter.destroy(); monMeter = null; }
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  if (audioCtx) audioCtx.close();
+  stream = null; audioCtx = null; micSource = null; monGain = null;
+  recorderNode = null; outRouter = null;
+  monitoring = false;
+  ['Ch','SR','Base','Out','Report'].forEach(k => setVal(k,'—'));
+  $('vMaxCh').textContent = '—';
+  $('monMeterMount').innerHTML = '';
+  $('outChannelSel').disabled = true;
+  $('outChannelSel').innerHTML = '<option>Ch 1-2</option>';
+  $('openBtn').disabled = false;
+  $('closeBtn').disabled = true;
+  $('monBtn').disabled = true; $('monBtn').classList.remove('active'); $('monBtn').textContent = 'Monitor: OFF';
+  $('probeBtn').disabled = true;
+}
+
+// ── Output routing handlers ──────────────────────────
+$('outChannelSel').addEventListener('change', () => {
+  if (!outRouter) return;
+  const v = parseInt($('outChannelSel').value);
+  outRouter.setPair([v, v + 1]);
+});
+$('outDeviceSel').addEventListener('change', async () => {
+  if (!audioCtx || !audioCtx.setSinkId) return;
+  try {
+    await audioCtx.setSinkId($('outDeviceSel').value);
+    W.populateChannelPairs($('outChannelSel'), outRouter.maxCh);
+    $('outChannelSel').value = '0';
+    outRouter.setPair([0, 1]);
+    $('vMaxCh').textContent = outRouter.maxCh + ' ch';
+  } catch(e) { console.warn('setSinkId:', e); }
+});
+
+// ── Monitor toggle ───────────────────────────────────
+$('monBtn').addEventListener('click', () => {
+  if (!outRouter) return;
+  monitoring = !monitoring;
+  if (monitoring) { outRouter.enable();  $('monBtn').classList.add('active');    $('monBtn').textContent = 'Monitor: ON'; }
+  else            { outRouter.disable(); $('monBtn').classList.remove('active'); $('monBtn').textContent = 'Monitor: OFF'; }
+});
+
+$('distSlider').addEventListener('input', () => {
+  $('vDist').textContent = parseFloat($('distSlider').value).toFixed(1) + ' m';
+});
+
+// ── Probe ────────────────────────────────────────────
+$('probeBtn').addEventListener('click', runProbe);
+
+async function runProbe() {
+  if (!audioCtx) return;
+  $('probeBtn').disabled = true;
+  setStatus('arming', 'armed');
+
+  const captureSamples = Math.round(0.5 * audioCtx.sampleRate);
+  const clickTime = audioCtx.currentTime + 0.15;
+
+  recorderNode.port.postMessage({ cmd: 'arm', startTime: clickTime, captureSamples });
+
+  // 4 kHz click, 1 ms with sharp ramp
+  const osc = audioCtx.createOscillator();
+  const env = audioCtx.createGain();
+  osc.frequency.value = 4000;
+  osc.type = 'sine';
+  osc.connect(env).connect(audioCtx.destination);
+  env.gain.setValueAtTime(0, clickTime);
+  env.gain.linearRampToValueAtTime(1.0, clickTime + 0.0005);
+  env.gain.linearRampToValueAtTime(0,   clickTime + 0.001);
+  osc.start(clickTime); osc.stop(clickTime + 0.005);
+
+  setTimeout(() => setStatus('firing click', 'firing'), 140);
+}
+
+function handleProbeData(e) {
+  const msg = e.data;
+  if (msg.cmd !== 'data') return;
+  const { buffer, firstSampleTime, requestedStart } = msg;
+  setStatus('analyzing', 'armed');
+
+  const sr = audioCtx.sampleRate;
+  const startSkewSamples = Math.round((firstSampleTime - requestedStart) * sr);
+  let noiseRms = 0; let n = 0;
+  for (let i = 0; i < Math.min(buffer.length, sr * 0.05); i++) { noiseRms += buffer[i]*buffer[i]; n++; }
+  noiseRms = Math.sqrt(noiseRms / Math.max(n,1));
+  const threshold = Math.max(noiseRms * 8, 0.02);
+  const skipSamples = Math.round(sr * 0.005);
+  let foundIdx = -1;
+  for (let i = skipSamples; i < buffer.length; i++) {
+    if (Math.abs(buffer[i]) > threshold) { foundIdx = i; break; }
+  }
+
+  if (foundIdx < 0) {
+    setStatus('no click detected — increase volume / check mic', 'fail');
+    pushHistory({ rt: null });
+    $('probeBtn').disabled = false;
+    return;
+  }
+
+  const rtMs = ((foundIdx + startSkewSamples) / sr) * 1000;
+  if (rtMs < 1 || rtMs > 480) {
+    setStatus('detection out of range — try again', 'fail');
+    pushHistory({ rt: null });
+    $('probeBtn').disabled = false;
+    return;
+  }
+
+  const dist = parseFloat($('distSlider').value);
+  const airMs  = (dist / 343.0) * 1000;
+  const elecMs = rtMs - airMs;
+
+  setVal('Rt',   rtMs.toFixed(2)  + ' ms');
+  setVal('Air',  airMs.toFixed(2) + ' ms');
+  setVal('Elec', elecMs.toFixed(2) + ' ms');
+  $('vElec').className = 'val ' + (elecMs < 20 ? 'good' : elecMs < 40 ? '' : 'bad');
+
+  setStatus('done', 'done');
+  pushHistory({ rt: rtMs, elec: elecMs });
+  $('probeBtn').disabled = false;
+}
+
+function setStatus(text, cls) {
+  const el = $('probeStatus');
+  el.textContent = text;
+  el.className = 'probe-status ' + (cls || '');
+}
+
+function pushHistory(rec) {
+  const stamp = new Date().toLocaleTimeString();
+  probeHistory.unshift({ stamp, ...rec });
+  if (probeHistory.length > 20) probeHistory.pop();
+  const html = probeHistory.map(r => {
+    if (r.rt === null) return `<div class="history-row"><span>${r.stamp}</span><span style="color:var(--red)">FAIL</span></div>`;
+    return `<div class="history-row"><span>${r.stamp}</span><span>rt ${r.rt.toFixed(2)} · elec ${r.elec.toFixed(2)} ms</span></div>`;
+  }).join('');
+  $('history').innerHTML = html || 'no probes yet';
+}
+</script>
+</body>
+</html>
