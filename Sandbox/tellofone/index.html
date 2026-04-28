@@ -11,7 +11,7 @@
   .hero-title {
     font-family:'Courier New',monospace;
     font-size:2.4rem; color:var(--amber); letter-spacing:.18em;
-    text-transform:uppercase;
+    text-transform:uppercase; user-select:none;
   }
   .hero-sub {
     font-size:.62rem; color:var(--text-muted); letter-spacing:.24em;
@@ -22,8 +22,23 @@
     font-size:.62rem; color:var(--text-2nd); letter-spacing:.1em;
     text-align:center; padding:6px 0;
   }
-  .req-link a { color:var(--amber); text-decoration:none; }
+  .req-link a { color:var(--amber); text-decoration:none; cursor:pointer; }
   .req-link a:hover { color:var(--amber-bright); text-decoration:underline; }
+
+  .request-form { display:none; }
+  .request-form.open { display:flex; flex-direction:column; gap:7px; }
+  textarea {
+    font-family:'Courier New',monospace; font-size:.62rem; color:var(--text-2nd);
+    background:var(--bg-page); border:1px solid var(--border); padding:6px;
+    width:100%; outline:none; resize:vertical; min-height:60px;
+  }
+  textarea:focus { border-color:var(--amber); }
+  /* honeypot — invisible to humans, attractive to bots */
+  .hp-field { position:absolute; left:-9999px; width:1px; height:1px; opacity:0; }
+  .request-status { font-size:.62rem; padding:6px; text-align:center; letter-spacing:.08em; }
+  .request-status.ok   { color:var(--green); border:1px solid var(--green); }
+  .request-status.err  { color:var(--red);   border:1px solid var(--red); }
+
   .docs { font-size:.62rem; line-height:1.7; color:var(--text-2nd); padding:8px 4px; }
   .docs em { color:var(--amber); font-style:normal; }
 </style>
@@ -40,12 +55,23 @@
     <div class="mod-head">Join</div>
     <div class="mod-body">
       <div class="lbl">Your name</div>
-      <input type="text" id="name" placeholder="how others see you" autocomplete="given-name">
+      <input type="text" id="name" placeholder="how others see you" autocomplete="given-name" maxlength="24">
       <div class="lbl">Invite code</div>
-      <input type="text" id="code" placeholder="from Christophero" autocomplete="off">
+      <input type="text" id="code" placeholder="from Christophero" autocomplete="off" maxlength="24">
       <button id="joinBtn">Join the Room</button>
-      <div class="req-link">
-        Don't have a code? <a id="requestLink" href="#">Request one</a>
+      <div class="req-link" id="requestPrompt">
+        Don't have a code? <a id="requestToggle">Request one</a>
+      </div>
+
+      <!-- In-page request form (no mailto: — keeps everything on this tab) -->
+      <div class="request-form" id="requestForm">
+        <div class="lbl">Tell Christophero why / when</div>
+        <textarea id="context" placeholder="Optional. e.g. 'rehearsal Tuesday 7pm with the trio' or 'just want to try it'" maxlength="1000"></textarea>
+        <!-- honeypot — leave empty, hidden field bots tend to fill -->
+        <input type="text" name="website" id="hp" class="hp-field" tabindex="-1" autocomplete="off">
+        <button id="sendRequestBtn">Send Request</button>
+        <div class="request-status" id="requestStatus" style="display:none"></div>
+        <div class="req-link"><a id="requestCancel">cancel</a></div>
       </div>
     </div>
   </div>
@@ -66,28 +92,17 @@
   </div>
 </div>
 
-<div class="foot">v0.1 · chriso.org/Sandbox/tellofone</div>
+<div class="foot">v0.2 · chriso.org/Sandbox/tellofone</div>
 
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
 
-// Generate a request ID for the email so Christophero can track invites
+// Generate a request ID once per page load (for tracking by Christophero)
 const reqId = (Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 6))
   .toUpperCase();
 
-const subject = encodeURIComponent('Tellofone invite request — ' + reqId);
-const body = encodeURIComponent(
-  'Hi Christophero,\n\n' +
-  "I'd like an invite to tellofone.\n\n" +
-  'Name (how I want to appear in the room): \n' +
-  'Approximate time(s) I want to use it: \n' +
-  'Why / context: \n\n' +
-  'Request ID: ' + reqId + '\n\n' +
-  'Thanks.'
-);
-$('requestLink').href = 'mailto:cloverstreet@gmail.com?subject=' + subject + '&body=' + body;
-
+// ── Join flow ─────────────────────────────────────────
 $('joinBtn').addEventListener('click', () => {
   const name = $('name').value.trim();
   const code = $('code').value.trim();
@@ -97,7 +112,6 @@ $('joinBtn').addEventListener('click', () => {
   window.location.href = url;
 });
 
-// Submit on Enter from either field
 ['name','code'].forEach(id => {
   $(id).addEventListener('keydown', e => { if (e.key === 'Enter') $('joinBtn').click(); });
 });
@@ -109,7 +123,71 @@ $('name').addEventListener('change', () => {
   localStorage.setItem('tellofone.lastName', $('name').value.trim());
 });
 
-// Hidden host link: clicking the title 5x within 2s reveals host entry
+// ── Request invite (in-page, no mailto) ───────────────
+$('requestToggle').addEventListener('click', e => {
+  e.preventDefault();
+  $('requestForm').classList.add('open');
+  $('requestPrompt').style.display = 'none';
+  $('context').focus();
+});
+
+$('requestCancel').addEventListener('click', e => {
+  e.preventDefault();
+  $('requestForm').classList.remove('open');
+  $('requestPrompt').style.display = '';
+  $('requestStatus').style.display = 'none';
+});
+
+$('sendRequestBtn').addEventListener('click', async () => {
+  const name = $('name').value.trim();
+  const context = $('context').value.trim();
+  const honeypot = $('hp').value;
+  if (!name) {
+    showRequestStatus('Enter your name above first.', 'err');
+    $('name').focus();
+    return;
+  }
+  $('sendRequestBtn').disabled = true;
+  $('sendRequestBtn').textContent = 'Sending…';
+  showRequestStatus('', 'ok');
+  $('requestStatus').style.display = 'none';
+
+  try {
+    const res = await fetch('request-invite.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, context, requestId: reqId, website: honeypot }),
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      showRequestStatus(
+        'Sent. Christophero has request ID ' + (data.requestId || reqId) + '. ' +
+        'When he replies with a code, paste it above and join.',
+        'ok'
+      );
+      $('sendRequestBtn').textContent = '✓ Sent';
+      // Don't re-enable — successful send is one-shot
+    } else {
+      const msg = (data && data.error) ? data.error : 'Request failed (HTTP ' + res.status + ')';
+      showRequestStatus(msg, 'err');
+      $('sendRequestBtn').disabled = false;
+      $('sendRequestBtn').textContent = 'Send Request';
+    }
+  } catch (e) {
+    showRequestStatus('Network error: ' + e.message, 'err');
+    $('sendRequestBtn').disabled = false;
+    $('sendRequestBtn').textContent = 'Send Request';
+  }
+});
+
+function showRequestStatus(text, kind) {
+  const el = $('requestStatus');
+  el.textContent = text;
+  el.className = 'request-status ' + kind;
+  el.style.display = text ? 'block' : 'none';
+}
+
+// ── Hidden host unlock: 5x click on title within 2s ──
 let titleClicks = 0, lastClick = 0;
 document.querySelector('.hero-title').addEventListener('click', () => {
   const now = Date.now();

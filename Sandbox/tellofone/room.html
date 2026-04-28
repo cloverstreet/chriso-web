@@ -194,18 +194,30 @@ function initPeer() {
     // Guests might receive data connections from each other in the future; ignored for now.
   });
 
-  // Incoming media call — answer with our local stream
+  // Incoming media call — answer with our local stream. If mic isn't open
+  // yet, defer the answer until openMic() runs. PeerJS holds the call alive
+  // long enough for a typical "open mic now" interaction. Without this,
+  // peers stay in the roster but never get audio because we silently
+  // dropped their incoming call.
   peer.on('call', mediaCall => {
     if (!myStream) {
-      // Mic not yet open. PeerJS gives us a 5-second window; queue it.
-      console.warn('[room] incoming call but mic not open; rejecting');
-      mediaCall.close();
+      console.warn('[room] incoming call queued (mic not open):', mediaCall.peer);
+      pendingIncomingCalls.push(mediaCall);
+      // Render a card immediately so the user sees who's trying to reach them.
+      if (!peers.has(mediaCall.peer)) {
+        const isHost = mediaCall.peer === HOST_PEER_ID;
+        addPeerEntry(mediaCall.peer, isHost ? 'Host' : 'Joining…');
+      }
       return;
     }
     mediaCall.answer(myStream);
     bindMediaCall(mediaCall);
   });
 }
+
+// MediaCalls that arrived before the user opened their mic. Drained by
+// openMic() once myStream exists.
+const pendingIncomingCalls = [];
 
 // ── Guest: connect to host ────────────────────────────
 function connectToHost() {
@@ -364,13 +376,32 @@ function callPeer(peerId) {
 }
 
 function drainPendingCalls() {
-  if (!myStream || pendingCallIds.size === 0) return;
-  console.log('[room] draining', pendingCallIds.size, 'queued calls');
-  for (const peerId of pendingCallIds) {
-    const call = peer.call(peerId, myStream);
-    if (call) bindMediaCall(call);
+  if (!myStream) return;
+
+  // Outbound calls that were queued
+  if (pendingCallIds.size > 0) {
+    console.log('[room] draining', pendingCallIds.size, 'queued outbound calls');
+    for (const peerId of pendingCallIds) {
+      const call = peer.call(peerId, myStream);
+      if (call) bindMediaCall(call);
+    }
+    pendingCallIds.clear();
   }
-  pendingCallIds.clear();
+
+  // Inbound calls that arrived before our mic was open
+  if (pendingIncomingCalls.length > 0) {
+    console.log('[room] answering', pendingIncomingCalls.length, 'queued inbound calls');
+    while (pendingIncomingCalls.length) {
+      const mediaCall = pendingIncomingCalls.shift();
+      try {
+        mediaCall.answer(myStream);
+        bindMediaCall(mediaCall);
+      } catch (e) {
+        console.warn('[room] failed to answer queued call', mediaCall.peer, e);
+      }
+    }
+  }
+
   // If we were a guest stuck in "open your mic to connect", we're in now.
   if (!IS_HOST) setRoomState('in room', 'connected');
 }
@@ -421,6 +452,15 @@ function attachRemoteAudio(peerObj, remoteStream) {
     height: 90, stereo: false,
   });
   peerObj.meter.start();
+
+  // Flip the meta line from "connecting" to "connected" so the user can
+  // see when the audio actually started flowing.
+  const metaEl = peerObj.cardEl.querySelector('[data-meta]');
+  if (metaEl) {
+    const role = peerObj.peerId === HOST_PEER_ID ? 'host' : 'guest';
+    metaEl.textContent = role + ' · connected';
+    metaEl.style.color = 'var(--green)';
+  }
 
   // Update mute button binding (per-peer mute)
   const muteBtn = peerObj.cardEl.querySelector('[data-mute]');
