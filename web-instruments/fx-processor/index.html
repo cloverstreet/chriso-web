@@ -241,6 +241,17 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
 }
 .danger-zone.show { display:block; }
 @keyframes blink { 50%{opacity:0;} }
+/* REC button — pre-gain mix recorder */
+#rec-btn:hover { border-color:#8a3a3a; color:#c66; }
+#rec-btn.recording {
+  background:rgba(150,30,30,.5); border-color:#e02020;
+  color:#e88; text-shadow:0 0 6px rgba(224,32,32,.6);
+  animation:rec-pulse 1.2s step-end infinite;
+}
+#rec-fmt:hover { border-color:#444; color:#aaa; }
+#rec-fmt.wav-mode { border-color:#3a4a6a; color:#7abbe0; }
+#rec-fmt.wav-mode:hover { border-color:#5a6a8a; color:#9cdcf0; }
+@keyframes rec-pulse { 50% { opacity: .55; } }
 </style>
 
 <style>
@@ -429,7 +440,16 @@ input.gain-meter-slider::-webkit-slider-thumb {
 
   <!-- About + global presets -->
 
-
+  <!-- Live latency readout — populated after initAudio() -->
+  <div id="latency-readout" style="display:none;align-items:baseline;gap:14px;
+       font-size:.58rem;color:#666;letter-spacing:.1em;padding:2px 6px 8px;">
+    <span style="color:#888;letter-spacing:.18em;">LATENCY</span>
+    <span id="lat-base">base —</span>
+    <span id="lat-out">out —</span>
+    <span id="lat-sr">— Hz</span>
+    <span id="lat-total" style="color:#c8a854;">RT —</span>
+    <span style="color:#444;font-size:.54rem;">(APM off · hint:interactive)</span>
+  </div>
 
   <!-- ── Main chain row ─────────────────────────────────────────── -->
   <div id="chain">
@@ -930,6 +950,21 @@ input.gain-meter-slider::-webkit-slider-thumb {
 
         </div>
         <div style="text-align:center;margin-top:3px;"><span class="ctrl-val" id="output-gain-val" data-value="0" style="font-size:.68rem;">0dB</span></div>
+
+        <!-- ── REC: pre-gain mix → MediaRecorder → file download ── -->
+        <div style="margin-top:8px;padding-top:7px;border-top:1px solid #1a1a1a;display:flex;align-items:center;gap:6px;">
+          <button id="rec-btn" onclick="toggleRecord()"
+            title="Record the pre-gain output mix to file"
+            style="padding:3px 10px;background:transparent;border:1px solid #5a2a2a;color:#a44;
+                   font-family:'Courier New',monospace;font-size:.66rem;font-weight:600;letter-spacing:.08em;
+                   cursor:pointer;border-radius:2px;transition:all .15s;flex-shrink:0;">● REC</button>
+          <button id="rec-fmt" onclick="toggleRecFormat()"
+            title="Toggle compressed (opus 192kbps webm) vs uncompressed (16-bit WAV)"
+            style="padding:2px 6px;background:transparent;border:1px solid #2e2e2e;color:#888;
+                   font-family:'Courier New',monospace;font-size:.56rem;font-weight:400;letter-spacing:.1em;
+                   cursor:pointer;border-radius:2px;flex-shrink:0;">WEBM</button>
+          <span id="rec-status" style="font-size:.58rem;color:#555;letter-spacing:.05em;flex:1;text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">idle</span>
+        </div>
       </div>
 
     </div><!-- end outputs col-wrap -->
@@ -1047,7 +1082,7 @@ const timeLog = { // 0.01s → 60s, piecewise so 1s is at ~1/3 of slider
 
 // ── State ────────────────────────────────────────────────────────
 let rawCtx;
-let micInput=null; // Tone.UserMedia
+let micInput=null; // Tone.UserMedia — APM disabled via getUserMedia monkey-patch in initAudio()
 let micGainNode, preFxGain, inputMeter; // Tone nodes
 let testOscTone=null, testNoiseTone=null, testOscGainTone, testNoiseGainTone, testMasterGainTone, testPanner; // all Tone.js
 let micPanner=null; // mic stereo pan
@@ -1062,6 +1097,17 @@ let pitchSumG, pitchToDelayG, pitchToOutG; // pitch post-mix sends
 let delayToPitchG; // delay→pitch feedback send
 let delayNode, feedbackGain, delayDryGain, delayWetGain;
 let outputGainNode, outputMuteNode, outputMeter;
+// Recording: recordTap is the pre-output-gain mix tap. MediaStreamDestination
+// hangs off it for MediaRecorder. Future Granulated Loopers will tap recordTap
+// → AudioWorkletNode for shared circular-buffer access.
+let recordTap=null, mediaStreamDest=null, mediaRecorder=null;
+let recordChunks=[], recordStartTime=0, recordTimerId=null, recordSoftWarned=false;
+let recFormat='webm';        // 'webm' (opus, compressed) | 'wav' (raw PCM, uncompressed)
+let recordingMethod=null;    // set when active; null when idle
+let pcmCapL=[], pcmCapR=[], pcmCaptureNode=null; // WAV path: raw PCM accumulator
+const REC_SOFT_CAP_MS = 30*60*1000;  // 30 min: warn
+const REC_HARD_CAP_MS = 60*60*1000;  // 60 min: auto-stop
+const REC_OPUS_BITRATE = 192000;     // 192 kbps — much higher quality than the ~64-96 default
 let systemStream=null, systemSource=null, sysNativeGain=null; // system audio
 let sysGainDb=0, sysAnalyserL=null, sysAnalyserR=null, sysSplit=null; // capture metering
 let outRouterSplit=null, outRouterMerge=null, selectedOutChPair=[0,1]; // output routing
@@ -1083,11 +1129,31 @@ async function initAudio() {
   const btn=document.getElementById('start-btn'), st=document.getElementById('start-status');
   btn.disabled=true; st.textContent='requesting device access...';
   try {
+    // Tone.js 14 defaults to latencyHint:'interactive'. Replacing the context
+    // post-load (Tone.setContext) breaks node-graph connectivity in this build,
+    // so just rely on the default. The bigger latency wins are the APM monkey-patch
+    // below and (future) AudioWorklet mic capture.
     await Tone.start();
-    // ── Minimize latency: Tone.js defaults lookAhead to 0.1s (100ms)
-    //    for scheduling safety. We don't schedule on the timeline, so 0 is fine.
     try { Tone.context.lookAhead = 0; } catch(e) { console.warn('lookAhead:',e); }
     rawCtx = Tone.context.rawContext;
+    startLatencyReadout();
+
+    // ── Disable APM (echoCancellation/noiseSuppression/autoGainControl) on all
+    //    mic streams. Chrome defaults all three to true, routing the mic through
+    //    the Audio Processing Module (~10-40ms + larger buffer). Monkey-patch
+    //    getUserMedia rather than replace Tone.UserMedia — simpler and keeps
+    //    all Tone-graph wiring working.
+    if (!navigator.mediaDevices.__apmPatched) {
+      const _origGum = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      navigator.mediaDevices.getUserMedia = (constraints) => {
+        const a = (constraints && typeof constraints.audio === 'object') ? {...constraints.audio} : {};
+        a.echoCancellation = false;
+        a.noiseSuppression = false;
+        a.autoGainControl  = false;
+        return _origGum({ ...constraints, audio: a });
+      };
+      navigator.mediaDevices.__apmPatched = true;
+    }
 
     // ── ALL Tone.js — zero native→Tone bridging ──────────────────
     // Helper: force a Tone.Gain to be stereo (channelCount:2, explicit)
@@ -1128,6 +1194,14 @@ async function initAudio() {
     delayWetGain   = stereoGain(0.4);
     outputGainNode = stereoGain(1);
     outputMuteNode = stereoGain(1);
+    // Recording tap: all sources route through recordTap → outputGainNode.
+    // The pre-gain MediaStreamDestination keeps recordings independent of the output gain slider.
+    recordTap = stereoGain(1);
+    try {
+      mediaStreamDest = rawCtx.createMediaStreamDestination();
+      recordTap.connect(mediaStreamDest);
+    } catch(e) { console.warn('MediaStreamDestination unavailable:', e); }
+    recordTap.connect(outputGainNode);
     outputMeter    = new Tone.Meter({ normalRange:true, smoothing:0.85, channels:2 });
 
     // Test tone: all Tone.js (eliminates native→Tone connection issues)
@@ -1145,7 +1219,7 @@ async function initAudio() {
     testMasterGainTone.connect(testEnvelope);
     testEnvelope.connect(testPanner);
     testPanner.connect(preFxGain); // Tone→Tone ✓ (via panner)
-    testPanner.connect(testDirectG); testDirectG.connect(outputGainNode); // DIRECT → OUT bypass
+    testPanner.connect(testDirectG); testDirectG.connect(recordTap); // DIRECT → OUT bypass
     testEnvelope.triggerAttack(); // open fully in steady mode
     testMasterGain = testMasterGainTone; // alias for backward-compat refs
 
@@ -1160,7 +1234,7 @@ async function initAudio() {
     // ── Signal graph (Tone.js throughout) ──────────────────────
     micGainNode.connect(micPanner);
     micPanner.connect(preFxGain);
-    micPanner.connect(micDirectG); micDirectG.connect(outputGainNode); // DIRECT → OUT bypass
+    micPanner.connect(micDirectG); micDirectG.connect(recordTap); // DIRECT → OUT bypass
     preFxGain.connect(inputMeter);
     // Pitch internal: preFxGain → dry+wet → pitchSumG
     preFxGain.connect(pitchDryG); preFxGain.connect(pitchShift); pitchShift.connect(pitchWetG);
@@ -1172,7 +1246,7 @@ async function initAudio() {
     delayNode.connect(feedbackGain); feedbackGain.connect(delayNode);
     delayNode.connect(delayWetGain);
     // Delay sends: wet/dry → out, wet → pitch input (danger-zone feedback)
-    delayDryGain.connect(outputGainNode); delayWetGain.connect(outputGainNode);
+    delayDryGain.connect(recordTap); delayWetGain.connect(recordTap);
     // Flanking meter taps (side-chain analysers, not in main audio path)
     preFxGain.connect(pitchInSplit);
     pitchSumG.connect(pitchOutSplit);
@@ -1182,10 +1256,10 @@ async function initAudio() {
     // Feedback tap — direct from delay line (pre-wet), so send gain is the true level
     delayNode.connect(delayToPitchG); delayToPitchG.connect(preFxGain);
     // Pitch direct → out
-    pitchToOutG.connect(outputGainNode);
+    pitchToOutG.connect(recordTap);
     outputGainNode.connect(outputMeter); outputGainNode.connect(outputMuteNode); outputMuteNode.toDestination();
 
-    // Open mic with Tone.UserMedia — connects cleanly to Tone.js graph
+    // Open mic with Tone.UserMedia — APM-disabled via monkey-patched getUserMedia above.
     micInput = new Tone.UserMedia();
     try {
       await micInput.open();
@@ -1269,6 +1343,24 @@ async function changeInputDevice() {
   } catch(e) {
     document.getElementById('ch-note').textContent = 'mic error: ' + e.message;
   }
+}
+
+// Live latency readout — updates every 2s (outputLatency can change on device switch).
+function startLatencyReadout() {
+  const wrap = document.getElementById('latency-readout');
+  if (wrap) wrap.style.display = 'flex';
+  const update = () => {
+    const ctx = Tone.context.rawContext;
+    if (!ctx) return;
+    const base = (ctx.baseLatency||0)*1000;
+    const out  = (ctx.outputLatency||0)*1000;
+    const b = document.getElementById('lat-base'); if (b) b.textContent = `base ${base.toFixed(1)}ms`;
+    const o = document.getElementById('lat-out');  if (o) o.textContent = `out ${out.toFixed(1)}ms`;
+    const s = document.getElementById('lat-sr');   if (s) s.textContent = `${ctx.sampleRate}Hz`;
+    const t = document.getElementById('lat-total');if (t) t.textContent = `RT ~${(base+out).toFixed(0)}ms`;
+  };
+  update();
+  setInterval(update, 2000);
 }
 function changeInputChannel() {} // channel splitting limited by browser — no-op
 async function toggleSystemAudio(){
@@ -1678,6 +1770,187 @@ function toggleFxBypass(fx){
 // ── Parameter setters ─────────────────────────────────────────────
 function setInputGainDb(db){const v=parseFloat(db); if(micGainNode && !inputMuted) micGainNode.gain.rampTo(dbToGain(v),paramRampTime); const el=document.getElementById('input-gain-val'); el.textContent=Math.round(v)+'dB'; el.dataset.value=v;}
 function setOutputGainDb(db){if(outputGainNode)outputGainNode.gain.rampTo(dbToGain(parseFloat(db)),paramRampTime); const v=parseFloat(db); const el=document.getElementById('output-gain-val'); el.textContent=Math.round(v)+'dB'; el.dataset.value=v;}
+
+// ── Recording: pre-gain mix → file download ──
+//   Two formats:
+//   • 'webm' — MediaRecorder + opus codec @ 192kbps. Compressed, RAM-efficient (~85MB/hr), small files.
+//   • 'wav'  — ScriptProcessor capture → 16-bit PCM WAV. Uncompressed, lossless,
+//             larger (~700MB/hr stereo @ 48kHz). Best for high-fidelity / engineering work.
+function toggleRecord(){
+  if(!mediaStreamDest){
+    document.getElementById('rec-status').textContent = 'init audio first';
+    return;
+  }
+  if(recordingMethod) stopRecord();
+  else startRecord();
+}
+function toggleRecFormat(){
+  if(recordingMethod){ /* don't allow mid-record switch */ return; }
+  recFormat = (recFormat === 'webm') ? 'wav' : 'webm';
+  const btn = document.getElementById('rec-fmt');
+  if(btn){
+    btn.textContent = recFormat.toUpperCase();
+    btn.classList.toggle('wav-mode', recFormat === 'wav');
+  }
+}
+function startRecord(){
+  recordChunks = []; pcmCapL = []; pcmCapR = [];
+  recordSoftWarned = false;
+  let ok = false;
+  if(recFormat === 'wav') ok = startWavCapture();
+  else                    ok = startWebmCapture();
+  if(!ok) return;
+  recordingMethod = recFormat;
+  recordStartTime = Date.now();
+  const btn = document.getElementById('rec-btn');
+  btn.classList.add('recording');
+  btn.textContent = '■ STOP';
+  recordTimerId = setInterval(updateRecordStatus, 500);
+  updateRecordStatus();
+}
+function stopRecord(){
+  if(!recordingMethod) return;
+  if(recordingMethod === 'wav') stopWavCaptureAndDownload();
+  else                          stopWebmCaptureAndDownload();
+  if(recordTimerId){ clearInterval(recordTimerId); recordTimerId = null; }
+  const btn = document.getElementById('rec-btn');
+  btn.classList.remove('recording');
+  btn.textContent = '● REC';
+  recordingMethod = null;
+}
+function updateRecordStatus(){
+  const ms = Date.now() - recordStartTime;
+  const stEl = document.getElementById('rec-status');
+  if(ms >= REC_HARD_CAP_MS){
+    stopRecord();
+    if(stEl) stEl.textContent = 'auto-stop (60min cap)';
+    return;
+  }
+  const totalSec = Math.floor(ms/1000);
+  const m = Math.floor(totalSec/60);
+  const s = totalSec % 60;
+  const time = m + ':' + (s<10?'0':'') + s;
+  if(ms >= REC_SOFT_CAP_MS && !recordSoftWarned){
+    recordSoftWarned = true;
+    if(stEl) stEl.textContent = '⚠ '+time+' (cap 60m)';
+  } else {
+    if(stEl){ stEl.textContent = (recordSoftWarned?'⚠ ':'● ') + time; }
+  }
+}
+
+// ── WEBM (opus) path ──
+function startWebmCapture(){
+  const candidates = ['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg;codecs=opus'];
+  const mime = candidates.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t));
+  try {
+    const opts = mime ? {mimeType:mime, audioBitsPerSecond: REC_OPUS_BITRATE} : {audioBitsPerSecond: REC_OPUS_BITRATE};
+    mediaRecorder = new MediaRecorder(mediaStreamDest.stream, opts);
+  } catch(e){
+    console.error('MediaRecorder failed:', e);
+    document.getElementById('rec-status').textContent = 'webm unsupported';
+    return false;
+  }
+  mediaRecorder.ondataavailable = e => { if(e.data && e.data.size > 0) recordChunks.push(e.data); };
+  mediaRecorder.onstop = ()=>{}; // we trigger download from stopWebmCaptureAndDownload after .stop() resolves
+  mediaRecorder.start(1000);
+  return true;
+}
+function stopWebmCaptureAndDownload(){
+  if(!mediaRecorder) return;
+  // MediaRecorder.stop is async — final ondataavailable fires before onstop. Use onstop hook.
+  mediaRecorder.onstop = () => {
+    const stEl = document.getElementById('rec-status');
+    if(recordChunks.length === 0){ if(stEl) stEl.textContent = 'no data'; return; }
+    const mime = (mediaRecorder && mediaRecorder.mimeType) || 'audio/webm';
+    const ext = mime.includes('mp4') ? '.m4a' : mime.includes('ogg') ? '.ogg' : '.webm';
+    const blob = new Blob(recordChunks, {type: mime});
+    recordChunks = [];
+    triggerDownload(blob, `fx-processor-${recordTimestamp()}${ext}`);
+    const sizeMB = (blob.size/1024/1024).toFixed(1);
+    if(stEl) stEl.textContent = `saved ${sizeMB}MB`;
+  };
+  try { mediaRecorder.stop(); } catch(e) { console.warn('stop:', e); }
+}
+
+// ── WAV (uncompressed PCM) path ──
+function startWavCapture(){
+  if(!rawCtx) return false;
+  // ScriptProcessor — deprecated but works in all browsers and is fine for capture.
+  // Buffer size 4096 samples = ~85ms latency. Fine for offline capture.
+  pcmCaptureNode = rawCtx.createScriptProcessor(4096, 2, 2);
+  pcmCaptureNode.onaudioprocess = (e) => {
+    // Snapshot input — Float32Array views are reused, must copy
+    pcmCapL.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+    pcmCapR.push(new Float32Array(e.inputBuffer.getChannelData(1)));
+    // Pass-through (silenced below) — ScriptProcessor only runs when its output is connected
+    e.outputBuffer.getChannelData(0).set(e.inputBuffer.getChannelData(0));
+    e.outputBuffer.getChannelData(1).set(e.inputBuffer.getChannelData(1));
+  };
+  recordTap.connect(pcmCaptureNode);
+  // Sink ScriptProcessor output to a muted gain → destination so it pumps but isn't heard twice
+  const muted = rawCtx.createGain(); muted.gain.value = 0;
+  pcmCaptureNode.connect(muted); muted.connect(rawCtx.destination);
+  pcmCaptureNode.__mutedSink = muted; // hold ref so it's not GC'd
+  return true;
+}
+function stopWavCaptureAndDownload(){
+  if(!pcmCaptureNode) return;
+  const stEl = document.getElementById('rec-status');
+  try { pcmCaptureNode.disconnect(); } catch(e){}
+  if(pcmCaptureNode.__mutedSink){ try { pcmCaptureNode.__mutedSink.disconnect(); } catch(e){} }
+  pcmCaptureNode.onaudioprocess = null;
+  pcmCaptureNode = null;
+  if(pcmCapL.length === 0){ if(stEl) stEl.textContent = 'no data'; return; }
+  const blob = encodeWavInt16PCM(pcmCapL, pcmCapR, rawCtx.sampleRate);
+  pcmCapL = []; pcmCapR = [];
+  triggerDownload(blob, `fx-processor-${recordTimestamp()}.wav`);
+  const sizeMB = (blob.size/1024/1024).toFixed(1);
+  if(stEl) stEl.textContent = `saved ${sizeMB}MB`;
+}
+// Encode interleaved 16-bit PCM WAV from Float32 chunks. Float32 [-1,+1] → Int16 [-32768, +32767].
+function encodeWavInt16PCM(chunksL, chunksR, sampleRate){
+  let total = 0;
+  for(let i=0;i<chunksL.length;i++) total += chunksL[i].length;
+  const dataSize = total * 2 * 2; // 2 channels * 2 bytes/sample
+  const buf = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buf);
+  const writeStr = (off,s) => { for(let i=0;i<s.length;i++) view.setUint8(off+i, s.charCodeAt(i)); };
+  writeStr(0,'RIFF');         view.setUint32(4, 36+dataSize, true);
+  writeStr(8,'WAVE');
+  writeStr(12,'fmt ');        view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);                  // PCM format
+  view.setUint16(22, 2, true);                  // num channels
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2 * 2, true); // byte rate
+  view.setUint16(32, 4, true);                  // block align
+  view.setUint16(34, 16, true);                 // bits per sample
+  writeStr(36,'data');        view.setUint32(40, dataSize, true);
+  let off = 44;
+  for(let c=0;c<chunksL.length;c++){
+    const L = chunksL[c], R = chunksR[c];
+    for(let i=0;i<L.length;i++){
+      let l = Math.max(-1, Math.min(1, L[i]));
+      let r = Math.max(-1, Math.min(1, R[i]));
+      view.setInt16(off, l<0 ? l*0x8000 : l*0x7fff, true); off += 2;
+      view.setInt16(off, r<0 ? r*0x8000 : r*0x7fff, true); off += 2;
+    }
+  }
+  return new Blob([buf], {type:'audio/wav'});
+}
+
+function triggerDownload(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+function recordTimestamp(){
+  const d = new Date();
+  const pad = n => (n<10?'0':'')+n;
+  return d.getFullYear() + pad(d.getMonth()+1) + pad(d.getDate()) + '-' +
+         pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
+}
 
 function setPitchSemi(v){
   const st=parseFloat(v); if(pitchShift)pitchShift.pitch=st;

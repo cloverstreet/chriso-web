@@ -1,0 +1,1457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LFO + Graphical ADSR — Test Case</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:#0d0d0d; color:#d0d0d0;
+  font-family:'Courier New',monospace; font-size:13px;
+  min-height:100vh; display:flex; flex-direction:column;
+  align-items:center; padding:16px 12px; overflow-x:auto;
+}
+
+/* ── Start screen ───────────────────────────────────────────────── */
+#start-screen {
+  display:flex; flex-direction:column; align-items:center; gap:18px; margin-top:22vh;
+}
+#start-btn {
+  padding:14px 44px; background:transparent;
+  border:1px solid #c8a854; color:#c8a854;
+  font-family:'Courier New',monospace; font-size:.9rem;
+  letter-spacing:.2em; cursor:pointer; transition:all .2s;
+}
+#start-btn:hover { background:#c8a854; color:#000; }
+
+/* ── Board: horizontal layout representing signal flow LFO → SIG → OUT ── */
+#board { display:none; flex-direction:row; align-items:flex-start; gap:10px; }
+.col-wrap { display:flex; flex-direction:column; gap:6px; flex-shrink:0; }
+.col-label {
+  font-size:.6rem; letter-spacing:.28em; color:#666;
+  text-align:center; padding:0 0 3px; text-transform:uppercase;
+}
+
+/* ── Module base ────────────────────────────────────────────────── */
+.module {
+  background:#111; border:1px solid #242424;
+  border-radius:5px; padding:8px 10px 9px;
+  position:relative; flex-shrink:0; width:210px;
+}
+.module.wide { width:320px; }
+.mod-head {
+  display:flex; align-items:center; gap:5px;
+  margin-bottom:7px; padding-bottom:6px;
+  border-bottom:1px solid #1e1e1e;
+}
+.mod-title {
+  font-size:.7rem; letter-spacing:.12em; color:#bbb;
+  text-transform:uppercase; flex-shrink:0;
+}
+.mod-head .head-presets {
+  display:flex; gap:2px; margin-left:auto; margin-right:4px;
+}
+.head-preset-slot {
+  width:18px; height:18px; background:transparent;
+  border:1px solid #1e1e1e; color:#555;
+  font-family:'Courier New',monospace; font-size:.55rem;
+  cursor:pointer; border-radius:2px; transition:all .1s;
+  text-align:center; line-height:16px; padding:0;
+}
+.head-preset-slot.saved { border-color:#3a6a3a; color:#6b9; }
+.head-preset-slot:hover { border-color:#444; color:#888; }
+.head-preset-slot.saved:hover { border-color:#5a5; }
+
+.byp-btn {
+  padding:2px 7px; background:rgba(30,80,30,.4);
+  border:1px solid #2a6a2a; color:#4c4;
+  font-family:'Courier New',monospace; font-size:.66rem;
+  font-weight:600; letter-spacing:.04em; cursor:pointer;
+  border-radius:2px; transition:all .15s; white-space:nowrap;
+  text-shadow:0 0 8px rgba(80,200,80,.4);
+}
+.byp-btn.off {
+  background:rgba(30,30,30,.4); border-color:#555;
+  color:#555; text-shadow:none; font-weight:400;
+}
+.byp-btn.muted {
+  background:rgba(80,20,20,.5); border-color:#8a2a2a;
+  color:#c44; text-shadow:none;
+}
+
+/* ── Controls ───────────────────────────────────────────────────── */
+.ctrl-val {
+  font-size:.68rem; color:#c8a854; white-space:nowrap; cursor:text;
+}
+.ctrl-val:hover { color:#e8c874; text-decoration:underline dotted #666; }
+.ctrl-val.modulated { color:#7abbe0; }
+.ctrl-val.modulated:hover { color:#9cdcf0; }
+
+.slider-row { margin-bottom:6px; }
+.slider-label-row {
+  display:flex; align-items:baseline; justify-content:space-between;
+  margin-bottom:2px;
+}
+.slider-label { font-size:.62rem; letter-spacing:.12em; color:#999; }
+
+/* Inline label + selector (for menus — sliders remain full-width) */
+.ctrl-inline {
+  display:flex; align-items:center; gap:6px;
+  margin-bottom:5px;
+}
+.ctrl-inline label {
+  font-size:.62rem; letter-spacing:.12em; color:#888;
+  flex-shrink:0; min-width:48px;
+}
+
+input[type="range"] {
+  -webkit-appearance:none; width:100%; height:3px;
+  background:#2a2a2a; outline:none; border-radius:2px; cursor:pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance:none; width:12px; height:12px;
+  background:#c8a854; border-radius:50%; cursor:pointer;
+}
+select {
+  flex:1; min-width:0; background:#161616; border:1px solid #2e2e2e;
+  color:#c0c0c0; font-family:'Courier New',monospace;
+  font-size:.66rem; padding:2px 4px; outline:none;
+  cursor:pointer; border-radius:2px;
+}
+
+/* Mode toggle */
+.sgmode-btn {
+  flex:1; padding:3px 0; background:transparent; border:none;
+  color:#555; font-family:'Courier New',monospace; font-size:.58rem;
+  letter-spacing:.1em; cursor:pointer; transition:all .12s; text-transform:uppercase;
+}
+.sgmode-btn.sgmode-active { background:rgba(60,100,60,.35); color:#7ba; }
+.sgmode-btn:hover { color:#888; }
+
+/* ── Dual-handle range (LFO) ────────────────────────────────────── */
+.range-dual {
+  position:relative; width:100%; height:16px;
+}
+.range-dual .track {
+  position:absolute; left:0; right:0; top:6px;
+  height:3px; background:#2a2a2a; border-radius:2px; pointer-events:none;
+}
+.range-dual .fill {
+  position:absolute; top:6px; height:3px;
+  background:#7abbe0; opacity:0.4; border-radius:2px; pointer-events:none;
+}
+.range-dual input[type="range"] {
+  position:absolute; left:0; top:0; width:100%; height:16px;
+  background:transparent; -webkit-appearance:none;
+  pointer-events:none; outline:none;
+}
+.range-dual input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance:none;
+  width:12px; height:12px; border-radius:50%;
+  background:#c8a854; cursor:pointer; pointer-events:auto;
+}
+.range-dual input.range-max::-webkit-slider-thumb {
+  background:#e0b858;
+}
+
+/* LFO modulation indicator dot on sig-gen sliders */
+.slider-wrap { position:relative; }
+.mod-dot {
+  position:absolute; top:-4px; width:3px; height:10px;
+  background:#7abbe0; border-radius:1px;
+  box-shadow:0 0 6px rgba(122,187,224,.8);
+  pointer-events:none; transition:left .04s linear;
+  display:none;
+}
+.mod-dot.active { display:block; }
+
+/* ── 2D gain/pan pad (SIG GEN) ──────────────────────────────────── */
+.gp-pad {
+  position:relative; width:100%; height:46px;
+  background:#060606; border:1px solid #1a1a1a; border-radius:3px;
+  overflow:hidden; cursor:grab; touch-action:none;
+  margin-top:2px;
+}
+.gp-pad:active { cursor:grabbing; }
+.gp-meter {
+  position:absolute; left:0; height:calc(50% - 1px);
+  width:0%;
+  background:linear-gradient(to right,#1a5a1a 0%,#2a9a2a 58%,#7ab020 70%,#b89010 82%,#c06010 90%,#e02020 100%);
+  transition:width .04s;
+}
+.gp-meter-l { top:0; }
+.gp-meter-r { bottom:0; }
+.gp-zero-line {
+  position:absolute; top:0; bottom:0;
+  left:83.33%; width:1px;
+  background:rgba(200,200,100,0.45);
+  pointer-events:none;
+}
+.gp-zero-label {
+  position:absolute; top:50%; left:calc(83.33% + 2px); transform:translateY(-50%);
+  font-family:'Courier New',monospace; font-size:.46rem; color:rgba(200,200,100,0.55);
+  pointer-events:none; line-height:1;
+}
+.gp-center-line {
+  position:absolute; left:0; right:0; top:50%; height:1px;
+  background:rgba(255,255,255,0.07); pointer-events:none;
+}
+.gp-puck {
+  position:absolute; width:13px; height:13px; border-radius:50%;
+  background:#6aaee0; border:1px solid rgba(255,255,255,0.25);
+  box-shadow:0 0 7px rgba(100,160,220,0.7);
+  transform:translate(-50%,-50%); pointer-events:none;
+  transition:left .04s, top .04s;
+}
+.gp-readout {
+  display:flex; justify-content:space-between;
+  font-size:.6rem; color:#888; letter-spacing:.05em;
+  margin-top:3px; padding:0 1px;
+}
+.gp-readout .k { color:#666; letter-spacing:.12em; text-transform:uppercase; }
+
+/* ── Graphical ADSR ─────────────────────────────────────────────── */
+#adsr-panel {
+  margin-top:6px; padding:6px 4px 4px; border-top:1px solid #1a1a1a;
+}
+#adsr-label-row {
+  display:flex; justify-content:space-between; align-items:baseline; margin-bottom:3px;
+}
+#adsr-label-row .lbl { font-size:.56rem; color:#666; letter-spacing:.14em; text-transform:uppercase; }
+#adsr-svg-wrap {
+  position:relative; background:#070707;
+  border:1px solid #1a1a1a; border-radius:3px;
+}
+#adsr-svg {
+  display:block; width:100%; height:160px; cursor:default; touch-action:none;
+}
+.adsr-seg { fill:none; stroke:#4a7a9a; stroke-width:1.5; }
+.adsr-handle {
+  fill:#0d0d0d; stroke:#c8a854; stroke-width:1.5; cursor:grab;
+}
+.adsr-handle:hover { fill:#c8a854; }
+.adsr-handle.dragging { cursor:grabbing; fill:#c8a854; }
+.adsr-gridline { stroke:#1a1a1a; stroke-width:1; }
+.adsr-gridlabel {
+  font-family:'Courier New',monospace; font-size:8px;
+  fill:#444; letter-spacing:.05em;
+}
+.adsr-pointlabel {
+  font-family:'Courier New',monospace; font-size:9px;
+  fill:#c8a854; pointer-events:auto;
+}
+.adsr-pointlabel.editable { cursor:text; }
+.adsr-pointlabel.editable:hover { fill:#e8c874; }
+.adsr-editbox {
+  position:absolute; background:#000; border:1px solid #c8a854;
+  color:#e8c874; font-family:'Courier New',monospace; font-size:10px;
+  padding:1px 4px; outline:none; border-radius:2px; z-index:20;
+  width:58px;
+}
+#adsr-defaults-btn {
+  font-size:.55rem; padding:1px 6px; background:transparent;
+  border:1px solid #333; color:#666;
+  font-family:'Courier New',monospace; letter-spacing:.08em;
+  cursor:pointer; border-radius:2px; transition:all .15s;
+}
+#adsr-defaults-btn:hover { border-color:#c8a854; color:#c8a854; }
+
+/* ── LFO waveform preview ───────────────────────────────────────── */
+#lfo-preview {
+  width:100%; height:28px; background:#070707;
+  border:1px solid #1a1a1a; border-radius:3px;
+  margin-top:4px;
+}
+
+/* ── Output gain+meter (vertical composite, kept) ──────────────── */
+.gain-meter-wrap { position:relative; width:22px; flex-shrink:0; }
+.gain-meter-bg { position:absolute; bottom:0; left:0; width:100%; height:100%; display:flex; gap:2px; }
+.gain-meter-wrap::before {
+  content:""; position:absolute; left:-2px; right:-2px;
+  bottom:var(--zero-db, 83.33%); height:1px;
+  background:rgba(200,200,100,0.45); z-index:1; pointer-events:none;
+}
+.gain-meter-wrap::after {
+  content:"0"; position:absolute; left:-11px;
+  bottom:calc(var(--zero-db, 83.33%) - 5px);
+  font-family:'Courier New',monospace; font-size:.46rem;
+  color:rgba(200,200,100,0.55); line-height:1; z-index:1; pointer-events:none;
+}
+.gain-meter-bar {
+  flex:1; position:relative;
+  background:linear-gradient(to top, #0d1a0d 0%, #121f12 80%, #0f0f0f 100%);
+  border-radius:2px; overflow:hidden;
+}
+.gain-meter-level {
+  position:absolute; bottom:0; left:0; width:100%;
+  background:linear-gradient(to top, #1a5a1a 0%, #2a9a2a 68%, #7ab020 78%, #b89010 85%, #c06010 91%, #c83010 96%, #e02020 100%);
+  transition:height .04s;
+}
+.gain-meter-peak { position:absolute; width:100%; height:2px; background:rgba(255,255,255,.6); }
+input.gain-meter-slider {
+  position:absolute; top:0; left:0; z-index:2;
+  writing-mode:vertical-lr; direction:rtl; width:100%; height:100%;
+  background:transparent; -webkit-appearance:none; cursor:pointer; outline:none;
+}
+input.gain-meter-slider::-webkit-slider-thumb {
+  -webkit-appearance:none; width:26px; height:5px;
+  background:#6aaee0; border-radius:1px; cursor:pointer;
+  box-shadow:0 0 4px rgba(100,160,220,0.5);
+}
+
+.key-hint { font-size:.56rem; color:#555; letter-spacing:.08em; }
+.page-info {
+  font-size:.56rem; color:#555; letter-spacing:.12em;
+  padding:4px 0 4px; text-align:center;
+}
+.page-info a { color:#666; text-decoration:none; }
+.page-info a:hover { color:#888; }
+</style>
+</head>
+<body>
+
+<div id="start-screen">
+  <div style="font-size:.78rem;letter-spacing:.28em;color:#666;">LFO + GRAPHICAL ADSR — TEST CASE</div>
+  <button id="start-btn" onclick="initAudio()">INITIALISE AUDIO</button>
+  <div id="start-status" style="font-size:.62rem;color:#555;letter-spacing:.15em;">click to start Tone.js context</div>
+  <pre id="start-error" style="display:none;max-width:560px;color:#e05050;font-size:.6rem;letter-spacing:.05em;background:#1a0d0d;border:1px solid #5a2a2a;padding:8px;border-radius:3px;white-space:pre-wrap;"></pre>
+</div>
+
+<div id="board">
+
+  <!-- ═════════ LFO column (can hold stacked LFOs later) ═════════ -->
+  <div class="col-wrap">
+    <div class="col-label">modulators</div>
+    <div class="module" id="lfo-module">
+      <div class="mod-head">
+        <span class="mod-title">LFO</span>
+        <div class="head-presets">
+          <button class="head-preset-slot" data-slot="0" data-fx="lfo" onclick="handlePreset(event, this)">1</button>
+          <button class="head-preset-slot" data-slot="1" data-fx="lfo" onclick="handlePreset(event, this)">2</button>
+          <button class="head-preset-slot" data-slot="2" data-fx="lfo" onclick="handlePreset(event, this)">3</button>
+          <button class="head-preset-slot" data-slot="3" data-fx="lfo" onclick="handlePreset(event, this)">4</button>
+          <button class="head-preset-slot" data-slot="4" data-fx="lfo" onclick="handlePreset(event, this)">5</button>
+          <button class="head-preset-slot" data-slot="5" data-fx="lfo" onclick="handlePreset(event, this)">6</button>
+        </div>
+        <button class="byp-btn off" id="lfo-enable-btn" onclick="toggleLfo()">OFF</button>
+      </div>
+
+      <div class="slider-row">
+        <div class="slider-label-row">
+          <span class="slider-label">RATE</span>
+          <span class="ctrl-val" id="lfo-rate-val" data-value="2" style="font-size:.66rem;">2.00 Hz</span>
+        </div>
+        <input type="range" id="lfo-rate-sl" min="0" max="1000" step="any" value="434"
+               oninput="setLfoRatePos(this.value)">
+      </div>
+
+      <div class="ctrl-inline">
+        <label>SHAPE</label>
+        <select id="lfo-shape" onchange="setLfoShape(this.value)">
+          <option value="sine">Sine</option>
+          <option value="triangle">Triangle</option>
+          <option value="sawtooth">Sawtooth (Up)</option>
+          <option value="square">Square</option>
+        </select>
+      </div>
+
+      <div class="ctrl-inline">
+        <label>TARGET</label>
+        <select id="lfo-target" onchange="setLfoTarget(this.value)">
+          <option value="freq">Freq</option>
+          <option value="pulseRate">Pulse Rate</option>
+          <option value="pan">Pan</option>
+          <option value="volume">Volume</option>
+        </select>
+      </div>
+
+      <div class="slider-row" style="margin-bottom:4px;">
+        <div class="slider-label-row">
+          <span class="slider-label">RANGE</span>
+          <span style="font-size:.6rem;color:#888;">
+            <span class="ctrl-val" id="lfo-min-val" data-value="" style="font-size:.6rem;">—</span>
+            <span style="color:#444;"> .. </span>
+            <span class="ctrl-val" id="lfo-max-val" data-value="" style="font-size:.6rem;">—</span>
+          </span>
+        </div>
+        <div class="range-dual" id="lfo-range-dual">
+          <div class="track"></div>
+          <div class="fill" id="lfo-range-fill"></div>
+          <input type="range" class="range-min" id="lfo-min-sl"
+                 min="0" max="1000" step="any" value="300" oninput="setLfoMinPos(this.value)">
+          <input type="range" class="range-max" id="lfo-max-sl"
+                 min="0" max="1000" step="any" value="700" oninput="setLfoMaxPos(this.value)">
+        </div>
+      </div>
+
+      <canvas id="lfo-preview"></canvas>
+    </div>
+  </div>
+
+  <!-- ═════════ SIG GEN ═════════ -->
+  <div class="col-wrap">
+    <div class="col-label">signal</div>
+    <div class="module wide" id="siggen-module">
+      <div class="mod-head">
+        <span class="mod-title">SIGNAL GEN</span>
+        <div class="head-presets">
+          <button class="head-preset-slot" data-slot="0" data-fx="siggen" onclick="handlePreset(event, this)">1</button>
+          <button class="head-preset-slot" data-slot="1" data-fx="siggen" onclick="handlePreset(event, this)">2</button>
+          <button class="head-preset-slot" data-slot="2" data-fx="siggen" onclick="handlePreset(event, this)">3</button>
+          <button class="head-preset-slot" data-slot="3" data-fx="siggen" onclick="handlePreset(event, this)">4</button>
+          <button class="head-preset-slot" data-slot="4" data-fx="siggen" onclick="handlePreset(event, this)">5</button>
+          <button class="head-preset-slot" data-slot="5" data-fx="siggen" onclick="handlePreset(event, this)">6</button>
+        </div>
+        <button class="byp-btn off" id="test-enable-btn" onclick="toggleTestTone()">OFF</button>
+      </div>
+
+      <div style="display:flex;gap:0;margin-bottom:7px;border:1px solid #1e1e1e;border-radius:2px;overflow:hidden;">
+        <button class="sgmode-btn sgmode-active" id="sgmode-steady" onclick="setSigGenMode('steady')">STEADY</button>
+        <button class="sgmode-btn" id="sgmode-pulsed" onclick="setSigGenMode('pulsed')">PULSED</button>
+      </div>
+
+      <div class="ctrl-inline">
+        <label>WAVEFORM</label>
+        <select id="test-wave" onchange="setTestWave(this.value)">
+          <option value="sine">Sine</option>
+          <option value="square">Square</option>
+          <option value="sawtooth">Sawtooth</option>
+          <option value="triangle">Triangle</option>
+        </select>
+      </div>
+
+      <div class="slider-row">
+        <div class="slider-label-row">
+          <span class="slider-label">FREQ</span>
+          <span class="ctrl-val" id="test-freq-val" data-value="220">220 Hz</span>
+        </div>
+        <div class="slider-wrap">
+          <input type="range" id="test-freq-sl" min="0" max="1000" step="any" value="347"
+                 oninput="setTestFreqPos(this.value)">
+          <div class="mod-dot" id="test-freq-dot"></div>
+        </div>
+      </div>
+
+      <div class="slider-row" id="pulse-rate-row" style="display:none;">
+        <div class="slider-label-row">
+          <span class="slider-label">PULSE RATE</span>
+          <span class="ctrl-val" id="pulse-rate-val" data-value="1000">1000 ms</span>
+        </div>
+        <div class="slider-wrap">
+          <input type="range" id="pulse-rate-sl" min="20" max="5000" step="10" value="1000"
+                 oninput="setPulseRate(this.value)">
+          <div class="mod-dot" id="pulse-rate-dot"></div>
+        </div>
+      </div>
+
+      <!-- 2D gain/pan pad: horizontal drag = gain, vertical drag = pan -->
+      <div class="slider-row" style="margin-bottom:4px;">
+        <div class="slider-label-row">
+          <span class="slider-label">GAIN · PAN <span style="color:#444;font-size:.5rem;letter-spacing:.05em;">(drag L/R = gain, U/D = pan)</span></span>
+        </div>
+        <div class="gp-pad" id="sig-gp-pad">
+          <div class="gp-meter gp-meter-l" id="sig-meter-l"></div>
+          <div class="gp-meter gp-meter-r" id="sig-meter-r"></div>
+          <div class="gp-center-line"></div>
+          <div class="gp-zero-line"></div>
+          <div class="gp-zero-label">0</div>
+          <div class="gp-puck" id="sig-puck"></div>
+        </div>
+        <div class="gp-readout">
+          <span><span class="k">gain</span> <span class="ctrl-val" id="test-gain-val" data-value="-12">-12.00 dB</span></span>
+          <span><span class="k">pan</span> <span class="ctrl-val" id="test-pan-val" data-value="0">C</span></span>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;margin-top:2px;">
+        <span class="key-hint"><span style="color:#666;">SPACE</span> = fire pulse</span>
+      </div>
+
+      <!-- Graphical ADSR -->
+      <div id="adsr-panel">
+        <div id="adsr-label-row">
+          <span class="lbl">Envelope · drag handles · click labels to type</span>
+          <button id="adsr-defaults-btn" onclick="resetAdsrDefaults()">RESET</button>
+        </div>
+        <div id="adsr-svg-wrap">
+          <svg id="adsr-svg" viewBox="0 0 320 160" preserveAspectRatio="none"></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═════════ OUTPUT ═════════ -->
+  <div class="col-wrap">
+    <div class="col-label">output</div>
+    <div class="module" id="output-module">
+      <div class="mod-head">
+        <span class="mod-title">OUTPUT</span>
+        <button class="byp-btn" id="output-mute" onclick="toggleOutputMute()" style="margin-left:auto;">ON</button>
+      </div>
+      <div style="display:flex;justify-content:center;height:160px;min-height:160px;margin-bottom:4px;">
+        <div class="gain-meter-wrap" style="height:160px;">
+          <div class="gain-meter-bg">
+            <div class="gain-meter-bar">
+              <div class="gain-meter-level" id="out-level-l" style="height:0%"></div>
+              <div class="gain-meter-peak" id="out-pk-l" style="bottom:0%"></div>
+            </div>
+            <div class="gain-meter-bar">
+              <div class="gain-meter-level" id="out-level-r" style="height:0%"></div>
+              <div class="gain-meter-peak" id="out-pk-r" style="bottom:0%"></div>
+            </div>
+          </div>
+          <input class="gain-meter-slider" type="range" id="output-gain-db"
+            min="-60" max="12" step="0.5" value="-6" oninput="setOutputGainDb(this.value)">
+        </div>
+      </div>
+      <div style="text-align:center;margin-top:3px;">
+        <span class="ctrl-val" id="output-gain-val" data-value="-6" style="font-size:.68rem;">-6.00 dB</span>
+      </div>
+      <hr style="border:none;border-top:1px solid #1a1a1a;margin:8px 0;">
+      <div style="font-size:.54rem;color:#555;letter-spacing:.1em;">
+        <div id="out-latency-base">base —</div>
+        <div id="out-latency-out">out —</div>
+        <div id="out-latency-total" style="color:#7abbe0;">RT —</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="page-info" id="page-info-bar" style="display:none;">
+  fx-processor test case · <a href="../../web-instruments/fx-processor/">back to fx-processor</a>
+</div>
+
+<script>
+/* ══════════ UTILITIES ══════════ */
+function dbToGain(db){ return Math.pow(10, db/20); }
+function clamp(v,lo,hi){ return Math.max(lo, Math.min(hi,v)); }
+// Round to at most 2 decimals, stripping trailing zeros
+function round2(n){ return Math.round(n*100)/100; }
+function fmt2(n){ return round2(n).toString(); }
+
+const freqLog = {
+  minHz:20, maxHz:20000,
+  toHz(pos){ const p=pos/1000; return this.minHz*Math.pow(this.maxHz/this.minHz,p); },
+  toPos(hz){ const p=Math.log(hz/this.minHz)/Math.log(this.maxHz/this.minHz); return clamp(p*1000,0,1000); },
+};
+const rateLog = {
+  minHz:0.05, maxHz:50,
+  toHz(pos){ const p=pos/1000; return this.minHz*Math.pow(this.maxHz/this.minHz,p); },
+  toPos(hz){ const p=Math.log(hz/this.minHz)/Math.log(this.maxHz/this.minHz); return clamp(p*1000,0,1000); },
+};
+
+function stereoGain(g) {
+  const opts = {channelCount:2, channelCountMode:'explicit', channelInterpretation:'speakers'};
+  const n = new Tone.Gain(g);
+  try { Object.assign(n.input, opts); Object.assign(n.output, opts); } catch(e){}
+  return n;
+}
+
+/* ══════════ TARGET CONFIGS (LFO) ══════════ */
+const TARGETS = {
+  freq: {
+    label:'Hz', unitMin:20, unitMax:20000, defaultMin:80, defaultMax:800, scale:'log',
+    toPos(v){ return clamp((Math.log(v/this.unitMin)/Math.log(this.unitMax/this.unitMin))*1000,0,1000); },
+    toVal(pos){ return this.unitMin*Math.pow(this.unitMax/this.unitMin, pos/1000); },
+    fmt(v){ return v>=1000 ? round2(v/1000)+'kHz' : round2(v)+'Hz'; },
+    parse(s){ s=String(s).trim().toLowerCase(); const k=s.includes('k'); const n=parseFloat(s.replace(/[^0-9.\-]/g,'')); return k?n*1000:n; },
+  },
+  pulseRate: {
+    label:'ms', unitMin:20, unitMax:10000, defaultMin:200, defaultMax:2000, scale:'log',
+    toPos(v){ return clamp((Math.log(v/this.unitMin)/Math.log(this.unitMax/this.unitMin))*1000,0,1000); },
+    toVal(pos){ return this.unitMin*Math.pow(this.unitMax/this.unitMin, pos/1000); },
+    fmt(v){ return round2(v)+'ms'; },
+    parse(s){ return parseFloat(String(s).replace(/[^0-9.\-]/g,'')); },
+  },
+  pan: {
+    label:'', unitMin:-1, unitMax:1, defaultMin:-0.8, defaultMax:0.8, scale:'linear',
+    toPos(v){ return clamp(((v-this.unitMin)/(this.unitMax-this.unitMin))*1000,0,1000); },
+    toVal(pos){ return this.unitMin + (pos/1000)*(this.unitMax-this.unitMin); },
+    fmt(v){ if(Math.abs(v)<0.02)return'C'; return (v<0?'L':'R')+Math.round(Math.abs(v)*100); },
+    parse(s){ s=String(s).trim().toUpperCase(); if(s==='C')return 0; if(s.startsWith('L'))return -parseFloat(s.slice(1))/100; if(s.startsWith('R'))return parseFloat(s.slice(1))/100; return parseFloat(s); },
+  },
+  volume: {
+    label:'dB', unitMin:-60, unitMax:6, defaultMin:-24, defaultMax:0, scale:'linear',
+    toPos(v){ return clamp(((v-this.unitMin)/(this.unitMax-this.unitMin))*1000,0,1000); },
+    toVal(pos){ return this.unitMin + (pos/1000)*(this.unitMax-this.unitMin); },
+    fmt(v){ return round2(v)+'dB'; },
+    parse(s){ return parseFloat(String(s).replace(/[^0-9.\-]/g,'')); },
+  },
+};
+
+/* ══════════ STATE ══════════ */
+let rawCtx=null;
+let testOsc=null, testEnvelope=null, testPanner=null, testGain=null;
+let outputGainNode=null, outputMuteNode=null;
+// Native per-channel analysers for stereo metering (fx-processor flanking-meter pattern)
+let testSplit=null, testAnL=null, testAnR=null;
+let outSplit=null, outAnL=null, outAnR=null;
+
+let testEnabled=false, sigGenMode='steady', outputMuted=false;
+let pulseInterval=null;
+
+let testFreqHz=220, testGainDb=-12, testPan=0, testWave='sine', pulseRateMs=1000;
+let outputGainDb=-6;
+
+let adsr = { aMs:20, aLevel:1.0, dMs:50, dLevel:0.251, sMs:100, rMs:100 };
+const ADSR_DEFAULTS = { aMs:20, aLevel:1.0, dMs:50, dLevel:0.251, sMs:100, rMs:100 };
+
+let lfoEnabled=false, lfoRateHz=2, lfoShape='sine', lfoTarget='freq';
+let lfoMin = TARGETS.freq.defaultMin;
+let lfoMax = TARGETS.freq.defaultMax;
+const lfoRangesPerTarget = {
+  freq:      {min:TARGETS.freq.defaultMin,      max:TARGETS.freq.defaultMax},
+  pulseRate: {min:TARGETS.pulseRate.defaultMin, max:TARGETS.pulseRate.defaultMax},
+  pan:       {min:TARGETS.pan.defaultMin,       max:TARGETS.pan.defaultMax},
+  volume:    {min:TARGETS.volume.defaultMin,    max:TARGETS.volume.defaultMax},
+};
+
+let lfoPhase=0, lfoLastT=performance.now();
+function lfoTick(){
+  const now = performance.now();
+  const dt = Math.max(0, (now - lfoLastT)/1000);
+  lfoLastT = now;
+  lfoPhase = (lfoPhase + dt * lfoRateHz) % 1;
+  switch(lfoShape){
+    case 'sine':     return Math.sin(lfoPhase * Math.PI * 2);
+    case 'triangle': return lfoPhase < 0.5 ? (lfoPhase*4 - 1) : (3 - lfoPhase*4);
+    case 'sawtooth': return lfoPhase*2 - 1;
+    case 'square':   return lfoPhase < 0.5 ? 1 : -1;
+  }
+  return 0;
+}
+function lfoToTargetValue(sample){ return lfoMin + (lfoMax - lfoMin) * (sample + 1) / 2; }
+
+const PRESET_KEY = 'lfo-adsr-test:presets';
+let presets = loadPresets();
+function loadPresets(){ try { return JSON.parse(localStorage.getItem(PRESET_KEY)||'{}'); } catch { return {}; } }
+function savePresets(){ localStorage.setItem(PRESET_KEY, JSON.stringify(presets)); }
+
+/* ══════════ INIT ══════════ */
+async function initAudio(){
+  const btn = document.getElementById('start-btn');
+  const st  = document.getElementById('start-status');
+  const err = document.getElementById('start-error');
+  if(err) err.style.display='none';
+  btn.disabled = true;
+  st.textContent = 'starting Tone.js context...';
+  try {
+    await _initAudio();
+  } catch(e) {
+    console.error('initAudio failed:', e);
+    st.textContent = 'init failed — see error below';
+    if(err){
+      err.style.display = 'block';
+      err.textContent = (e && e.stack) ? e.stack : String(e);
+    }
+    btn.disabled = false;
+  }
+}
+
+async function _initAudio(){
+  const st = document.getElementById('start-status');
+  st.textContent = 'starting Tone...';
+  // Tone.js 14 defaults to latencyHint:'interactive'. Replacing the context
+  // post-load (Tone.setContext) breaks node-graph connectivity in this build.
+  await Tone.start();
+  Tone.context.lookAhead = 0;
+  rawCtx = Tone.context.rawContext;
+  st.textContent = 'building audio graph...';
+
+  outputGainNode = stereoGain(dbToGain(outputGainDb));
+  outputMuteNode = stereoGain(1);
+
+  testOsc = new Tone.Oscillator(testFreqHz, testWave).start();
+  testEnvelope = new Tone.AmplitudeEnvelope({
+    attack: adsr.aMs/1000, decay: adsr.dMs/1000,
+    sustain: adsr.dLevel, release: adsr.rMs/1000,
+  });
+  testPanner = new Tone.Panner(testPan);
+  testGain = stereoGain(dbToGain(testGainDb));
+
+  testOsc.connect(testEnvelope);
+  testEnvelope.connect(testPanner);
+  testPanner.connect(testGain);
+  testGain.connect(outputGainNode);
+
+  // ── Native per-channel stereo metering (matches fx-processor flanking-meter pattern) ──
+  testSplit = rawCtx.createChannelSplitter(2);
+  testAnL = rawCtx.createAnalyser(); testAnL.fftSize = 1024; testAnL.smoothingTimeConstant = 0.75;
+  testAnR = rawCtx.createAnalyser(); testAnR.fftSize = 1024; testAnR.smoothingTimeConstant = 0.75;
+  testSplit.connect(testAnL, 0); testSplit.connect(testAnR, 1);
+  // Tone→native: use the Tone node's .connect() method (it unwraps the native destination
+  // internally). Tone.connect(tone, native) fails in 14.8.49 — param1 must be native.
+  testGain.connect(testSplit);
+
+  outSplit = rawCtx.createChannelSplitter(2);
+  outAnL = rawCtx.createAnalyser(); outAnL.fftSize = 1024; outAnL.smoothingTimeConstant = 0.75;
+  outAnR = rawCtx.createAnalyser(); outAnR.fftSize = 1024; outAnR.smoothingTimeConstant = 0.75;
+  outSplit.connect(outAnL, 0); outSplit.connect(outAnR, 1);
+  outputGainNode.connect(outSplit);
+
+  outputGainNode.connect(outputMuteNode);
+  outputMuteNode.toDestination();
+
+  testEnvelope.triggerAttack();
+
+  document.getElementById('start-screen').style.display = 'none';
+  document.getElementById('board').style.display = 'flex';
+  document.getElementById('page-info-bar').style.display = '';
+
+  updateLfoRangeUi();
+  drawAdsr();
+  bindAdsrLabels();
+  bindGainPanPad();
+  updatePuck();
+  startMeterLoop();
+  startLfoPreviewLoop();
+  updatePulseRateVisibility();
+  startLatencyReadout();
+
+  window.addEventListener('keydown', (e)=>{
+    if(e.target.tagName==='INPUT') return;
+    if(e.code==='Space' && testEnabled && sigGenMode==='pulsed'){
+      e.preventDefault();
+      firePulse();
+    }
+  });
+
+  console.log('Latency info:', {
+    baseLatency: rawCtx.baseLatency,
+    outputLatency: rawCtx.outputLatency,
+    sampleRate: rawCtx.sampleRate,
+  });
+}
+
+/* ══════════ SIG GEN ══════════ */
+function toggleTestTone(){
+  testEnabled = !testEnabled;
+  const btn = document.getElementById('test-enable-btn');
+  btn.textContent = testEnabled ? 'ON' : 'OFF';
+  btn.classList.toggle('off', !testEnabled);
+  if(!testEnvelope) return;
+  if(testEnabled){
+    if(sigGenMode==='steady') testEnvelope.triggerAttack();
+    else startPulseLoop();
+  } else {
+    testEnvelope.triggerRelease();
+    stopPulseLoop();
+  }
+}
+function setSigGenMode(mode){
+  sigGenMode=mode;
+  document.getElementById('sgmode-steady').classList.toggle('sgmode-active', mode==='steady');
+  document.getElementById('sgmode-pulsed').classList.toggle('sgmode-active', mode==='pulsed');
+  updatePulseRateVisibility();
+  if(!testEnvelope) return;
+  if(testEnabled){
+    if(mode==='steady'){ stopPulseLoop(); testEnvelope.triggerAttack(); }
+    else { testEnvelope.triggerRelease(); startPulseLoop(); }
+  }
+}
+function updatePulseRateVisibility(){
+  document.getElementById('pulse-rate-row').style.display = sigGenMode==='pulsed' ? '' : 'none';
+}
+function setTestWave(w){ testWave=w; if(testOsc) testOsc.type=w; }
+
+function setTestFreqPos(pos){
+  const hz = freqLog.toHz(parseFloat(pos));
+  testFreqHz = hz;
+  applyFreqToOsc();
+  const el = document.getElementById('test-freq-val');
+  el.textContent = hz>=1000 ? round2(hz/1000)+' kHz' : round2(hz)+' Hz';
+  el.dataset.value = hz;
+}
+function setTestFreqHz(hz){
+  hz = clamp(parseFloat(hz), freqLog.minHz, freqLog.maxHz);
+  document.getElementById('test-freq-sl').value = freqLog.toPos(hz);
+  setTestFreqPos(freqLog.toPos(hz));
+}
+function applyFreqToOsc(){
+  if(!testOsc) return;
+  if(lfoEnabled && lfoTarget==='freq') return;
+  testOsc.frequency.rampTo(Math.max(testFreqHz,0.5), 0.01);
+}
+
+function setTestGainDb(db){
+  testGainDb = clamp(parseFloat(db), -60, 6);
+  applyGainToTestGain();
+  const el = document.getElementById('test-gain-val');
+  el.textContent = round2(testGainDb)+' dB';
+  el.dataset.value = testGainDb;
+  updatePuck();
+}
+function applyGainToTestGain(){
+  if(!testGain) return;
+  if(lfoEnabled && lfoTarget==='volume') return;
+  testGain.gain.rampTo(dbToGain(testGainDb)*adsr.aLevel, 0.02);
+}
+
+function setTestPan(p){
+  testPan = clamp(parseFloat(p), -1, 1);
+  applyPanToPanner();
+  const el = document.getElementById('test-pan-val');
+  if(Math.abs(testPan)<0.02) el.textContent='C';
+  else el.textContent = (testPan<0?'L':'R') + Math.round(Math.abs(testPan)*100);
+  el.dataset.value = testPan;
+  updatePuck();
+}
+function applyPanToPanner(){
+  if(!testPanner) return;
+  if(lfoEnabled && lfoTarget==='pan') return;
+  testPanner.pan.rampTo(testPan, 0.05);
+}
+
+function setPulseRate(ms){
+  pulseRateMs = parseInt(ms);
+  const el = document.getElementById('pulse-rate-val');
+  el.textContent = pulseRateMs + ' ms';
+  el.dataset.value = pulseRateMs;
+  if(testEnabled && sigGenMode==='pulsed'){ startPulseLoop(); }
+}
+function startPulseLoop(){
+  stopPulseLoop();
+  const fire = () => {
+    if(!testEnabled || sigGenMode!=='pulsed') return;
+    firePulse();
+    let rate = pulseRateMs;
+    if(lfoEnabled && lfoTarget==='pulseRate'){
+      rate = clamp(lfoToTargetValue(lfoTick()), 20, 30000);
+    }
+    pulseInterval = setTimeout(fire, rate);
+  };
+  fire();
+}
+function stopPulseLoop(){ if(pulseInterval){ clearTimeout(pulseInterval); pulseInterval=null; } }
+function firePulse(){
+  if(!testEnvelope) return;
+  const dur = (adsr.aMs + adsr.dMs + adsr.sMs) / 1000;
+  testEnvelope.triggerAttackRelease(dur, Tone.now());
+}
+
+/* ══════════ 2D GAIN/PAN PAD ══════════ */
+function updatePuck(){
+  const puck = document.getElementById('sig-puck');
+  if(!puck) return;
+  // X: gain mapped -60..+6 → 0..100%. Y: pan -1..+1 → top(L)..bottom(R)
+  const xPct = clamp((testGainDb - (-60)) / 66, 0, 1) * 100;
+  const yPct = clamp((testPan + 1) / 2, 0, 1) * 100;
+  puck.style.left = xPct + '%';
+  puck.style.top  = yPct + '%';
+}
+function bindGainPanPad(){
+  const pad = document.getElementById('sig-gp-pad');
+  let dragging = false;
+  function updateFromEvent(e){
+    const rect = pad.getBoundingClientRect();
+    const x = clamp(e.clientX - rect.left, 0, rect.width);
+    const y = clamp(e.clientY - rect.top, 0, rect.height);
+    const newGainDb = -60 + (x/rect.width) * 66;
+    const newPan = (y/rect.height) * 2 - 1;
+    setTestGainDb(newGainDb);
+    setTestPan(newPan);
+  }
+  pad.addEventListener('pointerdown', (e)=>{
+    dragging = true; pad.setPointerCapture(e.pointerId);
+    updateFromEvent(e);
+  });
+  pad.addEventListener('pointermove', (e)=>{ if(dragging) updateFromEvent(e); });
+  pad.addEventListener('pointerup',   (e)=>{ dragging = false; try { pad.releasePointerCapture(e.pointerId); } catch{} });
+  pad.addEventListener('pointercancel',(e)=>{ dragging = false; });
+  // Dblclick any pad → gain 0dB, pan centered
+  pad.addEventListener('dblclick', ()=>{ setTestGainDb(0); setTestPan(0); });
+}
+
+/* ══════════ OUTPUT ══════════ */
+function setOutputGainDb(db){
+  outputGainDb = parseFloat(db);
+  if(outputGainNode) outputGainNode.gain.rampTo(dbToGain(outputGainDb), 0.05);
+  const el = document.getElementById('output-gain-val');
+  el.textContent = round2(outputGainDb)+' dB';
+  el.dataset.value = outputGainDb;
+}
+function toggleOutputMute(){
+  outputMuted = !outputMuted;
+  if(outputMuteNode) outputMuteNode.gain.rampTo(outputMuted?0:1, 0.05);
+  const b = document.getElementById('output-mute');
+  b.textContent = outputMuted ? 'OFF' : 'ON';
+  b.classList.toggle('muted', outputMuted);
+}
+
+/* ══════════ LFO ══════════ */
+function toggleLfo(){
+  lfoEnabled = !lfoEnabled;
+  const btn = document.getElementById('lfo-enable-btn');
+  btn.textContent = lfoEnabled ? 'ON' : 'OFF';
+  btn.classList.toggle('off', !lfoEnabled);
+  if(!lfoEnabled){
+    applyFreqToOsc(); applyPanToPanner(); applyGainToTestGain();
+    ['test-freq-dot','test-pan-dot','pulse-rate-dot'].forEach(id=>{
+      const d = document.getElementById(id); if(d) d.classList.remove('active');
+    });
+    ['test-freq-val','test-pan-val','test-gain-val','pulse-rate-val'].forEach(id=>{
+      const el = document.getElementById(id); if(el) el.classList.remove('modulated');
+    });
+    updatePuck();
+  }
+}
+function setLfoRatePos(pos){
+  lfoRateHz = rateLog.toHz(parseFloat(pos));
+  const el = document.getElementById('lfo-rate-val');
+  el.textContent = round2(lfoRateHz) + ' Hz';
+  el.dataset.value = lfoRateHz;
+}
+function setLfoRateHz(hz){
+  hz = clamp(parseFloat(hz), rateLog.minHz, rateLog.maxHz);
+  document.getElementById('lfo-rate-sl').value = rateLog.toPos(hz);
+  setLfoRatePos(rateLog.toPos(hz));
+}
+function setLfoShape(s){ lfoShape=s; }
+function setLfoTarget(t){
+  lfoRangesPerTarget[lfoTarget] = {min: lfoMin, max: lfoMax};
+  applyFreqToOsc(); applyPanToPanner(); applyGainToTestGain();
+  lfoTarget = t;
+  const saved = lfoRangesPerTarget[t];
+  lfoMin = saved.min; lfoMax = saved.max;
+  updateLfoRangeUi();
+  ['test-freq-dot','test-pan-dot','pulse-rate-dot'].forEach(id=>{
+    const d = document.getElementById(id); if(d) d.classList.remove('active');
+  });
+  ['test-freq-val','test-pan-val','test-gain-val','pulse-rate-val'].forEach(id=>{
+    const el = document.getElementById(id); if(el) el.classList.remove('modulated');
+  });
+  updatePuck();
+}
+function updateLfoRangeUi(){
+  const T = TARGETS[lfoTarget];
+  const minSl = document.getElementById('lfo-min-sl');
+  const maxSl = document.getElementById('lfo-max-sl');
+  const minPos = T.toPos(lfoMin);
+  const maxPos = T.toPos(lfoMax);
+  minSl.value = minPos; maxSl.value = maxPos;
+  const minValEl = document.getElementById('lfo-min-val');
+  const maxValEl = document.getElementById('lfo-max-val');
+  minValEl.textContent = T.fmt(lfoMin); minValEl.dataset.value = lfoMin;
+  maxValEl.textContent = T.fmt(lfoMax); maxValEl.dataset.value = lfoMax;
+  const fill = document.getElementById('lfo-range-fill');
+  fill.style.left  = (minPos/10)+'%';
+  fill.style.width = ((maxPos-minPos)/10)+'%';
+}
+function setLfoMinPos(pos){
+  const T = TARGETS[lfoTarget];
+  let v = T.toVal(parseFloat(pos));
+  if(v > lfoMax){ v = lfoMax; document.getElementById('lfo-min-sl').value = T.toPos(v); }
+  lfoMin = v; updateLfoRangeUi();
+}
+function setLfoMaxPos(pos){
+  const T = TARGETS[lfoTarget];
+  let v = T.toVal(parseFloat(pos));
+  if(v < lfoMin){ v = lfoMin; document.getElementById('lfo-max-sl').value = T.toPos(v); }
+  lfoMax = v; updateLfoRangeUi();
+}
+function setLfoMinVal(v){
+  const T = TARGETS[lfoTarget];
+  lfoMin = clamp(v, T.unitMin, Math.min(T.unitMax, lfoMax));
+  updateLfoRangeUi();
+}
+function setLfoMaxVal(v){
+  const T = TARGETS[lfoTarget];
+  lfoMax = clamp(v, Math.max(T.unitMin, lfoMin), T.unitMax);
+  updateLfoRangeUi();
+}
+
+function startLfoPreviewLoop(){
+  const canvas = document.getElementById('lfo-preview');
+  const ctx = canvas.getContext('2d');
+  const buf = [];
+  const BUF_SIZE = 120;
+
+  function resize(){
+    const dpr = window.devicePixelRatio||1;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    canvas.width = w*dpr; canvas.height = h*dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  function tick(){
+    const sample = lfoTick();
+    buf.push(sample);
+    if(buf.length > BUF_SIZE) buf.shift();
+
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    ctx.clearRect(0,0,w,h);
+    ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0,h/2); ctx.lineTo(w,h/2); ctx.stroke();
+    ctx.strokeStyle = lfoEnabled ? '#7abbe0' : '#3a4a5a';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    for(let i=0;i<buf.length;i++){
+      const x = (i/(BUF_SIZE-1))*w;
+      const y = h/2 - buf[i]*(h/2-3);
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    if(lfoEnabled){
+      const modVal = lfoToTargetValue(sample);
+      applyLfoToTarget(modVal);
+      updateModulatedDisplay(modVal);
+    }
+    requestAnimationFrame(tick);
+  }
+  tick();
+}
+function applyLfoToTarget(v){
+  switch(lfoTarget){
+    case 'freq':    if(testOsc)    testOsc.frequency.rampTo(Math.max(v,0.5), 0.015); break;
+    case 'pan':     if(testPanner) testPanner.pan.rampTo(clamp(v,-1,1), 0.015); break;
+    case 'volume':  if(testGain)   testGain.gain.rampTo(dbToGain(v)*adsr.aLevel, 0.015); break;
+    case 'pulseRate': break;
+  }
+}
+function updateModulatedDisplay(v){
+  const T = TARGETS[lfoTarget];
+  let valEl, dotEl, slEl, pos;
+  switch(lfoTarget){
+    case 'freq':
+      valEl = document.getElementById('test-freq-val');
+      dotEl = document.getElementById('test-freq-dot');
+      slEl  = document.getElementById('test-freq-sl');
+      pos = freqLog.toPos(v)/1000;
+      break;
+    case 'pan':
+      valEl = document.getElementById('test-pan-val');
+      pos = (v+1)/2;
+      // For pan, update the puck's Y position too
+      const puck = document.getElementById('sig-puck');
+      if(puck) puck.style.top = (pos*100)+'%';
+      break;
+    case 'volume':
+      valEl = document.getElementById('test-gain-val');
+      const puck2 = document.getElementById('sig-puck');
+      if(puck2) puck2.style.left = (((v-(-60))/66)*100)+'%';
+      break;
+    case 'pulseRate':
+      valEl = document.getElementById('pulse-rate-val');
+      dotEl = document.getElementById('pulse-rate-dot');
+      slEl  = document.getElementById('pulse-rate-sl');
+      pos = Math.log(v/20)/Math.log(5000/20);
+      break;
+  }
+  if(valEl){
+    valEl.textContent = T.fmt(v);
+    valEl.classList.add('modulated');
+  }
+  if(dotEl && slEl){
+    const leftPct = clamp(pos, 0, 1) * 100;
+    dotEl.style.left = `calc(${leftPct}% - 1.5px)`;
+    dotEl.classList.add('active');
+  }
+}
+
+/* ══════════ GRAPHICAL ADSR ══════════ */
+const ADSR_VIEW = { w:320, h:160, mL:14, mR:12, mT:10, mB:18 };
+function adsrTimes(){
+  return {
+    tA: adsr.aMs,
+    tD: adsr.aMs + adsr.dMs,
+    tS: adsr.aMs + adsr.dMs + adsr.sMs,
+    tR: adsr.aMs + adsr.dMs + adsr.sMs + adsr.rMs,
+  };
+}
+function adsrViewMaxMs(){ return Math.max(adsrTimes().tR * 1.25, 500); }
+function adsrCoords(){
+  const {w,h,mL,mR,mT,mB} = ADSR_VIEW;
+  const t = adsrTimes();
+  const total = adsrViewMaxMs();
+  const plotW = w - mL - mR, plotH = h - mT - mB;
+  const x = (ms) => mL + (ms/total)*plotW;
+  const y = (amp) => mT + (1 - amp)*plotH;
+  return {
+    start: {x:x(0), y:y(0)},
+    peak:  {x:x(t.tA), y:y(adsr.aLevel)},
+    decay: {x:x(t.tD), y:y(adsr.dLevel)},
+    sust:  {x:x(t.tS), y:y(adsr.dLevel)},
+    end:   {x:x(t.tR), y:y(0)},
+    plotW, plotH, mL, mR, mT, mB, total, x, y,
+  };
+}
+function drawAdsr(){
+  const svg = document.getElementById('adsr-svg');
+  const {w,h,mL,mR,mT,mB} = ADSR_VIEW;
+  const c = adsrCoords();
+  while(svg.firstChild) svg.removeChild(svg.firstChild);
+  const addLine = (x1,y1,x2,y2,cls='adsr-gridline') => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg','line');
+    el.setAttribute('x1',x1); el.setAttribute('y1',y1);
+    el.setAttribute('x2',x2); el.setAttribute('y2',y2);
+    el.setAttribute('class',cls);
+    svg.appendChild(el); return el;
+  };
+  const addText = (x,y,text,cls='adsr-gridlabel') => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg','text');
+    el.setAttribute('x',x); el.setAttribute('y',y);
+    el.setAttribute('class',cls); el.textContent=text;
+    svg.appendChild(el); return el;
+  };
+  addLine(mL, c.y(1.0), w-mR, c.y(1.0));
+  addLine(mL, c.y(0.251), w-mR, c.y(0.251));
+  addLine(mL, c.y(0), w-mR, c.y(0));
+  addText(2, c.y(1.0)+3, '0dB');
+  addText(2, c.y(0.251)+3, '-12');
+  addLine(c.peak.x,  mT, c.peak.x,  h-mB);
+  addLine(c.decay.x, mT, c.decay.x, h-mB);
+  addLine(c.sust.x,  mT, c.sust.x,  h-mB);
+  addLine(c.end.x,   mT, c.end.x,   h-mB);
+  addText((c.start.x+c.peak.x)/2-3,  h-5, 'A');
+  addText((c.peak.x+c.decay.x)/2-3,  h-5, 'D');
+  addText((c.decay.x+c.sust.x)/2-3,  h-5, 'S');
+  addText((c.sust.x+c.end.x)/2-3,    h-5, 'R');
+  const addSeg = (x1,y1,x2,y2) => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg','line');
+    el.setAttribute('x1',x1); el.setAttribute('y1',y1);
+    el.setAttribute('x2',x2); el.setAttribute('y2',y2);
+    el.setAttribute('class','adsr-seg');
+    svg.appendChild(el); return el;
+  };
+  addSeg(c.start.x, c.start.y, c.peak.x,  c.peak.y);
+  addSeg(c.peak.x,  c.peak.y,  c.decay.x, c.decay.y);
+  addSeg(c.decay.x, c.decay.y, c.sust.x,  c.sust.y);
+  addSeg(c.sust.x,  c.sust.y,  c.end.x,   c.end.y);
+  const addHandle = (p, name) => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    el.setAttribute('cx',p.x); el.setAttribute('cy',p.y);
+    el.setAttribute('r',6);
+    el.setAttribute('class','adsr-handle');
+    el.dataset.name = name;
+    el.addEventListener('pointerdown', onHandlePointerDown);
+    svg.appendChild(el); return el;
+  };
+  addHandle(c.peak,  'peak');
+  addHandle(c.decay, 'decay');
+  addHandle(c.sust,  'sust');
+  addHandle(c.end,   'end');
+  const addLabel = (x,y,text,opts={}) => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg','text');
+    el.setAttribute('x',x); el.setAttribute('y',y);
+    el.setAttribute('class','adsr-pointlabel editable');
+    el.textContent=text;
+    el.dataset.editKind = opts.kind || '';
+    el.dataset.value = opts.value ?? '';
+    svg.appendChild(el); return el;
+  };
+  const rightEdge = w - mR;
+  const lblLeft = (x, wEst) => (x + wEst > rightEdge) ? x - wEst : x+2;
+  addLabel(c.peak.x-14,  c.peak.y-7,  fmt2(adsr.aMs)+'ms',        {kind:'aTime',  value:adsr.aMs});
+  addLabel(lblLeft(c.peak.x+2, 22), c.peak.y-7, fmtDb(adsr.aLevel), {kind:'aLevel', value:adsr.aLevel});
+  addLabel(c.decay.x-14, c.decay.y+14, fmt2(adsr.dMs)+'ms',       {kind:'dTime',  value:adsr.dMs});
+  addLabel(c.decay.x+2,  c.decay.y+14, fmtDb(adsr.dLevel),        {kind:'dLevel', value:adsr.dLevel});
+  addLabel(c.sust.x-16,  c.sust.y+14,  fmt2(adsr.sMs)+'ms',       {kind:'sTime',  value:adsr.sMs});
+  const rLblX = Math.min(c.end.x-18, rightEdge-34);
+  addLabel(rLblX, c.end.y-5, fmt2(adsr.rMs)+'ms', {kind:'rTime', value:adsr.rMs});
+}
+function fmtDb(amp){
+  if(amp<=0.001) return '-inf';
+  return round2(20*Math.log10(amp))+'dB';
+}
+function dbStrToAmp(str){
+  const t = String(str).trim().toLowerCase().replace(/db/g,'').trim();
+  if(t==='-inf'||t==='') return 0;
+  const v = parseFloat(t);
+  return Number.isNaN(v) ? null : dbToGain(v);
+}
+function msStrToMs(str){
+  const t = String(str).trim().toLowerCase().replace(/ms/g,'').replace(/s$/,'').trim();
+  const v = parseFloat(t);
+  return Number.isNaN(v) ? null : Math.max(1, v);
+}
+
+function bindAdsrLabels(){
+  const wrap = document.getElementById('adsr-svg-wrap');
+  wrap.addEventListener('click', (e)=>{
+    const t = e.target;
+    if(!(t instanceof SVGTextElement)) return;
+    if(!t.dataset.editKind) return;
+    startLabelEdit(t);
+  });
+}
+function startLabelEdit(labelEl){
+  const rect = labelEl.getBoundingClientRect();
+  const kind = labelEl.dataset.editKind;
+  const input = document.createElement('input');
+  input.type='text';
+  input.value = labelEl.textContent;
+  input.className='adsr-editbox';
+  input.style.left = (rect.left+window.scrollX-4)+'px';
+  input.style.top  = (rect.top+window.scrollY-2)+'px';
+  document.body.appendChild(input);
+  input.focus(); input.select();
+  function commit(){ const raw=input.value; input.remove(); applyLabelEdit(kind, raw); }
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', e=>{
+    if(e.key==='Enter'){ e.preventDefault(); commit(); }
+    else if(e.key==='Escape'){ e.preventDefault(); input.remove(); }
+  });
+}
+function applyLabelEdit(kind, raw){
+  let v;
+  switch(kind){
+    case 'aTime':  v=msStrToMs(raw); if(v!==null) adsr.aMs = round2(clamp(v,1,30000)); break;
+    case 'dTime':  v=msStrToMs(raw); if(v!==null) adsr.dMs = round2(clamp(v,1,30000)); break;
+    case 'sTime':  v=msStrToMs(raw); if(v!==null) adsr.sMs = round2(clamp(v,1,60000)); break;
+    case 'rTime':  v=msStrToMs(raw); if(v!==null) adsr.rMs = round2(clamp(v,1,30000)); break;
+    case 'aLevel': v=dbStrToAmp(raw); if(v!==null) adsr.aLevel = clamp(v,0,1); break;
+    case 'dLevel': v=dbStrToAmp(raw); if(v!==null) adsr.dLevel = clamp(v,0, adsr.aLevel); break;
+  }
+  applyAdsrToEngine();
+  drawAdsr();
+}
+function applyAdsrToEngine(){
+  if(!testEnvelope) return;
+  testEnvelope.attack  = adsr.aMs/1000;
+  testEnvelope.decay   = adsr.dMs/1000;
+  testEnvelope.sustain = adsr.dLevel;
+  testEnvelope.release = adsr.rMs/1000;
+  applyGainToTestGain();
+}
+function resetAdsrDefaults(){
+  adsr = {...ADSR_DEFAULTS};
+  applyAdsrToEngine();
+  drawAdsr();
+}
+
+let dragState = null;
+function svgPoint(evt){
+  const svg = document.getElementById('adsr-svg');
+  const pt = svg.createSVGPoint();
+  pt.x = evt.clientX; pt.y = evt.clientY;
+  return pt.matrixTransform(svg.getScreenCTM().inverse());
+}
+function onHandlePointerDown(e){
+  e.preventDefault();
+  const name = e.target.dataset.name;
+  e.target.classList.add('dragging');
+  e.target.setPointerCapture(e.pointerId);
+  dragState = { name, pointerId:e.pointerId, el:e.target };
+  window.addEventListener('pointermove', onHandlePointerMove);
+  window.addEventListener('pointerup',   onHandlePointerUp);
+}
+function onHandlePointerMove(e){
+  if(!dragState) return;
+  const p = svgPoint(e);
+  const {w,h,mL,mR,mT,mB} = ADSR_VIEW;
+  const plotW = w-mL-mR, plotH = h-mT-mB;
+  const viewMax = adsrViewMaxMs();
+  const xRaw = p.x - mL;
+  const ms = clamp((xRaw/plotW) * viewMax, 0, 60000);
+  const yClamp = clamp(p.y, mT, h-mB);
+  const amp = 1 - (yClamp-mT)/plotH;
+  const name = dragState.name;
+  if(name==='peak'){
+    adsr.aMs = round2(clamp(ms,1,30000));
+    adsr.aLevel = clamp(amp,0,1);
+    if(adsr.dLevel > adsr.aLevel) adsr.dLevel = adsr.aLevel;
+  } else if(name==='decay'){
+    adsr.dMs = round2(clamp(ms - adsr.aMs, 1, 30000));
+    adsr.dLevel = clamp(amp, 0, adsr.aLevel);
+  } else if(name==='sust'){
+    adsr.sMs = round2(clamp(ms - adsr.aMs - adsr.dMs, 1, 60000));
+  } else if(name==='end'){
+    adsr.rMs = round2(clamp(ms - adsr.aMs - adsr.dMs - adsr.sMs, 1, 30000));
+  }
+  applyAdsrToEngine();
+  drawAdsr();
+}
+function onHandlePointerUp(e){
+  if(!dragState) return;
+  try { dragState.el.releasePointerCapture(dragState.pointerId); } catch{}
+  dragState.el.classList.remove('dragging');
+  dragState=null;
+  window.removeEventListener('pointermove', onHandlePointerMove);
+  window.removeEventListener('pointerup',   onHandlePointerUp);
+}
+
+/* ══════════ METERS (native stereo per-channel) ══════════ */
+function rmsFromAnalyser(an){
+  if(!an) return 0;
+  const buf = new Float32Array(an.fftSize);
+  an.getFloatTimeDomainData(buf);
+  let s = 0;
+  for(let i=0;i<buf.length;i++) s += buf[i]*buf[i];
+  return Math.sqrt(s/buf.length);
+}
+function rmsToDb(rms){ return rms>1e-6 ? 20*Math.log10(rms) : -Infinity; }
+function dbToNorm(db){
+  if(db===-Infinity || db<-60) return 0;
+  return clamp((db + 60)/66, 0, 1);
+}
+function startMeterLoop(){
+  const pk = { outL:0, outR:0, tstL:0, tstR:0 };
+  function tick(){
+    if(outAnL && outAnR){
+      const l = rmsToDb(rmsFromAnalyser(outAnL));
+      const r = rmsToDb(rmsFromAnalyser(outAnR));
+      const lN = dbToNorm(l), rN = dbToNorm(r);
+      pk.outL = Math.max(pk.outL*0.992, lN);
+      pk.outR = Math.max(pk.outR*0.992, rN);
+      setMeterBars('out-level-l','out-pk-l', lN, pk.outL);
+      setMeterBars('out-level-r','out-pk-r', rN, pk.outR);
+    }
+    if(testAnL && testAnR){
+      const l = rmsToDb(rmsFromAnalyser(testAnL));
+      const r = rmsToDb(rmsFromAnalyser(testAnR));
+      const lN = dbToNorm(l), rN = dbToNorm(r);
+      pk.tstL = Math.max(pk.tstL*0.992, lN);
+      pk.tstR = Math.max(pk.tstR*0.992, rN);
+      // 2D pad horizontal meters (L on top half, R on bottom half)
+      const ml = document.getElementById('sig-meter-l');
+      const mr = document.getElementById('sig-meter-r');
+      if(ml) ml.style.width = (lN*100).toFixed(1)+'%';
+      if(mr) mr.style.width = (rN*100).toFixed(1)+'%';
+    }
+    requestAnimationFrame(tick);
+  }
+  tick();
+}
+function setMeterBars(idLevel, idPeak, lev, pk){
+  const L = document.getElementById(idLevel);
+  const P = document.getElementById(idPeak);
+  if(L) L.style.height = (lev*100).toFixed(1)+'%';
+  if(P) P.style.bottom = (pk*100).toFixed(1)+'%';
+}
+
+/* ══════════ LATENCY ══════════ */
+function startLatencyReadout(){
+  const update = () => {
+    if(!rawCtx) return;
+    const base = (rawCtx.baseLatency||0)*1000;
+    const out  = (rawCtx.outputLatency||0)*1000;
+    const b = document.getElementById('out-latency-base');
+    const o = document.getElementById('out-latency-out');
+    const t = document.getElementById('out-latency-total');
+    if(b) b.textContent = `base ${round2(base)}ms`;
+    if(o) o.textContent = `out ${round2(out)}ms`;
+    if(t) t.textContent = `RT ~${round2(base+out)}ms · ${rawCtx.sampleRate}Hz`;
+  };
+  update();
+  setInterval(update, 2000);
+}
+
+/* ══════════ PRESETS ══════════ */
+function collectState(fx){
+  if(fx==='siggen'){
+    return {
+      mode: sigGenMode, wave: testWave, freq: testFreqHz,
+      gain: testGainDb, pan: testPan, pulse: pulseRateMs,
+      adsr: {...adsr},
+    };
+  }
+  if(fx==='lfo'){
+    return { rate:lfoRateHz, shape:lfoShape, target:lfoTarget,
+             ranges:JSON.parse(JSON.stringify(lfoRangesPerTarget)) };
+  }
+}
+function applyState(fx, s){
+  if(fx==='siggen'){
+    setSigGenMode(s.mode || 'steady');
+    document.getElementById('test-wave').value = s.wave; setTestWave(s.wave);
+    setTestFreqHz(s.freq);
+    setTestGainDb(s.gain);
+    setTestPan(s.pan);
+    document.getElementById('pulse-rate-sl').value = s.pulse; setPulseRate(s.pulse);
+    if(s.adsr){ adsr = {...ADSR_DEFAULTS, ...s.adsr}; applyAdsrToEngine(); drawAdsr(); }
+  }
+  if(fx==='lfo'){
+    setLfoRateHz(s.rate);
+    document.getElementById('lfo-shape').value = s.shape; setLfoShape(s.shape);
+    if(s.ranges) Object.assign(lfoRangesPerTarget, s.ranges);
+    document.getElementById('lfo-target').value = s.target; setLfoTarget(s.target);
+  }
+}
+function handlePreset(evt, btn){
+  const fx = btn.dataset.fx;
+  const slot = btn.dataset.slot;
+  const key = `${fx}-${slot}`;
+  if(evt && evt.shiftKey){
+    presets[key] = collectState(fx);
+    savePresets();
+    btn.classList.add('saved');
+    return;
+  }
+  const s = presets[key];
+  if(s) applyState(fx, s);
+}
+function restorePresetUi(){
+  document.querySelectorAll('.head-preset-slot').forEach(btn=>{
+    const key = `${btn.dataset.fx}-${btn.dataset.slot}`;
+    if(presets[key]) btn.classList.add('saved');
+  });
+}
+
+/* ══════════ EDITABLE VALUES ══════════ */
+function makeEditable(el, parseFn, applyFn){
+  if(el.__editableBound) return; el.__editableBound=true;
+  el.addEventListener('click', ()=>{
+    const rect = el.getBoundingClientRect();
+    const input = document.createElement('input');
+    input.type='text';
+    input.value = el.dataset.value ?? el.textContent.trim();
+    input.className='adsr-editbox';
+    input.style.left = (rect.left+window.scrollX)+'px';
+    input.style.top  = (rect.top+window.scrollY-1)+'px';
+    document.body.appendChild(input);
+    input.focus(); input.select();
+    function commit(){
+      const parsed = parseFn(input.value);
+      if(parsed!==null && parsed!==undefined && !Number.isNaN(parsed)) applyFn(parsed);
+      input.remove();
+    }
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', e=>{
+      if(e.key==='Enter'){ e.preventDefault(); commit(); }
+      else if(e.key==='Escape'){ e.preventDefault(); input.remove(); }
+    });
+  });
+}
+
+window.addEventListener('DOMContentLoaded', ()=>{
+  restorePresetUi();
+  makeEditable(document.getElementById('test-freq-val'),
+    v => parseFloat(v.replace(/[^\d.\-]/g,'')),
+    v => setTestFreqHz(v));
+  makeEditable(document.getElementById('test-gain-val'),
+    v => parseFloat(v.replace(/[^\d.\-]/g,'')),
+    v => setTestGainDb(v));
+  makeEditable(document.getElementById('test-pan-val'),
+    v => {
+      const s = String(v).trim().toUpperCase();
+      if(s==='C') return 0;
+      if(s.startsWith('L')) return -parseFloat(s.slice(1))/100;
+      if(s.startsWith('R')) return parseFloat(s.slice(1))/100;
+      return parseFloat(s);
+    },
+    v => setTestPan(v));
+  makeEditable(document.getElementById('output-gain-val'),
+    v => parseFloat(v.replace(/[^\d.\-]/g,'')),
+    v => { document.getElementById('output-gain-db').value = v; setOutputGainDb(v); });
+  makeEditable(document.getElementById('pulse-rate-val'),
+    v => parseFloat(v.replace(/[^\d.\-]/g,'')),
+    v => { document.getElementById('pulse-rate-sl').value = v; setPulseRate(v); });
+  makeEditable(document.getElementById('lfo-rate-val'),
+    v => parseFloat(v.replace(/[^\d.\-]/g,'')),
+    v => setLfoRateHz(v));
+  makeEditable(document.getElementById('lfo-min-val'),
+    v => TARGETS[lfoTarget].parse(v),
+    v => { if(!Number.isNaN(v)) setLfoMinVal(v); });
+  makeEditable(document.getElementById('lfo-max-val'),
+    v => TARGETS[lfoTarget].parse(v),
+    v => { if(!Number.isNaN(v)) setLfoMaxVal(v); });
+});
+</script>
+</body>
+</html>
