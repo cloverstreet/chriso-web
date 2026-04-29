@@ -47,22 +47,89 @@
   #tuningPanel button:hover { background: rgba(200,170,120,0.15); color: rgba(200,170,120,0.85) }
   #tuningPanel .divider { border: none; border-top: 1px solid rgba(200,170,120,0.06); margin: 14px 0 }
   #tuningPanel .ratios-display { font: 10px monospace; color: rgba(200,170,120,0.4); line-height: 1.6; margin: 6px 0; max-height: 200px; overflow-y: auto }
-  #tuningToggle {
-    position: fixed; top: 12px; right: 12px; z-index: 25;
+  #tuningToggle, #bowToggle {
+    position: fixed; top: 12px; z-index: 25;
     padding: 5px 10px; font: 10px Georgia, serif;
     background: rgba(200,170,120,0.06); border: 1px solid rgba(200,170,120,0.1);
     color: rgba(200,170,120,0.3); border-radius: 3px; cursor: pointer; letter-spacing: 0.1em;
   }
-  #tuningToggle:hover { color: rgba(200,170,120,0.6); border-color: rgba(200,170,120,0.25) }
+  #tuningToggle { right: 12px; }
+  #bowToggle    { right: 86px; }
+  #tuningToggle:hover, #bowToggle:hover { color: rgba(200,170,120,0.6); border-color: rgba(200,170,120,0.25) }
+  /* Bow panel — same skin as tuning panel, mirrored on left so they don't collide */
+  #bowPanel {
+    position: fixed; top: 0; left: -320px;
+    width: 300px; height: 100%; padding: 20px 18px;
+    background: rgba(10,10,20,0.92);
+    border-right: 1px solid rgba(200,170,120,0.08);
+    z-index: 20; overflow-y: auto;
+    transition: left 0.3s ease;
+    color: rgba(200,170,120,0.6); font-size: 12px;
+  }
+  #bowPanel.open { left: 0 }
+  #bowPanel h3 { font-size: 13px; font-weight: normal; color: rgba(200,170,120,0.5); letter-spacing: 0.15em; margin: 0 0 14px 0; text-transform: uppercase }
+  #bowPanel label { display: block; margin: 10px 0 4px 0; font-size: 10px; letter-spacing: 0.1em; color: rgba(200,170,120,0.35); text-transform: uppercase }
+  #bowPanel .row { display: flex; align-items: center; gap: 8px }
+  #bowPanel input[type="range"] { flex: 1; -webkit-appearance: none; height: 3px; background: rgba(200,170,120,0.15); outline: none; border-radius: 2px; cursor: pointer }
+  #bowPanel input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 11px; height: 11px; background: rgba(200,170,120,0.7); border-radius: 50%; cursor: pointer }
+  #bowPanel .val { font: 11px monospace; color: rgba(200,170,120,0.7); min-width: 50px; text-align: right }
+  #bowPanel input[type="text"], #bowPanel select {
+    width: 100%; padding: 6px 8px;
+    background: rgba(200,170,120,0.05); border: 1px solid rgba(200,170,120,0.12);
+    color: rgba(200,170,120,0.7); font: 11px Georgia, serif; border-radius: 3px; outline: none;
+  }
+  #bowPanel .btn-row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap }
+  #bowPanel button {
+    padding: 5px 10px; font: 10px Georgia, serif;
+    background: rgba(200,170,120,0.08); border: 1px solid rgba(200,170,120,0.15);
+    color: rgba(200,170,120,0.6); border-radius: 3px; cursor: pointer; letter-spacing: 0.05em;
+  }
+  #bowPanel button:hover { background: rgba(200,170,120,0.15); color: rgba(200,170,120,0.85) }
+  #bowPanel .divider { border: none; border-top: 1px solid rgba(200,170,120,0.06); margin: 14px 0 }
 </style>
 </head>
 <body>
 <div id="invite">
   <span>touch to begin</span>
-  <span class="hint">Z = bow &middot; X = tune &middot; D = delay in &middot; T = tuning panel</span>
-  <span class="hint" style="margin-top:1.5em;font-size:0.6rem;color:rgba(200,170,120,0.12)">v4.6</span>
+  <span class="hint">Z = bow &middot; X = tune &middot; D = delay in &middot; T = tuning &middot; B = bow panel</span>
+  <span class="hint" style="margin-top:1.5em;font-size:0.6rem;color:rgba(200,170,120,0.12)">v4.7</span>
 </div>
 <button id="tuningToggle">TUNING</button>
+<button id="bowToggle">BOW</button>
+<div id="bowPanel">
+  <h3>Bow Behavior</h3>
+  <label>Proximity Threshold <span class="val" id="bowProxVal">45</span></label>
+  <div class="row"><input type="range" id="bowProx" min="5" max="120" step="1" value="45"></div>
+
+  <label>Speed Gate <span class="val" id="bowGateVal">0.80</span></label>
+  <div class="row"><input type="range" id="bowGate" min="0" max="3" step="0.05" value="0.8"></div>
+
+  <label>Velocity Divisor <span class="val" id="bowVeloVal">20</span></label>
+  <div class="row"><input type="range" id="bowVelo" min="4" max="60" step="1" value="20"></div>
+
+  <label>Falloff Exponent <span class="val" id="bowExpVal">0.75</span></label>
+  <div class="row"><input type="range" id="bowExp" min="0.3" max="1.6" step="0.05" value="0.75"></div>
+
+  <label>Falloff Multiplier <span class="val" id="bowMulVal">0.55</span></label>
+  <div class="row"><input type="range" id="bowMul" min="0.1" max="2" step="0.05" value="0.55"></div>
+
+  <div class="btn-row" style="margin-top:14px">
+    <button id="bowResetBtn">Reset</button>
+  </div>
+  <hr class="divider">
+  <h3>Save / Load</h3>
+  <label>Preset Name</label>
+  <input type="text" id="bowSaveName" placeholder="My bow feel">
+  <div class="btn-row">
+    <button id="bowSaveBtn">Save</button>
+  </div>
+  <label>Saved Presets</label>
+  <select id="bowSavedSelect" size="4" style="height:auto;min-height:60px"></select>
+  <div class="btn-row">
+    <button id="bowLoadBtn">Load</button>
+    <button id="bowDeleteBtn">Delete</button>
+  </div>
+</div>
 <div id="tuningPanel">
   <h3>Tuning System</h3>
   <label>Preset</label>
@@ -145,10 +212,16 @@ var TUNING_PRESETS = [
 // --- Core state ---
 var fundamental = 55;
 var ratios = TUNING_PRESETS[0].ratios.slice();
-// Proximity threshold expanded — strings respond from further away.
-// Combined with the sqrt excite curve, this makes small/slow motions registers
-// expressively even when the bow isn't crossing exactly through a string.
-var PROXIMITY_THRESHOLD = 60;
+// Bow tuning — adjustable via the BOW panel (saved to localStorage).
+// PROXIMITY_THRESHOLD: how far from a string the bow can register
+// BOW_SPEED_GATE: minimum perpendicular pointer speed to trigger proximity excite
+// BOW_VELO_DIVISOR: scales the sqrt(velocity/divisor) amp curve
+// BOW_FALLOFF_EXP/MUL: shape of distance-based falloff for proximity excitation
+var PROXIMITY_THRESHOLD = 45;
+var BOW_SPEED_GATE = 0.8;
+var BOW_VELO_DIVISOR = 20;
+var BOW_FALLOFF_EXP = 0.75;
+var BOW_FALLOFF_MUL = 0.55;
 var DECAY_MIN = 0.92;
 var DECAY_MAX = 0.999;
 var RAMP_TIME = 0.015;
@@ -628,10 +701,9 @@ LuminousString.prototype.destroy = function() {
 };
 
 LuminousString.prototype.excite = function(mx, my, velocity) {
-  // Sqrt response curve: small motions get disproportionately more amp
-  // than fast ones. velocity=1 → 0.22, velocity=4 → 0.45, velocity=16 → 0.89, velocity≥20 → 1.0.
-  // Linear (old): velocity=1 → 0.056, velocity=20 → 1.0 — fast movements dominated.
-  var amp = Math.min(Math.sqrt(velocity / 20), 1);
+  // Sqrt response curve: small motions get disproportionately more amp than fast ones.
+  // BOW_VELO_DIVISOR is exposed via the BOW settings panel.
+  var amp = Math.min(Math.sqrt(velocity / BOW_VELO_DIVISOR), 1);
   this.peakTarget = Math.min(this.energy + amp * 0.35, 1);
   this.envPhase = 'attack';
 
@@ -847,6 +919,7 @@ window.addEventListener('keydown', function(e) {
     e.preventDefault();
   }
   if (e.key === 't' || e.key === 'T') { toggleTuningPanel(); e.preventDefault(); }
+  if (e.key === 'b' || e.key === 'B') { toggleBowPanel(); e.preventDefault(); }
 });
 window.addEventListener('keyup', function(e) {
   if (e.key === 'z' || e.key === 'Z') { bowEngaged = false; e.preventDefault(); }
@@ -926,13 +999,10 @@ function onPointerMove(x, y) {
       } else {
         var dist = Math.abs(curPerp - s.d);
         // Threshold scales down a bit when many strings are packed close together
-        var threshold = strings.length > 20 ? 38 : PROXIMITY_THRESHOLD;
-        // Lower speed gate (was 1.5 → 0.5) so tiny finger nudges register.
-        // Falloff softened: (1 - d/t)^0.7 instead of linear, so even far strings
-        // get a hint of energy from a quick swipe.
-        if (dist < threshold && perpSpeed > 0.5) {
-          var falloff = Math.pow(1 - dist / threshold, 0.7);
-          s.excite(mouseX, mouseY, falloff * perpSpeed * 0.7);
+        var threshold = strings.length > 20 ? Math.min(38, PROXIMITY_THRESHOLD) : PROXIMITY_THRESHOLD;
+        if (dist < threshold && perpSpeed > BOW_SPEED_GATE) {
+          var falloff = Math.pow(1 - dist / threshold, BOW_FALLOFF_EXP);
+          s.excite(mouseX, mouseY, falloff * perpSpeed * BOW_FALLOFF_MUL);
         }
       }
     }
@@ -1218,6 +1288,114 @@ function toggleTuningPanel() {
   panel.classList.toggle('open', panelOpen);
 }
 toggleBtn.addEventListener('click', toggleTuningPanel);
+
+// ── Bow settings panel (mirrors tuning panel structure) ─────────────
+var BOW_DEFAULTS = { prox: 45, gate: 0.8, velo: 20, exp: 0.75, mul: 0.55 };
+var BOW_STORAGE_KEY = 'luminous_strings_bow_presets';
+var BOW_LIVE_KEY = 'luminous_strings_bow_live';
+
+var bowPanel = document.getElementById('bowPanel');
+var bowToggleBtn = document.getElementById('bowToggle');
+var bowPanelOpen = false;
+function toggleBowPanel() {
+  bowPanelOpen = !bowPanelOpen;
+  bowPanel.classList.toggle('open', bowPanelOpen);
+}
+bowToggleBtn.addEventListener('click', toggleBowPanel);
+
+function applyBowSettings(s) {
+  PROXIMITY_THRESHOLD = s.prox;
+  BOW_SPEED_GATE      = s.gate;
+  BOW_VELO_DIVISOR    = s.velo;
+  BOW_FALLOFF_EXP     = s.exp;
+  BOW_FALLOFF_MUL     = s.mul;
+  // Reflect in UI
+  document.getElementById('bowProx').value = s.prox;
+  document.getElementById('bowGate').value = s.gate;
+  document.getElementById('bowVelo').value = s.velo;
+  document.getElementById('bowExp').value  = s.exp;
+  document.getElementById('bowMul').value  = s.mul;
+  document.getElementById('bowProxVal').textContent = s.prox;
+  document.getElementById('bowGateVal').textContent = Number(s.gate).toFixed(2);
+  document.getElementById('bowVeloVal').textContent = s.velo;
+  document.getElementById('bowExpVal').textContent  = Number(s.exp).toFixed(2);
+  document.getElementById('bowMulVal').textContent  = Number(s.mul).toFixed(2);
+  // Persist live state so it survives reload (separate from named presets)
+  localStorage.setItem(BOW_LIVE_KEY, JSON.stringify(s));
+}
+function currentBowSettings() {
+  return {
+    prox: PROXIMITY_THRESHOLD, gate: BOW_SPEED_GATE,
+    velo: BOW_VELO_DIVISOR, exp: BOW_FALLOFF_EXP, mul: BOW_FALLOFF_MUL,
+  };
+}
+// Wire each slider — input event is live, so the bow feels different immediately
+['Prox','Gate','Velo','Exp','Mul'].forEach(function(name){
+  var sl = document.getElementById('bow'+name);
+  sl.addEventListener('input', function(){
+    var s = currentBowSettings();
+    s.prox = parseFloat(document.getElementById('bowProx').value);
+    s.gate = parseFloat(document.getElementById('bowGate').value);
+    s.velo = parseFloat(document.getElementById('bowVelo').value);
+    s.exp  = parseFloat(document.getElementById('bowExp').value);
+    s.mul  = parseFloat(document.getElementById('bowMul').value);
+    applyBowSettings(s);
+  });
+});
+document.getElementById('bowResetBtn').addEventListener('click', function(){
+  applyBowSettings(BOW_DEFAULTS);
+});
+
+// Save / load named presets
+function bowLoadPresetList() {
+  try { return JSON.parse(localStorage.getItem(BOW_STORAGE_KEY)) || []; }
+  catch(e) { return []; }
+}
+function bowSavePresetList(list) {
+  localStorage.setItem(BOW_STORAGE_KEY, JSON.stringify(list));
+}
+function bowRefreshSavedSelect() {
+  var sel = document.getElementById('bowSavedSelect');
+  sel.innerHTML = '';
+  bowLoadPresetList().forEach(function(p, i){
+    var opt = document.createElement('option');
+    opt.value = i; opt.textContent = p.name;
+    sel.appendChild(opt);
+  });
+}
+document.getElementById('bowSaveBtn').addEventListener('click', function(){
+  var name = (document.getElementById('bowSaveName').value || '').trim();
+  if (!name) { name = 'preset ' + Date.now().toString().slice(-5); }
+  var list = bowLoadPresetList();
+  list.push({ name: name, settings: currentBowSettings() });
+  bowSavePresetList(list);
+  bowRefreshSavedSelect();
+  document.getElementById('bowSaveName').value = '';
+});
+document.getElementById('bowLoadBtn').addEventListener('click', function(){
+  var sel = document.getElementById('bowSavedSelect');
+  var i = parseInt(sel.value);
+  if (isNaN(i)) return;
+  var list = bowLoadPresetList();
+  if (list[i]) applyBowSettings(list[i].settings);
+});
+document.getElementById('bowDeleteBtn').addEventListener('click', function(){
+  var sel = document.getElementById('bowSavedSelect');
+  var i = parseInt(sel.value);
+  if (isNaN(i)) return;
+  var list = bowLoadPresetList();
+  list.splice(i, 1);
+  bowSavePresetList(list);
+  bowRefreshSavedSelect();
+});
+
+// Restore last live settings on load
+try {
+  var saved = JSON.parse(localStorage.getItem(BOW_LIVE_KEY));
+  if (saved) applyBowSettings(saved);
+  else applyBowSettings(BOW_DEFAULTS);
+} catch(e) { applyBowSettings(BOW_DEFAULTS); }
+bowRefreshSavedSelect();
 
 TUNING_PRESETS.forEach(function(p, i) {
   var opt = document.createElement('option');
