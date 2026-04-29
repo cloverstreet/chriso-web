@@ -431,7 +431,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 <!-- Version badge (always visible, top-right) -->
 <div id="version-badge" style="position:fixed;top:8px;right:10px;
      font-family:'Courier New',monospace;font-size:.6rem;letter-spacing:.16em;
-     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v60</div>
+     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v61</div>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
 <!-- START SCREEN                                                   -->
@@ -872,6 +872,17 @@ input.gain-meter-slider::-webkit-slider-thumb {
               <button class="global-slot" data-slot="14" onclick="handleGlobalPreset(this)">14</button>
               <button class="global-slot" data-slot="15" onclick="handleGlobalPreset(this)">15</button>
               <span style="flex:1;min-width:4px;"></span>
+              <select id="factory-sel" onchange="loadFactoryPreset(this.value)"
+                title="Load a hard-wired factory preset (read-only — save to a slot to keep your tweaks)"
+                style="background:#0d0d0d;border:1px solid #252525;color:#666;font-family:'Courier New',monospace;
+                       font-size:.58rem;padding:1px 3px;cursor:pointer;max-width:96px;">
+                <option value="">— factory —</option>
+                <option value="just-sines">Just Sines</option>
+                <option value="just-delays">Just Delays</option>
+                <option value="pitch-stack">Pitch Stack</option>
+                <option value="danger-zone">Danger Zone</option>
+                <option value="deep-bass">Deep Bass</option>
+              </select>
               <select id="ps-layout-sel" onchange="psLoadLayout(this.value)"
                 style="background:#0d0d0d;border:1px solid #252525;color:#666;font-family:'Courier New',monospace;
                        font-size:.58rem;padding:1px 3px;cursor:pointer;max-width:88px;">
@@ -2179,6 +2190,105 @@ function applyGlobalState(s){
   if(s.delayBypassed!==undefined && s.delayBypassed!==delayBypassed) toggleFxBypass('delay');
   applyFxState('pitch',s.pitch); applyFxState('delay',s.delay);
 }
+// v61: When the listener is at home/center and the user shift-clicks (or shift-N's)
+// to save, place each slot at a clockwise position around the canvas instead of
+// stacking on top of itself at the center. Once the listener has been moved away
+// from home, saves go back to depositing at the actual cursor position.
+function isListenerAtHome(canvas){
+  if(!psCursor || !canvas || !canvas.width) return true;
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+  return Math.abs(psCursor.x - cx) < 8 && Math.abs(psCursor.y - cy) < 8;
+}
+function autoDistributePosition(slot){
+  if (slot === 0) return { x: 0.5, y: 0.5 };
+  // 15 user slots in two clockwise rings starting at 12 o'clock.
+  // Slots 1-8: outer ring (radius 0.34); 9-15: inner ring (radius 0.22).
+  // Small deterministic jitter for "semi-random" feel.
+  const idx = slot - 1; // 0..14
+  const inOuter = idx < 8;
+  const ringPos = inOuter ? idx : (idx - 8);
+  const ringSize = inOuter ? 8 : 7;
+  const baseAngle = (ringPos / ringSize) * Math.PI * 2 - Math.PI / 2;
+  const baseR = inOuter ? 0.34 : 0.22;
+  const jitterA = Math.sin(slot * 7.13) * 0.08;
+  const jitterR = Math.cos(slot * 11.31) * 0.025;
+  const a = baseAngle + jitterA;
+  const r = baseR + jitterR;
+  return {
+    x: 0.5 + Math.cos(a) * r,
+    y: 0.5 + Math.sin(a) * r,
+  };
+}
+
+// Choose the X,Y to assign when saving a slot.
+function pickSavePosition(slot, canvas){
+  if (isListenerAtHome(canvas)) {
+    return autoDistributePosition(slot);
+  }
+  if (psCursor && canvas && canvas.width) {
+    return { x: psCursor.x / canvas.width, y: psCursor.y / canvas.height };
+  }
+  if (psData[slot] && psData[slot].x !== undefined) {
+    return { x: psData[slot].x, y: psData[slot].y };
+  }
+  return { x: 0.5, y: 0.5 };
+}
+
+// ── Factory presets (v61) — hard-wired starting points. Read-only; loading one
+//   applies its musical state. Save-to-slot if you want a tweakable copy.
+const FACTORY_PRESETS = {
+  'just-sines': {
+    name: 'Just Sines',
+    inputGainDb: -60, micPan: 0, micDirect: 0,
+    testEnabled: true, testWave: 'sine', testFreqHz: 220, testGainDb: -6, testDirect: 1,
+    pitchBypassed: true, delayBypassed: true,
+    pitch: { window:0.1, semi:0, toDelay:0, toOut:0 },
+    delay: { time:0.5, fb:0, wet:0, toPitch:0 },
+  },
+  'just-delays': {
+    name: 'Just Delays',
+    inputGainDb: -60, micPan: 0, micDirect: 0,
+    testEnabled: true, testWave: 'sine', testFreqHz: 220, testGainDb: -6, testDirect: 0,
+    pitchBypassed: true, delayBypassed: false,
+    pitch: { window:0.1, semi:0, toDelay:1, toOut:0 },
+    delay: { time:0.4, fb:0.4, wet:0.6, toPitch:0 },
+  },
+  'pitch-stack': {
+    name: 'Pitch Stack',
+    inputGainDb: -60, micPan: 0, micDirect: 0,
+    testEnabled: true, testWave: 'triangle', testFreqHz: 110, testGainDb: -6, testDirect: 0.4,
+    pitchBypassed: false, delayBypassed: true,
+    pitch: { window:0.1, semi:7, toDelay:0, toOut:1 },
+    delay: { time:0.5, fb:0, wet:0, toPitch:0 },
+  },
+  'danger-zone': {
+    name: 'Danger Zone',
+    inputGainDb: -60, micPan: 0, micDirect: 0,
+    testEnabled: true, testWave: 'sawtooth', testFreqHz: 165, testGainDb: -6, testDirect: 0,
+    pitchBypassed: false, delayBypassed: false,
+    pitch: { window:0.15, semi:-7, toDelay:0.7, toOut:0.5 },
+    delay: { time:0.18, fb:0.85, wet:0.6, toPitch:0.4 },
+  },
+  'deep-bass': {
+    name: 'Deep Bass',
+    inputGainDb: -60, micPan: 0, micDirect: 0,
+    testEnabled: true, testWave: 'sine', testFreqHz: 55, testGainDb: -3, testDirect: 0.25,
+    pitchBypassed: false, delayBypassed: false,
+    pitch: { window:0.2, semi:-12, toDelay:0.6, toOut:0.8 },
+    delay: { time:1.5, fb:0.55, wet:0.4, toPitch:0 },
+  },
+};
+function loadFactoryPreset(name){
+  if (!name) return;
+  const p = FACTORY_PRESETS[name];
+  if (!p) return;
+  applyGlobalState(p);
+  const hint = document.getElementById('ps-hint');
+  if (hint) hint.textContent = `factory: ${p.name}`;
+  const sel = document.getElementById('factory-sel');
+  if (sel) sel.value = '';  // reset placeholder so re-selecting the same one re-loads
+}
+
 function handleGlobalPreset(btn){
   const slot=parseInt(btn.dataset.slot);
   psSelectSlot(slot);
@@ -2186,8 +2296,8 @@ function handleGlobalPreset(btn){
   if(event.shiftKey){
     if(slot===0){applyFactoryDefaults();return;}
     const state=getGlobalState();
-    if(psCursor&&canvas&&canvas.width){state.x=psCursor.x/canvas.width;state.y=psCursor.y/canvas.height;}
-    else if(psData[slot]&&psData[slot].x!==undefined){state.x=psData[slot].x;state.y=psData[slot].y;}
+    const pos = pickSavePosition(slot, canvas);
+    state.x = pos.x; state.y = pos.y;
     psData[slot]=state; localStorage.setItem('fx_global_'+slot,JSON.stringify(state));
     psUpdateSlotBtns(); loadPresetUI(); psRedraw();
     const hint=document.getElementById('ps-hint'); if(hint)hint.textContent=`slot ${slot} saved`;
@@ -2381,8 +2491,11 @@ function psInit() {
 // ── Slot selection ──────────────────────────────────────────────────────
 function psSelectSlot(i) {
   psSelected = i;
-  document.querySelectorAll('.ps-slot-btn').forEach((b,j) => {
-    b.classList.toggle('selected', j === i);
+  // v61: actual buttons are .global-slot in this layout — the old .ps-slot-btn
+  // selector matched zero elements, so number-key teleport never highlighted anything.
+  document.querySelectorAll('.global-slot').forEach((b) => {
+    const slotIdx = parseInt(b.dataset.slot);
+    b.classList.toggle('selected', slotIdx === i);
   });
   document.getElementById('ps-hint') &&
     (document.getElementById('ps-hint').textContent =
@@ -2390,8 +2503,9 @@ function psSelectSlot(i) {
 }
 
 function psUpdateSlotBtns() {
-  document.querySelectorAll('.ps-slot-btn').forEach((b, i) => {
-    b.classList.toggle('placed', !!(psData[i] && psData[i].x !== undefined));
+  document.querySelectorAll('.global-slot').forEach((b) => {
+    const slotIdx = parseInt(b.dataset.slot);
+    b.classList.toggle('placed', !!(psData[slotIdx] && psData[slotIdx].x !== undefined));
   });
 }
 
@@ -2809,13 +2923,10 @@ function psSetupKeyboard() {
         const hint = document.getElementById('ps-hint');
         if (e.shiftKey) {
           // Shift+N → save current FX at listener position → slot idx
+          // (auto-distributes clockwise if listener is still at home — see pickSavePosition)
           const state = getGlobalState();
-          if (psCursor && canvas.width) {
-            state.x = psCursor.x / canvas.width;
-            state.y = psCursor.y / canvas.height;
-          } else if (psData[idx] && psData[idx].x !== undefined) {
-            state.x = psData[idx].x; state.y = psData[idx].y;
-          }
+          const pos = pickSavePosition(idx, canvas);
+          state.x = pos.x; state.y = pos.y;
           psData[idx] = state;
           localStorage.setItem('fx_global_' + idx, JSON.stringify(state));
           psSelectSlot(idx); loadPresetUI(); psUpdateSlotBtns();

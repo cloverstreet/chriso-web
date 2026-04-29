@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LFO + Graphical ADSR — Test Case v0.5</title>
+<title>LFO + Graphical ADSR — Test Case v0.6</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -297,7 +297,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 </head>
 <body>
 
-<div id="version-badge">LFO + ADSR TEST · v0.5</div>
+<div id="version-badge">LFO + ADSR TEST · v0.6</div>
 
 <div id="start-screen">
   <div style="font-size:.78rem;letter-spacing:.28em;color:#666;">LFO + GRAPHICAL ADSR — TEST CASE</div>
@@ -759,10 +759,15 @@ async function _initAudio(){
     updateCross(sg.idx);
   }
   for (const L of lfos) {
-    setLfoTarget(L.idx, 1, `${L.targets[0].sigIdx}:${L.targets[0].paramName}`, true);
-    setLfoTarget(L.idx, 2, `${L.targets[1].sigIdx}:${L.targets[1].paramName}`, true);
-    document.getElementById(`lfo${L.idx}-target1`).value = `${L.targets[0].sigIdx}:${L.targets[0].paramName}`;
-    document.getElementById(`lfo${L.idx}-target2`).value = L.targets[1].paramName === 'off' ? 'off' : `${L.targets[1].sigIdx}:${L.targets[1].paramName}`;
+    // v0.6: build keys carefully — passing "0:off" was treating off as a real target
+    // and crashing on TARGETS['off'].defaultMin, killing the whole init chain
+    // (which is why meters and LFO previews were both blank).
+    const key1 = L.targets[0].paramName === 'off' ? 'off' : `${L.targets[0].sigIdx}:${L.targets[0].paramName}`;
+    const key2 = L.targets[1].paramName === 'off' ? 'off' : `${L.targets[1].sigIdx}:${L.targets[1].paramName}`;
+    setLfoTarget(L.idx, 1, key1, true);
+    setLfoTarget(L.idx, 2, key2, true);
+    document.getElementById(`lfo${L.idx}-target1`).value = key1;
+    document.getElementById(`lfo${L.idx}-target2`).value = key2;
     updateLfoRangeUi(L.idx, 1);
     updateLfoRangeUi(L.idx, 2);
     startLfoPreviewLoop(L.idx);
@@ -1014,11 +1019,19 @@ function setLfoTarget(idx, slot, key, skipUiSelect){
   // Hide range slider for this slot if "off", show otherwise
   const rangeRow = document.getElementById(`lfo${idx}-range${slot}-row`);
 
-  if (key === 'off') {
+  // Treat both "off" and "0:off" / ":off" / unknown-paramName variants as off
+  const isOffKey = (key === 'off') || key.endsWith(':off') || key.startsWith('off');
+  if (isOffKey) {
     L.targets[tIdx] = { sigIdx: 0, paramName: 'off', min: 0, max: 0 };
     if (rangeRow) rangeRow.style.display = 'none';
   } else {
     const [sigIdxStr, paramName] = key.split(':');
+    if (!TARGETS[paramName]) {
+      // Unknown paramName — treat as off rather than crash
+      L.targets[tIdx] = { sigIdx: 0, paramName: 'off', min: 0, max: 0 };
+      if (rangeRow) rangeRow.style.display = 'none';
+      return;
+    }
     const sigIdx = parseInt(sigIdxStr);
     const saved = L.rangesPerKey[key] || {
       min: TARGETS[paramName].defaultMin,
