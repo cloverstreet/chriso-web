@@ -244,14 +244,18 @@ hr.div { border:none; border-top:1px solid #1a1a1a; margin:7px 0; }
 /* REC button — pre-gain mix recorder */
 #rec-btn:hover { border-color:#8a3a3a; color:#c66; }
 #rec-btn.recording {
-  background:rgba(150,30,30,.5); border-color:#e02020;
-  color:#e88; text-shadow:0 0 6px rgba(224,32,32,.6);
-  animation:rec-pulse 1.2s step-end infinite;
+  background:rgba(180,30,30,.7); border-color:#e02020;
+  color:#fff; text-shadow:0 0 8px rgba(255,80,80,.8);
+  animation:rec-pulse 0.9s ease-in-out infinite;
+  box-shadow:0 0 12px rgba(224,32,32,.6);
 }
 #rec-fmt:hover { border-color:#444; color:#aaa; }
 #rec-fmt.wav-mode { border-color:#3a4a6a; color:#7abbe0; }
 #rec-fmt.wav-mode:hover { border-color:#5a6a8a; color:#9cdcf0; }
-@keyframes rec-pulse { 50% { opacity: .55; } }
+@keyframes rec-pulse {
+  0%, 100% { opacity:1;   box-shadow:0 0 12px rgba(224,32,32,.6); }
+  50%      { opacity:.55; box-shadow:0 0 4px  rgba(224,32,32,.3); }
+}
 </style>
 
 <style>
@@ -427,7 +431,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 <!-- Version badge (always visible, top-right) -->
 <div id="version-badge" style="position:fixed;top:8px;right:10px;
      font-family:'Courier New',monospace;font-size:.6rem;letter-spacing:.16em;
-     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v54</div>
+     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v55</div>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
 <!-- START SCREEN                                                   -->
@@ -632,10 +636,10 @@ input.gain-meter-slider::-webkit-slider-thumb {
                   </div>
                 </div>
                 <input class="gain-meter-slider" type="range" id="test-gain-sl"
-                  min="-60" max="6" step="0.5" value="-12" oninput="setTestGainDb(this.value)">
+                  min="-60" max="6" step="0.5" value="-6" oninput="setTestGainDb(this.value)">
               </div>
             </div>
-            <span class="ctrl-val" id="test-gain-val" data-value="-12" style="font-size:.65rem;">-12dB</span>
+            <span class="ctrl-val" id="test-gain-val" data-value="-6" style="font-size:.65rem;">-6dB</span>
           </div>
         </div>
 
@@ -738,15 +742,10 @@ input.gain-meter-slider::-webkit-slider-thumb {
         <input type="range" id="pitch-window" min="0.01" max="0.5" step="0.01" value="0.1"
                oninput="setPitchWindow(this.value)" style="width:100%;">
       </div>
-      <!-- DRY/WET mix (internal — no longer sends to output directly) -->
-      <div style="margin-bottom:9px;">
-        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
-          <label style="font-size:.66rem;letter-spacing:.08em;color:#aaa;">DRY / WET MIX</label>
-          <span class="ctrl-val" id="pitch-wetdry-val" data-value="0.5" style="font-size:.72rem;">50%</span>
-        </div>
-        <input type="range" id="pitch-wetdry" min="0" max="1" step="0.01" value="0.5"
-               oninput="setPitchWetDry(this.value)" style="width:100%;">
-      </div>
+      <!-- DRY/WET mix removed in v55 — pitch is always 100% wet at its output.
+           The dry/wet concept is being replaced module-by-module with explicit
+           direct-out + thru-to-X sends (multi-dim slider/preset system). -->
+
       <!-- SENDS (post-mix) -->
       <div style="padding-top:7px;border-top:1px solid #1a1a1a;">
         <div style="margin-bottom:7px;">
@@ -817,22 +816,13 @@ input.gain-meter-slider::-webkit-slider-thumb {
         </div>
         <div class="danger-zone" id="fb-danger">⚠ RUNAWAY — reduce feedback!</div>
       </div>
-      <!-- DRY MIX -->
-      <div style="margin-bottom:9px;">
-        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
-          <label style="font-size:.66rem;letter-spacing:.08em;color:#aaa;">DRY → OUT</label>
-          <span class="ctrl-val" id="delay-dry-val" data-value="1" style="font-size:.72rem;">0.0 dB</span>
-        </div>
-        <input type="range" id="delay-dry" min="0" max="1" step="0.01" value="1"
-               oninput="setDelayDry(this.value)" style="width:100%;">
-      </div>
-      <!-- WET MIX -->
+      <!-- WET → OUT (delay's direct out — DRY removed in v55) -->
       <div style="margin-bottom:9px;">
         <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
           <label style="font-size:.66rem;letter-spacing:.08em;color:#aaa;">WET → OUT</label>
-          <span class="ctrl-val" id="delay-wet-val" data-value="0.4" style="font-size:.72rem;">-8.0 dB</span>
+          <span class="ctrl-val" id="delay-wet-val" data-value="0.501" style="font-size:.72rem;">-6.0 dB</span>
         </div>
-        <input type="range" id="delay-wet" min="0" max="1" step="0.01" value="0.4"
+        <input type="range" id="delay-wet" min="0" max="1" step="0.01" value="0.501"
                oninput="setDelayWet(this.value)" style="width:100%;">
       </div>
       <!-- FEEDBACK TO PITCH SHIFT (dangerous but musical!) -->
@@ -984,18 +974,18 @@ input.gain-meter-slider::-webkit-slider-thumb {
 // ── Factory defaults ────────────────────────────────────────────────
 const FACTORY_DEFAULTS = {
   inputGainDb: -60, outputGainDb: -6,
-  testEnabled: true, testWave: 'sine', testFreqHz: 110, testGainDb: -12,
-  pitch: { window: 0.1, semi: 0, wetdry: 0.5, toDelay: 1, toOut: 0 }, pitchBypassed: true,
-  delay: { time: 0.5, fb: 0.3, dry: 0.398, wet: 0.398, toPitch: 0 }, delayBypassed: false,
+  testEnabled: true, testWave: 'sine', testFreqHz: 110, testGainDb: -6,         // v55: -12 → -6
+  pitch: { window: 0.1, semi: 0, toDelay: 1, toOut: 0 }, pitchBypassed: true,    // v55: dry/wet removed
+  delay: { time: 0.5, fb: 0.3, wet: 0.501, toPitch: 0 }, delayBypassed: false,   // v55: dry removed; wet -8dB → -6dB
   inputMuted: true
 };
 function applyFactoryDefaults() {
   // Mic muted + gain at minimum
   if (!inputMuted) toggleMute('input');
   const ig=document.getElementById('input-gain-db'); if(ig){ig.value=-60;setInputGainDb(-60);}
-  // Signal gen on, -12dB, 110Hz
+  // Signal gen on, -6dB (v55: was -12), 110Hz
   if (!testEnabled) toggleTestTone();
-  const tg=document.getElementById('test-gain-sl'); if(tg){tg.value=-12;setTestGainDb(-12);}
+  const tg=document.getElementById('test-gain-sl'); if(tg){tg.value=-6;setTestGainDb(-6);}
   setTestFreqHz(110);
   // Pitch bypassed
   if (!pitchBypassed) toggleFxBypass('pitch');
@@ -1003,9 +993,8 @@ function applyFactoryDefaults() {
   if (delayBypassed) toggleFxBypass('delay');
   // Output -6dB
   const og=document.getElementById('output-gain-db'); if(og){og.value=-6;setOutputGainDb(-6);}
-  // Delay dry/wet ~-8dB
-  const dry=document.getElementById('delay-dry'); if(dry){dry.value=0.398;setDelayDry(0.398);}
-  const wet=document.getElementById('delay-wet'); if(wet){wet.value=0.398;setDelayWet(0.398);}
+  // Delay wet -6dB (v55: was -8 / 0.398 → -6 / 0.501; dry slider removed entirely)
+  const wet=document.getElementById('delay-wet'); if(wet){wet.value=0.501;setDelayWet(0.501);}
   // Sends: pitch→delay full, pitch→out off, delay→pitch off
   const ptd=document.getElementById('pitch-to-delay'); if(ptd){ptd.value=1;setPitchToDelay(1);}
   const pto=document.getElementById('pitch-to-out'); if(pto){pto.value=0;setPitchToOut(0);}
@@ -1195,7 +1184,7 @@ async function initAudio() {
     delayOutSum   = stereoGain(1); // summing node for delay output meter
     delayNode      = new Tone.Delay({ delayTime:0.5, maxDelay:62 });
     feedbackGain   = stereoGain(0.3);
-    delayDryGain   = stereoGain(1);
+    delayDryGain   = stereoGain(0); // v55: dry-out removed; node kept at 0 so legacy refs are no-ops
     delayWetGain   = stereoGain(0.4);
     outputGainNode = stereoGain(1);
     outputMuteNode = stereoGain(1);
@@ -1303,7 +1292,7 @@ async function initAudio() {
     // Init log slider positions
     document.getElementById('test-freq-sl').value = freqLog.toPos(110); setTestFreqPos(freqLog.toPos(110));
     document.getElementById('delay-time').value = timeLog.toPos(0.5);
-    setPitchSemi(0); setTestGainDb(-12); setPitchWetDry(0.5);
+    setPitchSemi(0); setTestGainDb(-6); // v55: pitch wet/dry removed; sigGen default -6dB
   } catch(e) { st.textContent='error: '+e.message; btn.disabled=false; }
 }
 
@@ -1663,12 +1652,10 @@ function applyDefaultState() {
   if (pitchBypassed) toggleFxBypass('pitch'); // ensure enabled
   // Output gain: -12dB
   const outSlider = document.getElementById('output-gain-db');
-  if (outSlider) { outSlider.value = -12; setOutputGainDb(-12); }
-  // Delay dry at -8dB (~0.4), wet at -8dB (~0.4)
-  const drySlider = document.getElementById('delay-dry');
+  if (outSlider) { outSlider.value = -6; setOutputGainDb(-6); } // v55: -12 → -6
+  // v55: delay dry slider gone; wet at -6dB (~0.5)
   const wetSlider = document.getElementById('delay-wet');
-  if (drySlider) { drySlider.value = 0.398; setDelayDry(0.398); }
-  if (wetSlider) { wetSlider.value = 0.398; setDelayWet(0.398); }
+  if (wetSlider) { wetSlider.value = 0.501; setDelayWet(0.501); }
 }
 // ── Board display ─────────────────────────────────────────────────
 function showBoard() {
@@ -1748,24 +1735,25 @@ function toggleFxBypass(fx){
   if(fx==='pitch'){
     pitchBypassed=!pitchBypassed;
     if(pitchBypassed){
-      // TRUE bypass: disconnect pitchShift entirely (eliminates its internal latency)
+      // TRUE bypass: disconnect pitchShift entirely (eliminates its internal latency).
+      // Route signal through the (formerly "dry") path so it still reaches pitchSumG.
       pitchDryG.gain.rampTo(1,r); pitchWetG.gain.rampTo(0,r);
       try { pitchShift.disconnect(pitchWetG); } catch(e){}
       try { preFxGain.disconnect(pitchShift); } catch(e){}
     } else {
-      // Reconnect pitchShift into the graph
+      // Reconnect pitchShift; v55 = always 100% wet at the pitch output (no dry/wet slider).
       try { preFxGain.connect(pitchShift); } catch(e){}
       try { pitchShift.connect(pitchWetG); } catch(e){}
-      const wd=parseFloat(document.getElementById('pitch-wetdry').value);
-      pitchWetG.gain.rampTo(wd,r); pitchDryG.gain.rampTo(1-wd,r);
+      pitchWetG.gain.rampTo(1,r); pitchDryG.gain.rampTo(0,r);
     }
     const pb=document.getElementById('pitch-bypass-btn');
     pb.textContent=pitchBypassed?'OFF':'ON';
     pb.classList.toggle('bypassed',pitchBypassed);
   } else {
     delayBypassed=!delayBypassed;
-    if(delayBypassed){delayDryGain.gain.rampTo(1,r);delayWetGain.gain.rampTo(0,r);}
-    else{delayDryGain.gain.rampTo(parseFloat(document.getElementById('delay-dry').value),r); delayWetGain.gain.rampTo(parseFloat(document.getElementById('delay-wet').value),r);}
+    // v55: delay dry slider removed; delayDryGain always 0. Bypass = wet→0; un-bypass = wet→slider.
+    if(delayBypassed){ delayWetGain.gain.rampTo(0,r); }
+    else{ delayWetGain.gain.rampTo(parseFloat(document.getElementById('delay-wet').value),r); }
     const db=document.getElementById('delay-bypass-btn');
     db.textContent=delayBypassed?'OFF':'ON';
     db.classList.toggle('bypassed',delayBypassed);
@@ -1815,8 +1803,16 @@ function startRecord(){
 }
 function stopRecord(){
   if(!recordingMethod) return;
-  if(recordingMethod === 'wav') stopWavCaptureAndDownload();
-  else                          stopWebmCaptureAndDownload();
+  // Always-clear pattern: wrap the format-specific stop in try/catch so a
+  // failure in encode/disconnect can't leave the UI stuck in recording state.
+  try {
+    if(recordingMethod === 'wav') stopWavCaptureAndDownload();
+    else                          stopWebmCaptureAndDownload();
+  } catch(err) {
+    console.error('stopRecord:', err);
+    const stEl = document.getElementById('rec-status');
+    if(stEl) stEl.textContent = 'stop err: '+(err.message||err);
+  }
   if(recordTimerId){ clearInterval(recordTimerId); recordTimerId = null; }
   const btn = document.getElementById('rec-btn');
   btn.classList.remove('recording');
@@ -1880,29 +1876,27 @@ function stopWebmCaptureAndDownload(){
 // ── WAV (uncompressed PCM) path ──
 function startWavCapture(){
   if(!rawCtx) { document.getElementById('rec-status').textContent='no audio ctx'; return false; }
+  if(!mediaStreamDest) { document.getElementById('rec-status').textContent='no media stream'; return false; }
   try {
-    // ScriptProcessor — deprecated but works in all browsers and is fine for offline capture.
-    // 4096-sample buffer = ~85ms latency. Specify exact channel counts.
+    // ScriptProcessor — deprecated but works everywhere for offline capture.
     pcmCaptureNode = rawCtx.createScriptProcessor(4096, 2, 2);
     pcmCaptureNode.onaudioprocess = (e) => {
-      // Snapshot input — Float32Array views are reused, must copy
       pcmCapL.push(new Float32Array(e.inputBuffer.getChannelData(0)));
       pcmCapR.push(new Float32Array(e.inputBuffer.getChannelData(1)));
-      // Pass-through; output sinks to muted gain so audio isn't doubled
       e.outputBuffer.getChannelData(0).set(e.inputBuffer.getChannelData(0));
       e.outputBuffer.getChannelData(1).set(e.inputBuffer.getChannelData(1));
     };
-    // Tap recordTap → native Gain bridge → ScriptProcessor (avoids any Tone→native quirks
-    // around ScriptProcessor specifically — Tone.Gain.connect(Gain) is well-trodden)
-    const tapBridge = rawCtx.createGain();
-    tapBridge.channelCount = 2; tapBridge.channelCountMode = 'explicit';
-    recordTap.connect(tapBridge);
-    tapBridge.connect(pcmCaptureNode);
-    // Sink ScriptProcessor output to a muted gain → destination so it pumps
+    // Pure-native path: tap mediaStreamDest's existing MediaStream (already fed by
+    // recordTap in initAudio). createMediaStreamSource gives us a native AudioNode
+    // we can connect to ScriptProcessor with no Tone↔native bridging risk.
+    const wavSrc = rawCtx.createMediaStreamSource(mediaStreamDest.stream);
+    wavSrc.connect(pcmCaptureNode);
+    // ScriptProcessor only fires onaudioprocess when its output is connected.
+    // Sink to a muted gain → destination.
     const muted = rawCtx.createGain(); muted.gain.value = 0;
     pcmCaptureNode.connect(muted); muted.connect(rawCtx.destination);
+    pcmCaptureNode.__source = wavSrc;
     pcmCaptureNode.__mutedSink = muted;
-    pcmCaptureNode.__tapBridge = tapBridge;
     console.log('WAV capture started, sampleRate=', rawCtx.sampleRate);
     return true;
   } catch(err) {
@@ -1913,19 +1907,19 @@ function startWavCapture(){
   }
 }
 function stopWavCaptureAndDownload(){
-  if(!pcmCaptureNode) return;
   const stEl = document.getElementById('rec-status');
+  if(!pcmCaptureNode){ if(stEl) stEl.textContent='no capture node'; return; }
+  // Disconnect everything first — even if encoding throws below, the audio graph is clean.
   try { pcmCaptureNode.disconnect(); } catch(e){}
-  if(pcmCaptureNode.__mutedSink){ try { pcmCaptureNode.__mutedSink.disconnect(); } catch(e){} }
-  if(pcmCaptureNode.__tapBridge){ try { pcmCaptureNode.__tapBridge.disconnect(); } catch(e){} }
+  if(pcmCaptureNode.__source)    try { pcmCaptureNode.__source.disconnect(); } catch(e){}
+  if(pcmCaptureNode.__mutedSink) try { pcmCaptureNode.__mutedSink.disconnect(); } catch(e){}
   pcmCaptureNode.onaudioprocess = null;
   pcmCaptureNode = null;
-  if(pcmCapL.length === 0){ if(stEl) stEl.textContent = 'no data'; return; }
+  if(pcmCapL.length === 0){ if(stEl) stEl.textContent = 'no data'; pcmCapL=[]; pcmCapR=[]; return; }
   const blob = encodeWavInt16PCM(pcmCapL, pcmCapR, rawCtx.sampleRate);
   pcmCapL = []; pcmCapR = [];
   triggerDownload(blob, `fx-processor-${recordTimestamp()}.wav`);
-  const sizeMB = (blob.size/1024/1024).toFixed(1);
-  if(stEl) stEl.textContent = `saved ${sizeMB}MB`;
+  if(stEl) stEl.textContent = `saved ${(blob.size/1024/1024).toFixed(1)}MB`;
 }
 // Encode interleaved 16-bit PCM WAV from Float32 chunks. Float32 [-1,+1] → Int16 [-32768, +32767].
 function encodeWavInt16PCM(chunksL, chunksR, sampleRate){
@@ -1983,13 +1977,13 @@ function setPitchSemi(v){
 function setPitchHz(hz){const st=Math.max(-36,Math.min(36,hzToSemi(Math.max(1,parseFloat(hz))))); document.getElementById('pitch-semi').value=st; setPitchSemi(st);}
 function setPitchWindow(v){if(pitchShift)pitchShift.windowSize=parseFloat(v); const ms=Math.round(parseFloat(v)*1000); document.getElementById('pitch-window-val').textContent=parseFloat(v).toFixed(2)+'s (~'+ms+'ms lat.)';}
 function setPitchType(v){document.getElementById('pitch-window').value=v; setPitchWindow(v);}
+// v55: pitch is always 100% wet. setPitchWetDry kept as a no-op so old presets
+// and legacy code paths don't crash. dryG stays at 0, wetG stays at 1.
 function setPitchWetDry(v){
-  const wd=parseFloat(v);
-  const wetG=Math.sin(wd*Math.PI/2), dryG=Math.cos(wd*Math.PI/2);
-  if(!pitchBypassed){pitchWetG.gain.rampTo(wetG,paramRampTime); pitchDryG.gain.rampTo(dryG,paramRampTime);}
-  const pct=Math.round(wd*100);
-  const pwEl=document.getElementById('pitch-wetdry-val');
-  pwEl.textContent=wd>=0.5?`WET ${pct}%`:`DRY ${100-pct}%`; pwEl.dataset.value=wd;
+  if(!pitchBypassed){
+    pitchWetG.gain.rampTo(1, paramRampTime);
+    pitchDryG.gain.rampTo(0, paramRampTime);
+  }
 }
 
 function setDelayTimePos(pos){
@@ -2011,7 +2005,8 @@ function setFeedback(v){
   document.getElementById('fb-danger').classList.toggle('show',isDanger);
   document.getElementById('delay-fb').classList.toggle('danger-range',isDanger);
 }
-function setDelayDry(v){if(!delayBypassed&&delayDryGain)delayDryGain.gain.rampTo(parseFloat(v),paramRampTime); const dv=parseFloat(v); const dEl=document.getElementById('delay-dry-val'); dEl.textContent=dv<0.001?'-inf':fmtDb(gainToDb(dv)); dEl.dataset.value=dv;}
+// v55: delay dry-out removed. Kept as no-op so legacy presets/code paths don't crash.
+function setDelayDry(v){ /* dry path retired — delayDryGain stays at 0 */ }
 function setDelayWet(v){if(!delayBypassed&&delayWetGain)delayWetGain.gain.rampTo(parseFloat(v),paramRampTime); const wv=parseFloat(v); const wEl=document.getElementById('delay-wet-val'); wEl.textContent=wv<0.001?'-inf':fmtDb(gainToDb(wv)); wEl.dataset.value=wv;}
 function setPitchToDelay(v){if(pitchToDelayG)pitchToDelayG.gain.rampTo(parseFloat(v),paramRampTime); const g=parseFloat(v); const el=document.getElementById('pitch-to-delay-val'); if(el){el.textContent=g<0.001?'-inf':fmtDb(gainToDb(g)); el.dataset.value=g;}}
 function setPitchToOut(v){if(pitchToOutG)pitchToOutG.gain.rampTo(parseFloat(v),paramRampTime); const g=parseFloat(v); const el=document.getElementById('pitch-to-out-val'); if(el){el.textContent=g<0.001?'-inf':fmtDb(gainToDb(g)); el.dataset.value=g;}}
@@ -2030,8 +2025,8 @@ function handleHeadPreset(btn) {
 }
 function getFxState(fx){
   if(fx==='siggen') return {mode:testMode,wave:document.getElementById('test-wave').value,freqHz:freqLog.toVal(parseFloat(document.getElementById('test-freq-sl').value)),gainDb:parseFloat(document.getElementById('test-gain-sl').value),pan:parseFloat(document.getElementById('test-pan-sl').value),adsrA,adsrD,adsrSMs,adsrR,pulseRateMs};
-  if(fx==='pitch') return {window:parseFloat(document.getElementById('pitch-window').value),semi:parseFloat(document.getElementById('pitch-semi').value),wetdry:parseFloat(document.getElementById('pitch-wetdry').value),toDelay:parseFloat(document.getElementById('pitch-to-delay').value),toOut:parseFloat(document.getElementById('pitch-to-out').value)};
-  if(fx==='delay') return {time:parseFloat(document.getElementById('delay-time-val').dataset.value||0.5),fb:parseFloat(document.getElementById('delay-fb').value),dry:parseFloat(document.getElementById('delay-dry').value),wet:parseFloat(document.getElementById('delay-wet').value),toPitch:parseFloat(document.getElementById('delay-to-pitch').value)};
+  if(fx==='pitch') return {window:parseFloat(document.getElementById('pitch-window').value),semi:parseFloat(document.getElementById('pitch-semi').value),toDelay:parseFloat(document.getElementById('pitch-to-delay').value),toOut:parseFloat(document.getElementById('pitch-to-out').value)};
+  if(fx==='delay') return {time:parseFloat(document.getElementById('delay-time-val').dataset.value||0.5),fb:parseFloat(document.getElementById('delay-fb').value),wet:parseFloat(document.getElementById('delay-wet').value),toPitch:parseFloat(document.getElementById('delay-to-pitch').value)};
 }
 function applyFxState(fx,s){
   if(fx==='siggen'){
@@ -2048,13 +2043,13 @@ function applyFxState(fx,s){
   } else if(fx==='pitch'){
     document.getElementById('pitch-window').value=s.window; setPitchWindow(s.window);
     document.getElementById('pitch-semi').value=s.semi; setPitchSemi(s.semi);
-    document.getElementById('pitch-wetdry').value=s.wetdry; setPitchWetDry(s.wetdry);
+    // v55: pitch wet/dry mix slider gone — pitch is always 100% wet. Legacy 'wetdry' field ignored.
     if(s.toDelay!==undefined){document.getElementById('pitch-to-delay').value=s.toDelay; setPitchToDelay(s.toDelay);}
     if(s.toOut!==undefined){document.getElementById('pitch-to-out').value=s.toOut; setPitchToOut(s.toOut);}
   } else if(fx==='delay'){
     setDelayTimeSec(s.time); document.getElementById('delay-fb').value=s.fb; setFeedback(s.fb);
-    document.getElementById('delay-dry').value=s.dry; setDelayDry(s.dry);
-    document.getElementById('delay-wet').value=s.wet; setDelayWet(s.wet);
+    // v55: delay dry-out slider gone — legacy 'dry' field ignored.
+    if(s.wet!==undefined){document.getElementById('delay-wet').value=s.wet; setDelayWet(s.wet);}
     if(s.toPitch!==undefined){document.getElementById('delay-to-pitch').value=s.toPitch; setDelayToPitch(s.toPitch);}
   }
 }
@@ -2152,9 +2147,11 @@ function makeEditable(el,{parse,format,min,max,slider,onSet}){
 // ── Double-click to toggle ────────────────────────────────────────
 function setupDblClick(){
   // Mix/percentage sliders: toggle 0 ↔ 1
-  [['pitch-wetdry',setPitchWetDry],['delay-dry',setDelayDry],['delay-wet',setDelayWet],['pitch-to-delay',setPitchToDelay],['pitch-to-out',setPitchToOut],['delay-to-pitch',setDelayToPitch],
+  // v55: pitch-wetdry & delay-dry sliders removed — skipped here.
+  [['delay-wet',setDelayWet],['pitch-to-delay',setPitchToDelay],['pitch-to-out',setPitchToOut],['delay-to-pitch',setDelayToPitch],
    ['delay-fb',setFeedback]].forEach(([id,fn])=>{
-    document.getElementById(id).addEventListener('dblclick',e=>{
+    const el = document.getElementById(id); if(!el) return;
+    el.addEventListener('dblclick',e=>{
       e.preventDefault(); const sl=document.getElementById(id);
       const v=parseFloat(sl.value); const nv=v>0.5?0:1; sl.value=nv; fn(nv);
     });
@@ -2206,10 +2203,9 @@ function setupEditables(){
   makeEditableSafe(document.getElementById('delay-time-val'),{min:0.001,max:60,format:v=>v>=1?v.toFixed(2)+'s':v.toFixed(3)+'s',parse:s=>parseFloat(s.replace('s','')),onSet:setDelayTimeSec});
   makeEditableSafe(document.getElementById('pitch-semi-val'),{min:-24,max:24,slider:document.getElementById('pitch-semi'),format:v=>(v>=0?'+':'')+v.toFixed(1),parse:s=>parseFloat(s),onSet:setPitchSemi});
   makeEditableSafe(document.getElementById('test-freq-val'),{min:20,max:20000,format:v=>fmtHz(v),parse:s=>parseFloat(s.replace(' Hz','')),onSet:setTestFreqHz});
-  makeEditableSafe(document.getElementById('pitch-wetdry-val'),{min:0,max:1,slider:document.getElementById('pitch-wetdry'),format:v=>{const p=Math.round(v*100);return v>=0.5?'WET '+p+'%':'DRY '+(100-p)+'%';},parse:s=>{const m=s.match(/(\d+)/);return m?parseFloat(m[1])/100:parseFloat(s);},onSet:v=>{document.getElementById('pitch-wetdry').value=v;setPitchWetDry(v);}});
+  // v55: pitch-wetdry & delay-dry editables removed — sliders/elements no longer exist.
   makeEditableSafe(document.getElementById('pitch-window-val'),{min:0.01,max:0.5,slider:document.getElementById('pitch-window'),format:v=>v.toFixed(3)+'s',parse:s=>parseFloat(s),onSet:v=>{document.getElementById('pitch-window').value=v;setPitchWindow(v);}});
   makeEditableSafe(document.getElementById('delay-fb-val'),{min:0,max:1.5,slider:document.getElementById('delay-fb'),format:v=>Math.round(v*100)+'%',parse:s=>parseFloat(s)/100,onSet:v=>{document.getElementById('delay-fb').value=v;setFeedback(v);}});
-  makeEditableSafe(document.getElementById('delay-dry-val'),{min:0,max:1,slider:document.getElementById('delay-dry'),format:v=>v<0.001?'-inf':fmtDb(gainToDb(v)),parse:s=>s.trim()==='-inf'?0:dbToGain(parseFloat(s)),onSet:v=>{document.getElementById('delay-dry').value=v;setDelayDry(v);}});
   makeEditableSafe(document.getElementById('delay-wet-val'),{min:0,max:1,slider:document.getElementById('delay-wet'),format:v=>v<0.001?'-inf':fmtDb(gainToDb(v)),parse:s=>s.trim()==='-inf'?0:dbToGain(parseFloat(s)),onSet:v=>{document.getElementById('delay-wet').value=v;setDelayWet(v);}});
   makeEditableSafe(document.getElementById('pitch-to-delay-val'),{min:0,max:1,slider:document.getElementById('pitch-to-delay'),format:v=>v<0.001?'-inf':fmtDb(gainToDb(v)),parse:s=>s.trim()==='-inf'?0:dbToGain(parseFloat(s)),onSet:v=>{document.getElementById('pitch-to-delay').value=v;setPitchToDelay(v);}});
   makeEditableSafe(document.getElementById('pitch-to-out-val'),{min:0,max:1,slider:document.getElementById('pitch-to-out'),format:v=>v<0.001?'-inf':fmtDb(gainToDb(v)),parse:s=>s.trim()==='-inf'?0:dbToGain(parseFloat(s)),onSet:v=>{document.getElementById('pitch-to-out').value=v;setPitchToOut(v);}});
