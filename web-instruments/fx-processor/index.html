@@ -424,6 +424,11 @@ input.gain-meter-slider::-webkit-slider-thumb {
 
 <!-- VS Code ↔ Claude shared file. Hi Christopher. -->
 
+<!-- Version badge (always visible, top-right) -->
+<div id="version-badge" style="position:fixed;top:8px;right:10px;
+     font-family:'Courier New',monospace;font-size:.6rem;letter-spacing:.16em;
+     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v54</div>
+
 <!-- ══════════════════════════════════════════════════════════════ -->
 <!-- START SCREEN                                                   -->
 <!-- ══════════════════════════════════════════════════════════════ -->
@@ -1874,30 +1879,45 @@ function stopWebmCaptureAndDownload(){
 
 // ── WAV (uncompressed PCM) path ──
 function startWavCapture(){
-  if(!rawCtx) return false;
-  // ScriptProcessor — deprecated but works in all browsers and is fine for capture.
-  // Buffer size 4096 samples = ~85ms latency. Fine for offline capture.
-  pcmCaptureNode = rawCtx.createScriptProcessor(4096, 2, 2);
-  pcmCaptureNode.onaudioprocess = (e) => {
-    // Snapshot input — Float32Array views are reused, must copy
-    pcmCapL.push(new Float32Array(e.inputBuffer.getChannelData(0)));
-    pcmCapR.push(new Float32Array(e.inputBuffer.getChannelData(1)));
-    // Pass-through (silenced below) — ScriptProcessor only runs when its output is connected
-    e.outputBuffer.getChannelData(0).set(e.inputBuffer.getChannelData(0));
-    e.outputBuffer.getChannelData(1).set(e.inputBuffer.getChannelData(1));
-  };
-  recordTap.connect(pcmCaptureNode);
-  // Sink ScriptProcessor output to a muted gain → destination so it pumps but isn't heard twice
-  const muted = rawCtx.createGain(); muted.gain.value = 0;
-  pcmCaptureNode.connect(muted); muted.connect(rawCtx.destination);
-  pcmCaptureNode.__mutedSink = muted; // hold ref so it's not GC'd
-  return true;
+  if(!rawCtx) { document.getElementById('rec-status').textContent='no audio ctx'; return false; }
+  try {
+    // ScriptProcessor — deprecated but works in all browsers and is fine for offline capture.
+    // 4096-sample buffer = ~85ms latency. Specify exact channel counts.
+    pcmCaptureNode = rawCtx.createScriptProcessor(4096, 2, 2);
+    pcmCaptureNode.onaudioprocess = (e) => {
+      // Snapshot input — Float32Array views are reused, must copy
+      pcmCapL.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+      pcmCapR.push(new Float32Array(e.inputBuffer.getChannelData(1)));
+      // Pass-through; output sinks to muted gain so audio isn't doubled
+      e.outputBuffer.getChannelData(0).set(e.inputBuffer.getChannelData(0));
+      e.outputBuffer.getChannelData(1).set(e.inputBuffer.getChannelData(1));
+    };
+    // Tap recordTap → native Gain bridge → ScriptProcessor (avoids any Tone→native quirks
+    // around ScriptProcessor specifically — Tone.Gain.connect(Gain) is well-trodden)
+    const tapBridge = rawCtx.createGain();
+    tapBridge.channelCount = 2; tapBridge.channelCountMode = 'explicit';
+    recordTap.connect(tapBridge);
+    tapBridge.connect(pcmCaptureNode);
+    // Sink ScriptProcessor output to a muted gain → destination so it pumps
+    const muted = rawCtx.createGain(); muted.gain.value = 0;
+    pcmCaptureNode.connect(muted); muted.connect(rawCtx.destination);
+    pcmCaptureNode.__mutedSink = muted;
+    pcmCaptureNode.__tapBridge = tapBridge;
+    console.log('WAV capture started, sampleRate=', rawCtx.sampleRate);
+    return true;
+  } catch(err) {
+    console.error('startWavCapture failed:', err);
+    document.getElementById('rec-status').textContent = 'WAV err: ' + (err.message || err);
+    pcmCaptureNode = null;
+    return false;
+  }
 }
 function stopWavCaptureAndDownload(){
   if(!pcmCaptureNode) return;
   const stEl = document.getElementById('rec-status');
   try { pcmCaptureNode.disconnect(); } catch(e){}
   if(pcmCaptureNode.__mutedSink){ try { pcmCaptureNode.__mutedSink.disconnect(); } catch(e){} }
+  if(pcmCaptureNode.__tapBridge){ try { pcmCaptureNode.__tapBridge.disconnect(); } catch(e){} }
   pcmCaptureNode.onaudioprocess = null;
   pcmCaptureNode = null;
   if(pcmCapL.length === 0){ if(stEl) stEl.textContent = 'no data'; return; }

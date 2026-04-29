@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LFO + Graphical ADSR — Test Case</title>
+<title>LFO + Graphical ADSR — Test Case v0.3</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -14,9 +14,14 @@ body {
   align-items:center; padding:16px 12px; overflow-x:auto;
 }
 
-/* ── Start screen ───────────────────────────────────────────────── */
+#version-badge {
+  position:fixed; top:8px; right:10px;
+  font-family:'Courier New',monospace; font-size:.6rem;
+  letter-spacing:.16em; color:#555; pointer-events:none; z-index:50;
+}
+
 #start-screen {
-  display:flex; flex-direction:column; align-items:center; gap:18px; margin-top:22vh;
+  display:flex; flex-direction:column; align-items:center; gap:18px; margin-top:18vh;
 }
 #start-btn {
   padding:14px 44px; background:transparent;
@@ -25,16 +30,15 @@ body {
   letter-spacing:.2em; cursor:pointer; transition:all .2s;
 }
 #start-btn:hover { background:#c8a854; color:#000; }
+#start-btn:disabled { opacity:.4; cursor:default; }
 
-/* ── Board: horizontal layout representing signal flow LFO → SIG → OUT ── */
-#board { display:none; flex-direction:row; align-items:flex-start; gap:10px; }
+#board { display:none; flex-direction:row; align-items:flex-start; gap:8px; }
 .col-wrap { display:flex; flex-direction:column; gap:6px; flex-shrink:0; }
 .col-label {
   font-size:.6rem; letter-spacing:.28em; color:#666;
   text-align:center; padding:0 0 3px; text-transform:uppercase;
 }
 
-/* ── Module base ────────────────────────────────────────────────── */
 .module {
   background:#111; border:1px solid #242424;
   border-radius:5px; padding:8px 10px 9px;
@@ -81,7 +85,6 @@ body {
   color:#c44; text-shadow:none;
 }
 
-/* ── Controls ───────────────────────────────────────────────────── */
 .ctrl-val {
   font-size:.68rem; color:#c8a854; white-space:nowrap; cursor:text;
 }
@@ -95,12 +98,7 @@ body {
   margin-bottom:2px;
 }
 .slider-label { font-size:.62rem; letter-spacing:.12em; color:#999; }
-
-/* Inline label + selector (for menus — sliders remain full-width) */
-.ctrl-inline {
-  display:flex; align-items:center; gap:6px;
-  margin-bottom:5px;
-}
+.ctrl-inline { display:flex; align-items:center; gap:6px; margin-bottom:5px; }
 .ctrl-inline label {
   font-size:.62rem; letter-spacing:.12em; color:#888;
   flex-shrink:0; min-width:48px;
@@ -120,8 +118,8 @@ select {
   font-size:.66rem; padding:2px 4px; outline:none;
   cursor:pointer; border-radius:2px;
 }
+select optgroup { font-style:normal; color:#888; }
 
-/* Mode toggle */
 .sgmode-btn {
   flex:1; padding:3px 0; background:transparent; border:none;
   color:#555; font-family:'Courier New',monospace; font-size:.58rem;
@@ -130,13 +128,11 @@ select {
 .sgmode-btn.sgmode-active { background:rgba(60,100,60,.35); color:#7ba; }
 .sgmode-btn:hover { color:#888; }
 
-/* ── Dual-handle range (LFO) ────────────────────────────────────── */
-.range-dual {
-  position:relative; width:100%; height:16px;
-}
+/* Dual-handle range slider */
+.range-dual { position:relative; width:100%; height:16px; }
 .range-dual .track {
-  position:absolute; left:0; right:0; top:6px;
-  height:3px; background:#2a2a2a; border-radius:2px; pointer-events:none;
+  position:absolute; left:0; right:0; top:6px; height:3px;
+  background:#2a2a2a; border-radius:2px; pointer-events:none;
 }
 .range-dual .fill {
   position:absolute; top:6px; height:3px;
@@ -148,51 +144,46 @@ select {
   pointer-events:none; outline:none;
 }
 .range-dual input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance:none;
-  width:12px; height:12px; border-radius:50%;
+  -webkit-appearance:none; width:12px; height:12px; border-radius:50%;
   background:#c8a854; cursor:pointer; pointer-events:auto;
 }
-.range-dual input.range-max::-webkit-slider-thumb {
-  background:#e0b858;
-}
+.range-dual input.range-max::-webkit-slider-thumb { background:#e0b858; }
 
-/* LFO modulation indicator dot on sig-gen sliders */
+/* Mod-dot indicator on sig gen sliders */
 .slider-wrap { position:relative; }
 .mod-dot {
   position:absolute; top:-4px; width:3px; height:10px;
   background:#7abbe0; border-radius:1px;
   box-shadow:0 0 6px rgba(122,187,224,.8);
-  pointer-events:none; transition:left .04s linear;
-  display:none;
+  pointer-events:none; display:none;
 }
 .mod-dot.active { display:block; }
 
-/* ── 2D gain/pan pad (SIG GEN) ──────────────────────────────────── */
+/* 2D gain/pan pad — taller, narrower, no transitions for snappier feel */
+.gp-pad-wrap {
+  display:flex; justify-content:center; padding:2px 0;
+}
 .gp-pad {
-  position:relative; width:100%; height:46px;
+  position:relative; width:200px; height:76px;
   background:#060606; border:1px solid #1a1a1a; border-radius:3px;
   overflow:hidden; cursor:grab; touch-action:none;
-  margin-top:2px;
 }
 .gp-pad:active { cursor:grabbing; }
 .gp-meter {
-  position:absolute; left:0; height:calc(50% - 1px);
-  width:0%;
+  position:absolute; left:0; height:calc(50% - 1px); width:0%;
   background:linear-gradient(to right,#1a5a1a 0%,#2a9a2a 58%,#7ab020 70%,#b89010 82%,#c06010 90%,#e02020 100%);
-  transition:width .04s;
 }
 .gp-meter-l { top:0; }
 .gp-meter-r { bottom:0; }
 .gp-zero-line {
-  position:absolute; top:0; bottom:0;
-  left:83.33%; width:1px;
-  background:rgba(200,200,100,0.45);
-  pointer-events:none;
+  position:absolute; top:0; bottom:0; left:83.33%;
+  width:1px; background:rgba(200,200,100,0.45); pointer-events:none;
 }
 .gp-zero-label {
-  position:absolute; top:50%; left:calc(83.33% + 2px); transform:translateY(-50%);
-  font-family:'Courier New',monospace; font-size:.46rem; color:rgba(200,200,100,0.55);
-  pointer-events:none; line-height:1;
+  position:absolute; top:50%; left:calc(83.33% + 2px);
+  transform:translateY(-50%);
+  font-family:'Courier New',monospace; font-size:.46rem;
+  color:rgba(200,200,100,0.55); pointer-events:none; line-height:1;
 }
 .gp-center-line {
   position:absolute; left:0; right:0; top:50%; height:1px;
@@ -203,7 +194,7 @@ select {
   background:#6aaee0; border:1px solid rgba(255,255,255,0.25);
   box-shadow:0 0 7px rgba(100,160,220,0.7);
   transform:translate(-50%,-50%); pointer-events:none;
-  transition:left .04s, top .04s;
+  /* No CSS transition — pointer events drive position synchronously for snappy feel */
 }
 .gp-readout {
   display:flex; justify-content:space-between;
@@ -212,20 +203,16 @@ select {
 }
 .gp-readout .k { color:#666; letter-spacing:.12em; text-transform:uppercase; }
 
-/* ── Graphical ADSR ─────────────────────────────────────────────── */
-#adsr-panel {
-  margin-top:6px; padding:6px 4px 4px; border-top:1px solid #1a1a1a;
-}
-#adsr-label-row {
+/* ADSR (slightly shorter to allow stacking 2 sig gens reasonably) */
+#sg1-adsr-svg, #sg2-adsr-svg { display:block; width:100%; height:130px; cursor:default; touch-action:none; }
+.adsr-panel { margin-top:6px; padding:6px 4px 4px; border-top:1px solid #1a1a1a; }
+.adsr-label-row {
   display:flex; justify-content:space-between; align-items:baseline; margin-bottom:3px;
 }
-#adsr-label-row .lbl { font-size:.56rem; color:#666; letter-spacing:.14em; text-transform:uppercase; }
-#adsr-svg-wrap {
+.adsr-label-row .lbl { font-size:.56rem; color:#666; letter-spacing:.14em; text-transform:uppercase; }
+.adsr-svg-wrap {
   position:relative; background:#070707;
   border:1px solid #1a1a1a; border-radius:3px;
-}
-#adsr-svg {
-  display:block; width:100%; height:160px; cursor:default; touch-action:none;
 }
 .adsr-seg { fill:none; stroke:#4a7a9a; stroke-width:1.5; }
 .adsr-handle {
@@ -234,10 +221,7 @@ select {
 .adsr-handle:hover { fill:#c8a854; }
 .adsr-handle.dragging { cursor:grabbing; fill:#c8a854; }
 .adsr-gridline { stroke:#1a1a1a; stroke-width:1; }
-.adsr-gridlabel {
-  font-family:'Courier New',monospace; font-size:8px;
-  fill:#444; letter-spacing:.05em;
-}
+.adsr-gridlabel { font-family:'Courier New',monospace; font-size:8px; fill:#444; letter-spacing:.05em; }
 .adsr-pointlabel {
   font-family:'Courier New',monospace; font-size:9px;
   fill:#c8a854; pointer-events:auto;
@@ -250,22 +234,18 @@ select {
   padding:1px 4px; outline:none; border-radius:2px; z-index:20;
   width:58px;
 }
-#adsr-defaults-btn {
+.adsr-defaults-btn {
   font-size:.55rem; padding:1px 6px; background:transparent;
   border:1px solid #333; color:#666;
   font-family:'Courier New',monospace; letter-spacing:.08em;
   cursor:pointer; border-radius:2px; transition:all .15s;
 }
-#adsr-defaults-btn:hover { border-color:#c8a854; color:#c8a854; }
+.adsr-defaults-btn:hover { border-color:#c8a854; color:#c8a854; }
 
-/* ── LFO waveform preview ───────────────────────────────────────── */
-#lfo-preview {
-  width:100%; height:28px; background:#070707;
-  border:1px solid #1a1a1a; border-radius:3px;
-  margin-top:4px;
-}
+/* LFO preview canvas — shorter */
+.lfo-preview { width:100%; height:24px; background:#070707; border:1px solid #1a1a1a; border-radius:3px; margin-top:4px; }
 
-/* ── Output gain+meter (vertical composite, kept) ──────────────── */
+/* Output gain meter (vertical composite, kept) */
 .gain-meter-wrap { position:relative; width:22px; flex-shrink:0; }
 .gain-meter-bg { position:absolute; bottom:0; left:0; width:100%; height:100%; display:flex; gap:2px; }
 .gain-meter-wrap::before {
@@ -287,7 +267,6 @@ select {
 .gain-meter-level {
   position:absolute; bottom:0; left:0; width:100%;
   background:linear-gradient(to top, #1a5a1a 0%, #2a9a2a 68%, #7ab020 78%, #b89010 85%, #c06010 91%, #c83010 96%, #e02020 100%);
-  transition:height .04s;
 }
 .gain-meter-peak { position:absolute; width:100%; height:2px; background:rgba(255,255,255,.6); }
 input.gain-meter-slider {
@@ -301,248 +280,78 @@ input.gain-meter-slider::-webkit-slider-thumb {
   box-shadow:0 0 4px rgba(100,160,220,0.5);
 }
 
-.key-hint { font-size:.56rem; color:#555; letter-spacing:.08em; }
-.page-info {
-  font-size:.56rem; color:#555; letter-spacing:.12em;
-  padding:4px 0 4px; text-align:center;
+/* REC button (ported from fx-processor) */
+#rec-btn:hover { border-color:#8a3a3a; color:#c66; }
+#rec-btn.recording {
+  background:rgba(150,30,30,.5); border-color:#e02020;
+  color:#e88; text-shadow:0 0 6px rgba(224,32,32,.6);
+  animation:rec-pulse 1.2s step-end infinite;
 }
-.page-info a { color:#666; text-decoration:none; }
-.page-info a:hover { color:#888; }
+#rec-fmt:hover { border-color:#444; color:#aaa; }
+#rec-fmt.wav-mode { border-color:#3a4a6a; color:#7abbe0; }
+#rec-fmt.wav-mode:hover { border-color:#5a6a8a; color:#9cdcf0; }
+@keyframes rec-pulse { 50% { opacity: .55; } }
+
+.key-hint { font-size:.56rem; color:#555; letter-spacing:.08em; }
 </style>
 </head>
 <body>
+
+<div id="version-badge">LFO + ADSR TEST · v0.3</div>
 
 <div id="start-screen">
   <div style="font-size:.78rem;letter-spacing:.28em;color:#666;">LFO + GRAPHICAL ADSR — TEST CASE</div>
   <button id="start-btn" onclick="initAudio()">INITIALISE AUDIO</button>
   <div id="start-status" style="font-size:.62rem;color:#555;letter-spacing:.15em;">click to start Tone.js context</div>
-  <pre id="start-error" style="display:none;max-width:560px;color:#e05050;font-size:.6rem;letter-spacing:.05em;background:#1a0d0d;border:1px solid #5a2a2a;padding:8px;border-radius:3px;white-space:pre-wrap;"></pre>
+  <pre id="start-error" style="display:none;max-width:600px;color:#e05050;font-size:.6rem;letter-spacing:.05em;background:#1a0d0d;border:1px solid #5a2a2a;padding:8px;border-radius:3px;white-space:pre-wrap;"></pre>
 </div>
 
 <div id="board">
-
-  <!-- ═════════ LFO column (can hold stacked LFOs later) ═════════ -->
-  <div class="col-wrap">
+  <div class="col-wrap" id="lfo-col">
     <div class="col-label">modulators</div>
-    <div class="module" id="lfo-module">
-      <div class="mod-head">
-        <span class="mod-title">LFO</span>
-        <div class="head-presets">
-          <button class="head-preset-slot" data-slot="0" data-fx="lfo" onclick="handlePreset(event, this)">1</button>
-          <button class="head-preset-slot" data-slot="1" data-fx="lfo" onclick="handlePreset(event, this)">2</button>
-          <button class="head-preset-slot" data-slot="2" data-fx="lfo" onclick="handlePreset(event, this)">3</button>
-          <button class="head-preset-slot" data-slot="3" data-fx="lfo" onclick="handlePreset(event, this)">4</button>
-          <button class="head-preset-slot" data-slot="4" data-fx="lfo" onclick="handlePreset(event, this)">5</button>
-          <button class="head-preset-slot" data-slot="5" data-fx="lfo" onclick="handlePreset(event, this)">6</button>
-        </div>
-        <button class="byp-btn off" id="lfo-enable-btn" onclick="toggleLfo()">OFF</button>
-      </div>
-
-      <div class="slider-row">
-        <div class="slider-label-row">
-          <span class="slider-label">RATE</span>
-          <span class="ctrl-val" id="lfo-rate-val" data-value="2" style="font-size:.66rem;">2.00 Hz</span>
-        </div>
-        <input type="range" id="lfo-rate-sl" min="0" max="1000" step="any" value="434"
-               oninput="setLfoRatePos(this.value)">
-      </div>
-
-      <div class="ctrl-inline">
-        <label>SHAPE</label>
-        <select id="lfo-shape" onchange="setLfoShape(this.value)">
-          <option value="sine">Sine</option>
-          <option value="triangle">Triangle</option>
-          <option value="sawtooth">Sawtooth (Up)</option>
-          <option value="square">Square</option>
-        </select>
-      </div>
-
-      <div class="ctrl-inline">
-        <label>TARGET</label>
-        <select id="lfo-target" onchange="setLfoTarget(this.value)">
-          <option value="freq">Freq</option>
-          <option value="pulseRate">Pulse Rate</option>
-          <option value="pan">Pan</option>
-          <option value="volume">Volume</option>
-        </select>
-      </div>
-
-      <div class="slider-row" style="margin-bottom:4px;">
-        <div class="slider-label-row">
-          <span class="slider-label">RANGE</span>
-          <span style="font-size:.6rem;color:#888;">
-            <span class="ctrl-val" id="lfo-min-val" data-value="" style="font-size:.6rem;">—</span>
-            <span style="color:#444;"> .. </span>
-            <span class="ctrl-val" id="lfo-max-val" data-value="" style="font-size:.6rem;">—</span>
-          </span>
-        </div>
-        <div class="range-dual" id="lfo-range-dual">
-          <div class="track"></div>
-          <div class="fill" id="lfo-range-fill"></div>
-          <input type="range" class="range-min" id="lfo-min-sl"
-                 min="0" max="1000" step="any" value="300" oninput="setLfoMinPos(this.value)">
-          <input type="range" class="range-max" id="lfo-max-sl"
-                 min="0" max="1000" step="any" value="700" oninput="setLfoMaxPos(this.value)">
-        </div>
-      </div>
-
-      <canvas id="lfo-preview"></canvas>
-    </div>
+    <!-- LFO modules injected by JS -->
   </div>
-
-  <!-- ═════════ SIG GEN ═════════ -->
-  <div class="col-wrap">
-    <div class="col-label">signal</div>
-    <div class="module wide" id="siggen-module">
-      <div class="mod-head">
-        <span class="mod-title">SIGNAL GEN</span>
-        <div class="head-presets">
-          <button class="head-preset-slot" data-slot="0" data-fx="siggen" onclick="handlePreset(event, this)">1</button>
-          <button class="head-preset-slot" data-slot="1" data-fx="siggen" onclick="handlePreset(event, this)">2</button>
-          <button class="head-preset-slot" data-slot="2" data-fx="siggen" onclick="handlePreset(event, this)">3</button>
-          <button class="head-preset-slot" data-slot="3" data-fx="siggen" onclick="handlePreset(event, this)">4</button>
-          <button class="head-preset-slot" data-slot="4" data-fx="siggen" onclick="handlePreset(event, this)">5</button>
-          <button class="head-preset-slot" data-slot="5" data-fx="siggen" onclick="handlePreset(event, this)">6</button>
-        </div>
-        <button class="byp-btn off" id="test-enable-btn" onclick="toggleTestTone()">OFF</button>
-      </div>
-
-      <div style="display:flex;gap:0;margin-bottom:7px;border:1px solid #1e1e1e;border-radius:2px;overflow:hidden;">
-        <button class="sgmode-btn sgmode-active" id="sgmode-steady" onclick="setSigGenMode('steady')">STEADY</button>
-        <button class="sgmode-btn" id="sgmode-pulsed" onclick="setSigGenMode('pulsed')">PULSED</button>
-      </div>
-
-      <div class="ctrl-inline">
-        <label>WAVEFORM</label>
-        <select id="test-wave" onchange="setTestWave(this.value)">
-          <option value="sine">Sine</option>
-          <option value="square">Square</option>
-          <option value="sawtooth">Sawtooth</option>
-          <option value="triangle">Triangle</option>
-        </select>
-      </div>
-
-      <div class="slider-row">
-        <div class="slider-label-row">
-          <span class="slider-label">FREQ</span>
-          <span class="ctrl-val" id="test-freq-val" data-value="220">220 Hz</span>
-        </div>
-        <div class="slider-wrap">
-          <input type="range" id="test-freq-sl" min="0" max="1000" step="any" value="347"
-                 oninput="setTestFreqPos(this.value)">
-          <div class="mod-dot" id="test-freq-dot"></div>
-        </div>
-      </div>
-
-      <div class="slider-row" id="pulse-rate-row" style="display:none;">
-        <div class="slider-label-row">
-          <span class="slider-label">PULSE RATE</span>
-          <span class="ctrl-val" id="pulse-rate-val" data-value="1000">1000 ms</span>
-        </div>
-        <div class="slider-wrap">
-          <input type="range" id="pulse-rate-sl" min="20" max="5000" step="10" value="1000"
-                 oninput="setPulseRate(this.value)">
-          <div class="mod-dot" id="pulse-rate-dot"></div>
-        </div>
-      </div>
-
-      <!-- 2D gain/pan pad: horizontal drag = gain, vertical drag = pan -->
-      <div class="slider-row" style="margin-bottom:4px;">
-        <div class="slider-label-row">
-          <span class="slider-label">GAIN · PAN <span style="color:#444;font-size:.5rem;letter-spacing:.05em;">(drag L/R = gain, U/D = pan)</span></span>
-        </div>
-        <div class="gp-pad" id="sig-gp-pad">
-          <div class="gp-meter gp-meter-l" id="sig-meter-l"></div>
-          <div class="gp-meter gp-meter-r" id="sig-meter-r"></div>
-          <div class="gp-center-line"></div>
-          <div class="gp-zero-line"></div>
-          <div class="gp-zero-label">0</div>
-          <div class="gp-puck" id="sig-puck"></div>
-        </div>
-        <div class="gp-readout">
-          <span><span class="k">gain</span> <span class="ctrl-val" id="test-gain-val" data-value="-12">-12.00 dB</span></span>
-          <span><span class="k">pan</span> <span class="ctrl-val" id="test-pan-val" data-value="0">C</span></span>
-        </div>
-      </div>
-
-      <div style="display:flex;justify-content:flex-end;margin-top:2px;">
-        <span class="key-hint"><span style="color:#666;">SPACE</span> = fire pulse</span>
-      </div>
-
-      <!-- Graphical ADSR -->
-      <div id="adsr-panel">
-        <div id="adsr-label-row">
-          <span class="lbl">Envelope · drag handles · click labels to type</span>
-          <button id="adsr-defaults-btn" onclick="resetAdsrDefaults()">RESET</button>
-        </div>
-        <div id="adsr-svg-wrap">
-          <svg id="adsr-svg" viewBox="0 0 320 160" preserveAspectRatio="none"></svg>
-        </div>
-      </div>
-    </div>
+  <div class="col-wrap" id="sig-col-1">
+    <div class="col-label">signal 1</div>
+    <!-- SIG GEN 1 injected by JS -->
   </div>
-
-  <!-- ═════════ OUTPUT ═════════ -->
-  <div class="col-wrap">
+  <div class="col-wrap" id="sig-col-2">
+    <div class="col-label">signal 2</div>
+    <!-- SIG GEN 2 injected by JS -->
+  </div>
+  <div class="col-wrap" id="out-col">
     <div class="col-label">output</div>
-    <div class="module" id="output-module">
-      <div class="mod-head">
-        <span class="mod-title">OUTPUT</span>
-        <button class="byp-btn" id="output-mute" onclick="toggleOutputMute()" style="margin-left:auto;">ON</button>
-      </div>
-      <div style="display:flex;justify-content:center;height:160px;min-height:160px;margin-bottom:4px;">
-        <div class="gain-meter-wrap" style="height:160px;">
-          <div class="gain-meter-bg">
-            <div class="gain-meter-bar">
-              <div class="gain-meter-level" id="out-level-l" style="height:0%"></div>
-              <div class="gain-meter-peak" id="out-pk-l" style="bottom:0%"></div>
-            </div>
-            <div class="gain-meter-bar">
-              <div class="gain-meter-level" id="out-level-r" style="height:0%"></div>
-              <div class="gain-meter-peak" id="out-pk-r" style="bottom:0%"></div>
-            </div>
-          </div>
-          <input class="gain-meter-slider" type="range" id="output-gain-db"
-            min="-60" max="12" step="0.5" value="-6" oninput="setOutputGainDb(this.value)">
-        </div>
-      </div>
-      <div style="text-align:center;margin-top:3px;">
-        <span class="ctrl-val" id="output-gain-val" data-value="-6" style="font-size:.68rem;">-6.00 dB</span>
-      </div>
-      <hr style="border:none;border-top:1px solid #1a1a1a;margin:8px 0;">
-      <div style="font-size:.54rem;color:#555;letter-spacing:.1em;">
-        <div id="out-latency-base">base —</div>
-        <div id="out-latency-out">out —</div>
-        <div id="out-latency-total" style="color:#7abbe0;">RT —</div>
-      </div>
-    </div>
+    <!-- OUTPUT injected by JS -->
   </div>
-
-</div>
-
-<div class="page-info" id="page-info-bar" style="display:none;">
-  fx-processor test case · <a href="../../web-instruments/fx-processor/">back to fx-processor</a>
 </div>
 
 <script>
+/* ════════════════════════════════════════════════════════════════
+   v0.3
+   - 2 LFO modulators + 2 signal generators + 1 output (with REC)
+   - LFO targets reach either signal generator (8 targets total)
+   - Recording: WEBM (opus 192kbps) | WAV (16-bit PCM) toggle
+   - 2D gain/pan pad: 200×76, no CSS transitions (snappy)
+   - Native ChannelSplitter+AnalyserNode stereo metering
+   ════════════════════════════════════════════════════════════════ */
+
+const APP_VERSION = 'v0.3';
+
 /* ══════════ UTILITIES ══════════ */
 function dbToGain(db){ return Math.pow(10, db/20); }
 function clamp(v,lo,hi){ return Math.max(lo, Math.min(hi,v)); }
-// Round to at most 2 decimals, stripping trailing zeros
 function round2(n){ return Math.round(n*100)/100; }
-function fmt2(n){ return round2(n).toString(); }
 
 const freqLog = {
   minHz:20, maxHz:20000,
-  toHz(pos){ const p=pos/1000; return this.minHz*Math.pow(this.maxHz/this.minHz,p); },
-  toPos(hz){ const p=Math.log(hz/this.minHz)/Math.log(this.maxHz/this.minHz); return clamp(p*1000,0,1000); },
+  toHz(pos){ return this.minHz*Math.pow(this.maxHz/this.minHz, pos/1000); },
+  toPos(hz){ return clamp((Math.log(hz/this.minHz)/Math.log(this.maxHz/this.minHz))*1000,0,1000); },
 };
 const rateLog = {
   minHz:0.05, maxHz:50,
-  toHz(pos){ const p=pos/1000; return this.minHz*Math.pow(this.maxHz/this.minHz,p); },
-  toPos(hz){ const p=Math.log(hz/this.minHz)/Math.log(this.maxHz/this.minHz); return clamp(p*1000,0,1000); },
+  toHz(pos){ return this.minHz*Math.pow(this.maxHz/this.minHz, pos/1000); },
+  toPos(hz){ return clamp((Math.log(hz/this.minHz)/Math.log(this.maxHz/this.minHz))*1000,0,1000); },
 };
-
 function stereoGain(g) {
   const opts = {channelCount:2, channelCountMode:'explicit', channelInterpretation:'speakers'};
   const n = new Tone.Gain(g);
@@ -550,7 +359,7 @@ function stereoGain(g) {
   return n;
 }
 
-/* ══════════ TARGET CONFIGS (LFO) ══════════ */
+/* ══════════ TARGET CONFIGS (per-param scale + format) ══════════ */
 const TARGETS = {
   freq: {
     label:'Hz', unitMin:20, unitMax:20000, defaultMin:80, defaultMax:800, scale:'log',
@@ -584,288 +393,547 @@ const TARGETS = {
 
 /* ══════════ STATE ══════════ */
 let rawCtx=null;
-let testOsc=null, testEnvelope=null, testPanner=null, testGain=null;
 let outputGainNode=null, outputMuteNode=null;
-// Native per-channel analysers for stereo metering (fx-processor flanking-meter pattern)
-let testSplit=null, testAnL=null, testAnR=null;
 let outSplit=null, outAnL=null, outAnR=null;
+const sigGens = []; // sigGens[0], sigGens[1]
+const lfos = [];    // lfos[0], lfos[1]
+let outputMuted=false, outputGainDb=-6;
 
-let testEnabled=false, sigGenMode='steady', outputMuted=false;
-let pulseInterval=null;
+// Recording state
+let recordTap=null, mediaStreamDest=null, mediaRecorder=null;
+let recordChunks=[], recordStartTime=0, recordTimerId=null, recordSoftWarned=false;
+let recFormat='webm', recordingMethod=null;
+let pcmCapL=[], pcmCapR=[], pcmCaptureNode=null;
+const REC_SOFT_CAP_MS = 30*60*1000;
+const REC_HARD_CAP_MS = 60*60*1000;
+const REC_OPUS_BITRATE = 192000;
 
-let testFreqHz=220, testGainDb=-12, testPan=0, testWave='sine', pulseRateMs=1000;
-let outputGainDb=-6;
-
-let adsr = { aMs:20, aLevel:1.0, dMs:50, dLevel:0.251, sMs:100, rMs:100 };
+// Default ADSR
 const ADSR_DEFAULTS = { aMs:20, aLevel:1.0, dMs:50, dLevel:0.251, sMs:100, rMs:100 };
 
-let lfoEnabled=false, lfoRateHz=2, lfoShape='sine', lfoTarget='freq';
-let lfoMin = TARGETS.freq.defaultMin;
-let lfoMax = TARGETS.freq.defaultMax;
-const lfoRangesPerTarget = {
-  freq:      {min:TARGETS.freq.defaultMin,      max:TARGETS.freq.defaultMax},
-  pulseRate: {min:TARGETS.pulseRate.defaultMin, max:TARGETS.pulseRate.defaultMax},
-  pan:       {min:TARGETS.pan.defaultMin,       max:TARGETS.pan.defaultMax},
-  volume:    {min:TARGETS.volume.defaultMin,    max:TARGETS.volume.defaultMax},
-};
-
-let lfoPhase=0, lfoLastT=performance.now();
-function lfoTick(){
-  const now = performance.now();
-  const dt = Math.max(0, (now - lfoLastT)/1000);
-  lfoLastT = now;
-  lfoPhase = (lfoPhase + dt * lfoRateHz) % 1;
-  switch(lfoShape){
-    case 'sine':     return Math.sin(lfoPhase * Math.PI * 2);
-    case 'triangle': return lfoPhase < 0.5 ? (lfoPhase*4 - 1) : (3 - lfoPhase*4);
-    case 'sawtooth': return lfoPhase*2 - 1;
-    case 'square':   return lfoPhase < 0.5 ? 1 : -1;
-  }
-  return 0;
-}
-function lfoToTargetValue(sample){ return lfoMin + (lfoMax - lfoMin) * (sample + 1) / 2; }
-
-const PRESET_KEY = 'lfo-adsr-test:presets';
-let presets = loadPresets();
-function loadPresets(){ try { return JSON.parse(localStorage.getItem(PRESET_KEY)||'{}'); } catch { return {}; } }
+const PRESET_KEY = 'lfo-adsr-test:presets:v03';
+let presets = (() => { try { return JSON.parse(localStorage.getItem(PRESET_KEY)||'{}'); } catch { return {}; } })();
 function savePresets(){ localStorage.setItem(PRESET_KEY, JSON.stringify(presets)); }
 
-/* ══════════ INIT ══════════ */
+/* ════════════════════════════════════════════════════════════════
+   MODULE TEMPLATES (HTML built from JS to avoid duplication)
+   ════════════════════════════════════════════════════════════════ */
+function sigGenTemplate(idx){
+  return `
+<div class="module wide" id="sg${idx}-module">
+  <div class="mod-head">
+    <span class="mod-title">SIG GEN ${idx}</span>
+    <div class="head-presets">
+      ${[1,2,3,4,5,6].map(n => `<button class="head-preset-slot" data-slot="${n-1}" data-fx="sg${idx}" onclick="handlePreset(event, this)">${n}</button>`).join('')}
+    </div>
+    <button class="byp-btn off" id="sg${idx}-enable-btn" onclick="toggleSigGen(${idx})">OFF</button>
+  </div>
+
+  <div style="display:flex;gap:0;margin-bottom:7px;border:1px solid #1e1e1e;border-radius:2px;overflow:hidden;">
+    <button class="sgmode-btn sgmode-active" id="sg${idx}-mode-steady" onclick="setSigGenMode(${idx},'steady')">STEADY</button>
+    <button class="sgmode-btn" id="sg${idx}-mode-pulsed" onclick="setSigGenMode(${idx},'pulsed')">PULSED</button>
+  </div>
+
+  <div class="ctrl-inline">
+    <label>WAVEFORM</label>
+    <select id="sg${idx}-wave" onchange="setSgWave(${idx}, this.value)">
+      <option value="sine">Sine</option>
+      <option value="square">Square</option>
+      <option value="sawtooth">Sawtooth</option>
+      <option value="triangle">Triangle</option>
+    </select>
+  </div>
+
+  <div class="slider-row">
+    <div class="slider-label-row">
+      <span class="slider-label">FREQ</span>
+      <span class="ctrl-val" id="sg${idx}-freq-val" data-value="220">220 Hz</span>
+    </div>
+    <div class="slider-wrap">
+      <input type="range" id="sg${idx}-freq-sl" min="0" max="1000" step="any" value="347" oninput="setSgFreqPos(${idx}, this.value)">
+      <div class="mod-dot" id="sg${idx}-freq-dot"></div>
+    </div>
+  </div>
+
+  <div class="slider-row" id="sg${idx}-pulse-row" style="display:none;">
+    <div class="slider-label-row">
+      <span class="slider-label">PULSE RATE</span>
+      <span class="ctrl-val" id="sg${idx}-pulse-val" data-value="1000">1000 ms</span>
+    </div>
+    <div class="slider-wrap">
+      <input type="range" id="sg${idx}-pulse-sl" min="20" max="5000" step="10" value="1000" oninput="setSgPulse(${idx}, this.value)">
+      <div class="mod-dot" id="sg${idx}-pulse-dot"></div>
+    </div>
+  </div>
+
+  <div class="slider-row" style="margin-bottom:4px;">
+    <div class="slider-label-row">
+      <span class="slider-label">GAIN · PAN <span style="color:#444;font-size:.5rem;letter-spacing:.05em;">(L/R = gain · U/D = pan)</span></span>
+    </div>
+    <div class="gp-pad-wrap">
+      <div class="gp-pad" id="sg${idx}-gp-pad" data-sg="${idx}">
+        <div class="gp-meter gp-meter-l" id="sg${idx}-meter-l"></div>
+        <div class="gp-meter gp-meter-r" id="sg${idx}-meter-r"></div>
+        <div class="gp-center-line"></div>
+        <div class="gp-zero-line"></div>
+        <div class="gp-zero-label">0</div>
+        <div class="gp-puck" id="sg${idx}-puck"></div>
+      </div>
+    </div>
+    <div class="gp-readout">
+      <span><span class="k">gain</span> <span class="ctrl-val" id="sg${idx}-gain-val" data-value="-12">-12 dB</span></span>
+      <span><span class="k">pan</span> <span class="ctrl-val" id="sg${idx}-pan-val" data-value="0">C</span></span>
+    </div>
+  </div>
+
+  <div style="display:flex;justify-content:flex-end;margin-top:2px;">
+    <span class="key-hint"><span style="color:#666;">${idx===1?'SPACE':'ENTER'}</span> = fire pulse</span>
+  </div>
+
+  <div class="adsr-panel">
+    <div class="adsr-label-row">
+      <span class="lbl">Envelope · drag handles · click labels</span>
+      <button class="adsr-defaults-btn" onclick="resetAdsrDefaults(${idx})">RESET</button>
+    </div>
+    <div class="adsr-svg-wrap">
+      <svg id="sg${idx}-adsr-svg" viewBox="0 0 320 130" preserveAspectRatio="none"></svg>
+    </div>
+  </div>
+</div>`;
+}
+
+function lfoTemplate(idx){
+  return `
+<div class="module" id="lfo${idx}-module">
+  <div class="mod-head">
+    <span class="mod-title">LFO ${idx}</span>
+    <div class="head-presets">
+      ${[1,2,3,4,5,6].map(n => `<button class="head-preset-slot" data-slot="${n-1}" data-fx="lfo${idx}" onclick="handlePreset(event, this)">${n}</button>`).join('')}
+    </div>
+    <button class="byp-btn off" id="lfo${idx}-enable-btn" onclick="toggleLfo(${idx})">OFF</button>
+  </div>
+
+  <div class="slider-row">
+    <div class="slider-label-row">
+      <span class="slider-label">RATE</span>
+      <span class="ctrl-val" id="lfo${idx}-rate-val" data-value="2" style="font-size:.66rem;">2.00 Hz</span>
+    </div>
+    <input type="range" id="lfo${idx}-rate-sl" min="0" max="1000" step="any" value="434" oninput="setLfoRatePos(${idx}, this.value)">
+  </div>
+
+  <div class="ctrl-inline">
+    <label>SHAPE</label>
+    <select id="lfo${idx}-shape" onchange="setLfoShape(${idx}, this.value)">
+      <option value="sine">Sine</option>
+      <option value="triangle">Triangle</option>
+      <option value="sawtooth">Sawtooth</option>
+      <option value="square">Square</option>
+    </select>
+  </div>
+
+  <div class="ctrl-inline">
+    <label>TARGET</label>
+    <select id="lfo${idx}-target" onchange="setLfoTarget(${idx}, this.value)">
+      <optgroup label="SIG 1">
+        <option value="1:freq">Freq</option>
+        <option value="1:pulseRate">Pulse Rate</option>
+        <option value="1:pan">Pan</option>
+        <option value="1:volume">Volume</option>
+      </optgroup>
+      <optgroup label="SIG 2">
+        <option value="2:freq">Freq</option>
+        <option value="2:pulseRate">Pulse Rate</option>
+        <option value="2:pan">Pan</option>
+        <option value="2:volume">Volume</option>
+      </optgroup>
+    </select>
+  </div>
+
+  <div class="slider-row" style="margin-bottom:4px;">
+    <div class="slider-label-row">
+      <span class="slider-label">RANGE</span>
+      <span style="font-size:.6rem;color:#888;">
+        <span class="ctrl-val" id="lfo${idx}-min-val" data-value="" style="font-size:.6rem;">—</span>
+        <span style="color:#444;"> .. </span>
+        <span class="ctrl-val" id="lfo${idx}-max-val" data-value="" style="font-size:.6rem;">—</span>
+      </span>
+    </div>
+    <div class="range-dual" id="lfo${idx}-range-dual">
+      <div class="track"></div>
+      <div class="fill" id="lfo${idx}-range-fill"></div>
+      <input type="range" class="range-min" id="lfo${idx}-min-sl" min="0" max="1000" step="any" value="300" oninput="setLfoMinPos(${idx}, this.value)">
+      <input type="range" class="range-max" id="lfo${idx}-max-sl" min="0" max="1000" step="any" value="700" oninput="setLfoMaxPos(${idx}, this.value)">
+    </div>
+  </div>
+
+  <canvas class="lfo-preview" id="lfo${idx}-preview"></canvas>
+</div>`;
+}
+
+function outputTemplate(){
+  return `
+<div class="module" id="output-module">
+  <div class="mod-head">
+    <span class="mod-title">OUTPUT</span>
+    <button class="byp-btn" id="output-mute" onclick="toggleOutputMute()" style="margin-left:auto;">ON</button>
+  </div>
+  <div style="display:flex;justify-content:center;height:160px;min-height:160px;margin-bottom:4px;">
+    <div class="gain-meter-wrap" style="height:160px;">
+      <div class="gain-meter-bg">
+        <div class="gain-meter-bar">
+          <div class="gain-meter-level" id="out-level-l" style="height:0%"></div>
+          <div class="gain-meter-peak" id="out-pk-l" style="bottom:0%"></div>
+        </div>
+        <div class="gain-meter-bar">
+          <div class="gain-meter-level" id="out-level-r" style="height:0%"></div>
+          <div class="gain-meter-peak" id="out-pk-r" style="bottom:0%"></div>
+        </div>
+      </div>
+      <input class="gain-meter-slider" type="range" id="output-gain-db" min="-60" max="12" step="0.5" value="-6" oninput="setOutputGainDb(this.value)">
+    </div>
+  </div>
+  <div style="text-align:center;margin-top:3px;">
+    <span class="ctrl-val" id="output-gain-val" data-value="-6" style="font-size:.7rem;">-6 dB</span>
+  </div>
+
+  <!-- REC -->
+  <div style="margin-top:8px;padding-top:7px;border-top:1px solid #1a1a1a;display:flex;align-items:center;gap:6px;">
+    <button id="rec-btn" onclick="toggleRecord()"
+      title="Record the output mix to file"
+      style="padding:3px 10px;background:transparent;border:1px solid #5a2a2a;color:#a44;
+             font-family:'Courier New',monospace;font-size:.66rem;font-weight:600;letter-spacing:.08em;
+             cursor:pointer;border-radius:2px;transition:all .15s;flex-shrink:0;">● REC</button>
+    <button id="rec-fmt" onclick="toggleRecFormat()"
+      title="Toggle compressed (opus 192kbps webm) vs uncompressed (16-bit WAV)"
+      style="padding:2px 6px;background:transparent;border:1px solid #2e2e2e;color:#888;
+             font-family:'Courier New',monospace;font-size:.56rem;font-weight:400;letter-spacing:.1em;
+             cursor:pointer;border-radius:2px;flex-shrink:0;">WEBM</button>
+    <span id="rec-status" style="font-size:.58rem;color:#555;letter-spacing:.05em;flex:1;text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">idle</span>
+  </div>
+
+  <hr style="border:none;border-top:1px solid #1a1a1a;margin:8px 0;">
+  <div style="font-size:.54rem;color:#555;letter-spacing:.1em;">
+    <div id="out-latency-base">base —</div>
+    <div id="out-latency-out">out —</div>
+    <div id="out-latency-total" style="color:#7abbe0;">RT —</div>
+  </div>
+</div>`;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   INIT
+   ════════════════════════════════════════════════════════════════ */
 async function initAudio(){
   const btn = document.getElementById('start-btn');
   const st  = document.getElementById('start-status');
   const err = document.getElementById('start-error');
   if(err) err.style.display='none';
   btn.disabled = true;
-  st.textContent = 'starting Tone.js context...';
+  st.textContent = 'starting Tone...';
   try {
     await _initAudio();
   } catch(e) {
     console.error('initAudio failed:', e);
     st.textContent = 'init failed — see error below';
-    if(err){
-      err.style.display = 'block';
-      err.textContent = (e && e.stack) ? e.stack : String(e);
-    }
+    if(err){ err.style.display='block'; err.textContent = (e && e.stack) ? e.stack : String(e); }
     btn.disabled = false;
   }
 }
 
 async function _initAudio(){
   const st = document.getElementById('start-status');
-  st.textContent = 'starting Tone...';
-  // Tone.js 14 defaults to latencyHint:'interactive'. Replacing the context
-  // post-load (Tone.setContext) breaks node-graph connectivity in this build.
+  // Tone.js 14 default context already uses latencyHint:'interactive'.
   await Tone.start();
   Tone.context.lookAhead = 0;
   rawCtx = Tone.context.rawContext;
-  st.textContent = 'building audio graph...';
 
   outputGainNode = stereoGain(dbToGain(outputGainDb));
   outputMuteNode = stereoGain(1);
 
-  testOsc = new Tone.Oscillator(testFreqHz, testWave).start();
-  testEnvelope = new Tone.AmplitudeEnvelope({
-    attack: adsr.aMs/1000, decay: adsr.dMs/1000,
-    sustain: adsr.dLevel, release: adsr.rMs/1000,
-  });
-  testPanner = new Tone.Panner(testPan);
-  testGain = stereoGain(dbToGain(testGainDb));
+  // Build sig gens (audio nodes)
+  for (let i=1; i<=2; i++) {
+    const sg = {
+      idx: i,
+      enabled: false,
+      mode: 'steady',
+      wave: 'sine',
+      freqHz: i===1 ? 220 : 330,    // SIG 1 = 220, SIG 2 = 330 (a fifth up)
+      gainDb: -12,
+      pan: i===1 ? -0.3 : 0.3,
+      pulseMs: 1000,
+      pulseInterval: null,
+      adsr: {...ADSR_DEFAULTS},
+    };
+    sg.osc = new Tone.Oscillator(sg.freqHz, sg.wave).start();
+    sg.env = new Tone.AmplitudeEnvelope({
+      attack: sg.adsr.aMs/1000, decay: sg.adsr.dMs/1000,
+      sustain: sg.adsr.dLevel, release: sg.adsr.rMs/1000,
+    });
+    sg.panner = new Tone.Panner(sg.pan);
+    sg.gain = stereoGain(dbToGain(sg.gainDb));
 
-  testOsc.connect(testEnvelope);
-  testEnvelope.connect(testPanner);
-  testPanner.connect(testGain);
-  testGain.connect(outputGainNode);
+    sg.osc.connect(sg.env);
+    sg.env.connect(sg.panner);
+    sg.panner.connect(sg.gain);
 
-  // ── Native per-channel stereo metering (matches fx-processor flanking-meter pattern) ──
-  testSplit = rawCtx.createChannelSplitter(2);
-  testAnL = rawCtx.createAnalyser(); testAnL.fftSize = 1024; testAnL.smoothingTimeConstant = 0.75;
-  testAnR = rawCtx.createAnalyser(); testAnR.fftSize = 1024; testAnR.smoothingTimeConstant = 0.75;
-  testSplit.connect(testAnL, 0); testSplit.connect(testAnR, 1);
-  // Tone→native: use the Tone node's .connect() method (it unwraps the native destination
-  // internally). Tone.connect(tone, native) fails in 14.8.49 — param1 must be native.
-  testGain.connect(testSplit);
+    // Native splitter+analysers per-sig-gen for stereo metering
+    sg.split = rawCtx.createChannelSplitter(2);
+    sg.anL = rawCtx.createAnalyser(); sg.anL.fftSize = 1024; sg.anL.smoothingTimeConstant = 0.75;
+    sg.anR = rawCtx.createAnalyser(); sg.anR.fftSize = 1024; sg.anR.smoothingTimeConstant = 0.75;
+    sg.split.connect(sg.anL, 0); sg.split.connect(sg.anR, 1);
+    sg.gain.connect(sg.split);
 
+    sg.env.triggerAttack();
+    sigGens.push(sg);
+  }
+
+  // Build LFOs (state only — no Tone nodes; we drive params via rampTo from synthetic phase)
+  for (let i=1; i<=2; i++) {
+    const lfo = {
+      idx: i,
+      enabled: false,
+      rateHz: 2, shape: 'sine',
+      target: { sigIdx: i, paramName: 'freq' }, // LFO 1→sig 1 freq, LFO 2→sig 2 freq by default
+      min: TARGETS.freq.defaultMin, max: TARGETS.freq.defaultMax,
+      rangesPerKey: { // store per (sigIdx:paramName) range
+        [`1:freq`]:      {min: TARGETS.freq.defaultMin,      max: TARGETS.freq.defaultMax},
+        [`2:freq`]:      {min: TARGETS.freq.defaultMin,      max: TARGETS.freq.defaultMax},
+        [`1:pulseRate`]: {min: TARGETS.pulseRate.defaultMin, max: TARGETS.pulseRate.defaultMax},
+        [`2:pulseRate`]: {min: TARGETS.pulseRate.defaultMin, max: TARGETS.pulseRate.defaultMax},
+        [`1:pan`]:       {min: TARGETS.pan.defaultMin,       max: TARGETS.pan.defaultMax},
+        [`2:pan`]:       {min: TARGETS.pan.defaultMin,       max: TARGETS.pan.defaultMax},
+        [`1:volume`]:    {min: TARGETS.volume.defaultMin,    max: TARGETS.volume.defaultMax},
+        [`2:volume`]:    {min: TARGETS.volume.defaultMin,    max: TARGETS.volume.defaultMax},
+      },
+      phase: 0, lastT: performance.now(),
+    };
+    lfos.push(lfo);
+  }
+
+  // Sum: all sig gens → outputGainNode
+  for (const sg of sigGens) sg.gain.connect(outputGainNode);
+
+  // Output stereo splitter for output meter
   outSplit = rawCtx.createChannelSplitter(2);
   outAnL = rawCtx.createAnalyser(); outAnL.fftSize = 1024; outAnL.smoothingTimeConstant = 0.75;
   outAnR = rawCtx.createAnalyser(); outAnR.fftSize = 1024; outAnR.smoothingTimeConstant = 0.75;
   outSplit.connect(outAnL, 0); outSplit.connect(outAnR, 1);
   outputGainNode.connect(outSplit);
 
+  // Recording tap (pre-output-gain — same model as fx-processor)
+  recordTap = stereoGain(1);
+  // Re-route: have sig gens go through recordTap → outputGainNode instead of direct to outputGainNode.
+  // To avoid disconnecting/reconnecting, we just add a parallel path: recordTap also feeds destination.
+  // Simpler: tap recordTap from outputGainNode's INPUT side via parallel connection.
+  // For this test case, route sig gens through recordTap:
+  for (const sg of sigGens) {
+    try { sg.gain.disconnect(outputGainNode); } catch(e){}
+    sg.gain.connect(recordTap);
+  }
+  recordTap.connect(outputGainNode);
+  try { mediaStreamDest = rawCtx.createMediaStreamDestination(); recordTap.connect(mediaStreamDest); }
+  catch(e) { console.warn('MediaStreamDestination unavailable:', e); }
+
   outputGainNode.connect(outputMuteNode);
   outputMuteNode.toDestination();
 
-  testEnvelope.triggerAttack();
+  // Build DOM modules
+  document.getElementById('lfo-col').insertAdjacentHTML('beforeend', lfoTemplate(1) + lfoTemplate(2));
+  document.getElementById('sig-col-1').insertAdjacentHTML('beforeend', sigGenTemplate(1));
+  document.getElementById('sig-col-2').insertAdjacentHTML('beforeend', sigGenTemplate(2));
+  document.getElementById('out-col').insertAdjacentHTML('beforeend', outputTemplate());
 
+  // Apply initial state to UI
+  for (const sg of sigGens) {
+    document.getElementById(`sg${sg.idx}-freq-sl`).value = freqLog.toPos(sg.freqHz);
+    setSgFreqPos(sg.idx, freqLog.toPos(sg.freqHz));
+    setSgPan(sg.idx, sg.pan);
+    setSgGainDb(sg.idx, sg.gainDb);
+    bindGainPanPad(sg.idx);
+    drawAdsr(sg.idx);
+    bindAdsrLabels(sg.idx);
+    updatePuck(sg.idx);
+  }
+  for (const lfo of lfos) {
+    setLfoTarget(lfo.idx, `${lfo.target.sigIdx}:${lfo.target.paramName}`, /*skipUiSelect=*/true);
+    document.getElementById(`lfo${lfo.idx}-target`).value = `${lfo.target.sigIdx}:${lfo.target.paramName}`;
+    updateLfoRangeUi(lfo.idx);
+    startLfoPreviewLoop(lfo.idx);
+  }
+  bindEditables();
+  startMeterLoop();
+  startLatencyReadout();
+  restorePresetUi();
+
+  // Show board
   document.getElementById('start-screen').style.display = 'none';
   document.getElementById('board').style.display = 'flex';
-  document.getElementById('page-info-bar').style.display = '';
 
-  updateLfoRangeUi();
-  drawAdsr();
-  bindAdsrLabels();
-  bindGainPanPad();
-  updatePuck();
-  startMeterLoop();
-  startLfoPreviewLoop();
-  updatePulseRateVisibility();
-  startLatencyReadout();
-
+  // Keys: SPACE → fire SIG 1 pulse, ENTER → fire SIG 2 pulse
   window.addEventListener('keydown', (e)=>{
-    if(e.target.tagName==='INPUT') return;
-    if(e.code==='Space' && testEnabled && sigGenMode==='pulsed'){
-      e.preventDefault();
-      firePulse();
-    }
-  });
-
-  console.log('Latency info:', {
-    baseLatency: rawCtx.baseLatency,
-    outputLatency: rawCtx.outputLatency,
-    sampleRate: rawCtx.sampleRate,
+    if(e.target.tagName==='INPUT' || e.target.tagName==='SELECT' || e.target.tagName==='BUTTON') return;
+    if(e.code==='Space' && sigGens[0]?.enabled && sigGens[0].mode==='pulsed'){ e.preventDefault(); firePulse(1); }
+    if(e.code==='Enter' && sigGens[1]?.enabled && sigGens[1].mode==='pulsed'){ e.preventDefault(); firePulse(2); }
   });
 }
 
-/* ══════════ SIG GEN ══════════ */
-function toggleTestTone(){
-  testEnabled = !testEnabled;
-  const btn = document.getElementById('test-enable-btn');
-  btn.textContent = testEnabled ? 'ON' : 'OFF';
-  btn.classList.toggle('off', !testEnabled);
-  if(!testEnvelope) return;
-  if(testEnabled){
-    if(sigGenMode==='steady') testEnvelope.triggerAttack();
-    else startPulseLoop();
+/* ════════════════════════════════════════════════════════════════
+   SIG GEN
+   ════════════════════════════════════════════════════════════════ */
+function sg(idx){ return sigGens[idx-1]; }
+
+function toggleSigGen(idx){
+  const s = sg(idx);
+  s.enabled = !s.enabled;
+  const btn = document.getElementById(`sg${idx}-enable-btn`);
+  btn.textContent = s.enabled ? 'ON' : 'OFF';
+  btn.classList.toggle('off', !s.enabled);
+  if(s.enabled){
+    if(s.mode==='steady') s.env.triggerAttack();
+    else startPulseLoop(idx);
   } else {
-    testEnvelope.triggerRelease();
-    stopPulseLoop();
+    s.env.triggerRelease();
+    stopPulseLoop(idx);
   }
 }
-function setSigGenMode(mode){
-  sigGenMode=mode;
-  document.getElementById('sgmode-steady').classList.toggle('sgmode-active', mode==='steady');
-  document.getElementById('sgmode-pulsed').classList.toggle('sgmode-active', mode==='pulsed');
-  updatePulseRateVisibility();
-  if(!testEnvelope) return;
-  if(testEnabled){
-    if(mode==='steady'){ stopPulseLoop(); testEnvelope.triggerAttack(); }
-    else { testEnvelope.triggerRelease(); startPulseLoop(); }
+function setSigGenMode(idx, mode){
+  const s = sg(idx);
+  s.mode = mode;
+  document.getElementById(`sg${idx}-mode-steady`).classList.toggle('sgmode-active', mode==='steady');
+  document.getElementById(`sg${idx}-mode-pulsed`).classList.toggle('sgmode-active', mode==='pulsed');
+  document.getElementById(`sg${idx}-pulse-row`).style.display = mode==='pulsed' ? '' : 'none';
+  if(s.enabled){
+    if(mode==='steady'){ stopPulseLoop(idx); s.env.triggerAttack(); }
+    else { s.env.triggerRelease(); startPulseLoop(idx); }
   }
 }
-function updatePulseRateVisibility(){
-  document.getElementById('pulse-rate-row').style.display = sigGenMode==='pulsed' ? '' : 'none';
-}
-function setTestWave(w){ testWave=w; if(testOsc) testOsc.type=w; }
-
-function setTestFreqPos(pos){
+function setSgWave(idx, w){ const s=sg(idx); s.wave=w; if(s.osc) s.osc.type=w; }
+function setSgFreqPos(idx, pos){
+  const s = sg(idx);
   const hz = freqLog.toHz(parseFloat(pos));
-  testFreqHz = hz;
-  applyFreqToOsc();
-  const el = document.getElementById('test-freq-val');
+  s.freqHz = hz;
+  applyFreqToOsc(idx);
+  const el = document.getElementById(`sg${idx}-freq-val`);
   el.textContent = hz>=1000 ? round2(hz/1000)+' kHz' : round2(hz)+' Hz';
   el.dataset.value = hz;
 }
-function setTestFreqHz(hz){
+function setSgFreqHz(idx, hz){
   hz = clamp(parseFloat(hz), freqLog.minHz, freqLog.maxHz);
-  document.getElementById('test-freq-sl').value = freqLog.toPos(hz);
-  setTestFreqPos(freqLog.toPos(hz));
+  document.getElementById(`sg${idx}-freq-sl`).value = freqLog.toPos(hz);
+  setSgFreqPos(idx, freqLog.toPos(hz));
 }
-function applyFreqToOsc(){
-  if(!testOsc) return;
-  if(lfoEnabled && lfoTarget==='freq') return;
-  testOsc.frequency.rampTo(Math.max(testFreqHz,0.5), 0.01);
+function applyFreqToOsc(idx){
+  const s = sg(idx);
+  if(!s.osc) return;
+  if(isLfoDriving(idx,'freq')) return;
+  s.osc.frequency.rampTo(Math.max(s.freqHz,0.5), 0.01);
 }
-
-function setTestGainDb(db){
-  testGainDb = clamp(parseFloat(db), -60, 6);
-  applyGainToTestGain();
-  const el = document.getElementById('test-gain-val');
-  el.textContent = round2(testGainDb)+' dB';
-  el.dataset.value = testGainDb;
-  updatePuck();
+function setSgGainDb(idx, db){
+  const s = sg(idx);
+  s.gainDb = clamp(parseFloat(db), -60, 6);
+  applyGainToSg(idx);
+  const el = document.getElementById(`sg${idx}-gain-val`);
+  el.textContent = round2(s.gainDb)+' dB';
+  el.dataset.value = s.gainDb;
+  updatePuck(idx);
 }
-function applyGainToTestGain(){
-  if(!testGain) return;
-  if(lfoEnabled && lfoTarget==='volume') return;
-  testGain.gain.rampTo(dbToGain(testGainDb)*adsr.aLevel, 0.02);
+function applyGainToSg(idx){
+  const s = sg(idx);
+  if(!s.gain) return;
+  if(isLfoDriving(idx,'volume')) return;
+  s.gain.gain.rampTo(dbToGain(s.gainDb)*s.adsr.aLevel, 0.02);
 }
-
-function setTestPan(p){
-  testPan = clamp(parseFloat(p), -1, 1);
-  applyPanToPanner();
-  const el = document.getElementById('test-pan-val');
-  if(Math.abs(testPan)<0.02) el.textContent='C';
-  else el.textContent = (testPan<0?'L':'R') + Math.round(Math.abs(testPan)*100);
-  el.dataset.value = testPan;
-  updatePuck();
+function setSgPan(idx, p){
+  const s = sg(idx);
+  s.pan = clamp(parseFloat(p), -1, 1);
+  applyPanToPanner(idx);
+  const el = document.getElementById(`sg${idx}-pan-val`);
+  if(Math.abs(s.pan)<0.02) el.textContent='C';
+  else el.textContent = (s.pan<0?'L':'R') + Math.round(Math.abs(s.pan)*100);
+  el.dataset.value = s.pan;
+  updatePuck(idx);
 }
-function applyPanToPanner(){
-  if(!testPanner) return;
-  if(lfoEnabled && lfoTarget==='pan') return;
-  testPanner.pan.rampTo(testPan, 0.05);
+function applyPanToPanner(idx){
+  const s = sg(idx);
+  if(!s.panner) return;
+  if(isLfoDriving(idx,'pan')) return;
+  s.panner.pan.rampTo(s.pan, 0.05);
 }
-
-function setPulseRate(ms){
-  pulseRateMs = parseInt(ms);
-  const el = document.getElementById('pulse-rate-val');
-  el.textContent = pulseRateMs + ' ms';
-  el.dataset.value = pulseRateMs;
-  if(testEnabled && sigGenMode==='pulsed'){ startPulseLoop(); }
+function setSgPulse(idx, ms){
+  const s = sg(idx);
+  s.pulseMs = parseInt(ms);
+  const el = document.getElementById(`sg${idx}-pulse-val`);
+  el.textContent = s.pulseMs + ' ms';
+  el.dataset.value = s.pulseMs;
+  if(s.enabled && s.mode==='pulsed') startPulseLoop(idx);
 }
-function startPulseLoop(){
-  stopPulseLoop();
+function startPulseLoop(idx){
+  const s = sg(idx);
+  stopPulseLoop(idx);
   const fire = () => {
-    if(!testEnabled || sigGenMode!=='pulsed') return;
-    firePulse();
-    let rate = pulseRateMs;
-    if(lfoEnabled && lfoTarget==='pulseRate'){
-      rate = clamp(lfoToTargetValue(lfoTick()), 20, 30000);
+    if(!s.enabled || s.mode!=='pulsed') return;
+    firePulse(idx);
+    let rate = s.pulseMs;
+    // If an LFO is targeting THIS sig gen's pulseRate, use the LFO value
+    for (const lfo of lfos) {
+      if(lfo.enabled && lfo.target.sigIdx===idx && lfo.target.paramName==='pulseRate'){
+        rate = clamp(lfoToTargetValue(lfo, lfoTick(lfo)), 20, 30000);
+        break;
+      }
     }
-    pulseInterval = setTimeout(fire, rate);
+    s.pulseInterval = setTimeout(fire, rate);
   };
   fire();
 }
-function stopPulseLoop(){ if(pulseInterval){ clearTimeout(pulseInterval); pulseInterval=null; } }
-function firePulse(){
-  if(!testEnvelope) return;
-  const dur = (adsr.aMs + adsr.dMs + adsr.sMs) / 1000;
-  testEnvelope.triggerAttackRelease(dur, Tone.now());
+function stopPulseLoop(idx){ const s=sg(idx); if(s.pulseInterval){ clearTimeout(s.pulseInterval); s.pulseInterval=null; } }
+function firePulse(idx){
+  const s = sg(idx);
+  if(!s.env) return;
+  const dur = (s.adsr.aMs + s.adsr.dMs + s.adsr.sMs)/1000;
+  s.env.triggerAttackRelease(dur, Tone.now());
 }
 
-/* ══════════ 2D GAIN/PAN PAD ══════════ */
-function updatePuck(){
-  const puck = document.getElementById('sig-puck');
-  if(!puck) return;
-  // X: gain mapped -60..+6 → 0..100%. Y: pan -1..+1 → top(L)..bottom(R)
-  const xPct = clamp((testGainDb - (-60)) / 66, 0, 1) * 100;
-  const yPct = clamp((testPan + 1) / 2, 0, 1) * 100;
+function isLfoDriving(sigIdx, paramName){
+  for (const lfo of lfos) {
+    if(lfo.enabled && lfo.target.sigIdx===sigIdx && lfo.target.paramName===paramName) return true;
+  }
+  return false;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   2D GAIN/PAN PAD
+   ════════════════════════════════════════════════════════════════ */
+function updatePuck(idx){
+  const s = sg(idx);
+  const puck = document.getElementById(`sg${idx}-puck`);
+  if(!puck || !s) return;
+  const xPct = clamp((s.gainDb - (-60))/66, 0, 1) * 100;
+  const yPct = clamp((s.pan + 1)/2, 0, 1) * 100;
   puck.style.left = xPct + '%';
   puck.style.top  = yPct + '%';
 }
-function bindGainPanPad(){
-  const pad = document.getElementById('sig-gp-pad');
+function bindGainPanPad(idx){
+  const pad = document.getElementById(`sg${idx}-gp-pad`);
   let dragging = false;
   function updateFromEvent(e){
     const rect = pad.getBoundingClientRect();
     const x = clamp(e.clientX - rect.left, 0, rect.width);
     const y = clamp(e.clientY - rect.top, 0, rect.height);
-    const newGainDb = -60 + (x/rect.width) * 66;
-    const newPan = (y/rect.height) * 2 - 1;
-    setTestGainDb(newGainDb);
-    setTestPan(newPan);
+    setSgGainDb(idx, -60 + (x/rect.width)*66);
+    setSgPan(idx, (y/rect.height)*2 - 1);
   }
   pad.addEventListener('pointerdown', (e)=>{
-    dragging = true; pad.setPointerCapture(e.pointerId);
-    updateFromEvent(e);
+    dragging = true; pad.setPointerCapture(e.pointerId); updateFromEvent(e);
   });
   pad.addEventListener('pointermove', (e)=>{ if(dragging) updateFromEvent(e); });
-  pad.addEventListener('pointerup',   (e)=>{ dragging = false; try { pad.releasePointerCapture(e.pointerId); } catch{} });
-  pad.addEventListener('pointercancel',(e)=>{ dragging = false; });
-  // Dblclick any pad → gain 0dB, pan centered
-  pad.addEventListener('dblclick', ()=>{ setTestGainDb(0); setTestPan(0); });
+  pad.addEventListener('pointerup',   (e)=>{ dragging=false; try { pad.releasePointerCapture(e.pointerId); } catch{} });
+  pad.addEventListener('pointercancel',()=>{ dragging=false; });
+  pad.addEventListener('dblclick', ()=>{ setSgGainDb(idx, 0); setSgPan(idx, 0); });
 }
 
-/* ══════════ OUTPUT ══════════ */
+/* ════════════════════════════════════════════════════════════════
+   OUTPUT
+   ════════════════════════════════════════════════════════════════ */
 function setOutputGainDb(db){
   outputGainDb = parseFloat(db);
   if(outputGainNode) outputGainNode.gain.rampTo(dbToGain(outputGainDb), 0.05);
@@ -881,93 +949,114 @@ function toggleOutputMute(){
   b.classList.toggle('muted', outputMuted);
 }
 
-/* ══════════ LFO ══════════ */
-function toggleLfo(){
-  lfoEnabled = !lfoEnabled;
-  const btn = document.getElementById('lfo-enable-btn');
-  btn.textContent = lfoEnabled ? 'ON' : 'OFF';
-  btn.classList.toggle('off', !lfoEnabled);
-  if(!lfoEnabled){
-    applyFreqToOsc(); applyPanToPanner(); applyGainToTestGain();
-    ['test-freq-dot','test-pan-dot','pulse-rate-dot'].forEach(id=>{
-      const d = document.getElementById(id); if(d) d.classList.remove('active');
-    });
-    ['test-freq-val','test-pan-val','test-gain-val','pulse-rate-val'].forEach(id=>{
-      const el = document.getElementById(id); if(el) el.classList.remove('modulated');
-    });
-    updatePuck();
+/* ════════════════════════════════════════════════════════════════
+   LFO (synthetic phase, ramps Tone params)
+   ════════════════════════════════════════════════════════════════ */
+function lfo(idx){ return lfos[idx-1]; }
+
+function lfoTick(L){
+  const now = performance.now();
+  const dt = Math.max(0, (now - L.lastT)/1000);
+  L.lastT = now;
+  L.phase = (L.phase + dt * L.rateHz) % 1;
+  switch(L.shape){
+    case 'sine':     return Math.sin(L.phase * Math.PI * 2);
+    case 'triangle': return L.phase < 0.5 ? (L.phase*4 - 1) : (3 - L.phase*4);
+    case 'sawtooth': return L.phase*2 - 1;
+    case 'square':   return L.phase < 0.5 ? 1 : -1;
+  }
+  return 0;
+}
+function lfoToTargetValue(L, sample){ return L.min + (L.max - L.min) * (sample + 1) / 2; }
+
+function toggleLfo(idx){
+  const L = lfo(idx);
+  L.enabled = !L.enabled;
+  const btn = document.getElementById(`lfo${idx}-enable-btn`);
+  btn.textContent = L.enabled ? 'ON' : 'OFF';
+  btn.classList.toggle('off', !L.enabled);
+  if(!L.enabled){
+    // Restore base values for the target
+    const sIdx = L.target.sigIdx;
+    applyFreqToOsc(sIdx); applyPanToPanner(sIdx); applyGainToSg(sIdx);
+    // Clear modulation indicator
+    clearModulatedDisplay(L);
   }
 }
-function setLfoRatePos(pos){
-  lfoRateHz = rateLog.toHz(parseFloat(pos));
-  const el = document.getElementById('lfo-rate-val');
-  el.textContent = round2(lfoRateHz) + ' Hz';
-  el.dataset.value = lfoRateHz;
+function setLfoRatePos(idx, pos){
+  const L = lfo(idx);
+  L.rateHz = rateLog.toHz(parseFloat(pos));
+  const el = document.getElementById(`lfo${idx}-rate-val`);
+  el.textContent = round2(L.rateHz) + ' Hz';
+  el.dataset.value = L.rateHz;
 }
-function setLfoRateHz(hz){
+function setLfoRateHz(idx, hz){
   hz = clamp(parseFloat(hz), rateLog.minHz, rateLog.maxHz);
-  document.getElementById('lfo-rate-sl').value = rateLog.toPos(hz);
-  setLfoRatePos(rateLog.toPos(hz));
+  document.getElementById(`lfo${idx}-rate-sl`).value = rateLog.toPos(hz);
+  setLfoRatePos(idx, rateLog.toPos(hz));
 }
-function setLfoShape(s){ lfoShape=s; }
-function setLfoTarget(t){
-  lfoRangesPerTarget[lfoTarget] = {min: lfoMin, max: lfoMax};
-  applyFreqToOsc(); applyPanToPanner(); applyGainToTestGain();
-  lfoTarget = t;
-  const saved = lfoRangesPerTarget[t];
-  lfoMin = saved.min; lfoMax = saved.max;
-  updateLfoRangeUi();
-  ['test-freq-dot','test-pan-dot','pulse-rate-dot'].forEach(id=>{
-    const d = document.getElementById(id); if(d) d.classList.remove('active');
-  });
-  ['test-freq-val','test-pan-val','test-gain-val','pulse-rate-val'].forEach(id=>{
-    const el = document.getElementById(id); if(el) el.classList.remove('modulated');
-  });
-  updatePuck();
+function setLfoShape(idx, s){ lfo(idx).shape = s; }
+
+function setLfoTarget(idx, key, skipUiSelect){
+  const L = lfo(idx);
+  // Save current range to old key
+  const oldKey = `${L.target.sigIdx}:${L.target.paramName}`;
+  L.rangesPerKey[oldKey] = {min: L.min, max: L.max};
+  // Restore base values on old target
+  applyFreqToOsc(L.target.sigIdx); applyPanToPanner(L.target.sigIdx); applyGainToSg(L.target.sigIdx);
+  clearModulatedDisplay(L);
+  // Switch
+  const [sigIdxStr, paramName] = key.split(':');
+  L.target = { sigIdx: parseInt(sigIdxStr), paramName };
+  const saved = L.rangesPerKey[key];
+  L.min = saved.min; L.max = saved.max;
+  if(!skipUiSelect) document.getElementById(`lfo${idx}-target`).value = key;
+  updateLfoRangeUi(idx);
 }
-function updateLfoRangeUi(){
-  const T = TARGETS[lfoTarget];
-  const minSl = document.getElementById('lfo-min-sl');
-  const maxSl = document.getElementById('lfo-max-sl');
-  const minPos = T.toPos(lfoMin);
-  const maxPos = T.toPos(lfoMax);
+function updateLfoRangeUi(idx){
+  const L = lfo(idx);
+  const T = TARGETS[L.target.paramName];
+  const minSl = document.getElementById(`lfo${idx}-min-sl`);
+  const maxSl = document.getElementById(`lfo${idx}-max-sl`);
+  const minPos = T.toPos(L.min), maxPos = T.toPos(L.max);
   minSl.value = minPos; maxSl.value = maxPos;
-  const minValEl = document.getElementById('lfo-min-val');
-  const maxValEl = document.getElementById('lfo-max-val');
-  minValEl.textContent = T.fmt(lfoMin); minValEl.dataset.value = lfoMin;
-  maxValEl.textContent = T.fmt(lfoMax); maxValEl.dataset.value = lfoMax;
-  const fill = document.getElementById('lfo-range-fill');
-  fill.style.left  = (minPos/10)+'%';
-  fill.style.width = ((maxPos-minPos)/10)+'%';
+  const minValEl = document.getElementById(`lfo${idx}-min-val`);
+  const maxValEl = document.getElementById(`lfo${idx}-max-val`);
+  minValEl.textContent = T.fmt(L.min); minValEl.dataset.value = L.min;
+  maxValEl.textContent = T.fmt(L.max); maxValEl.dataset.value = L.max;
+  document.getElementById(`lfo${idx}-range-fill`).style.left  = (minPos/10)+'%';
+  document.getElementById(`lfo${idx}-range-fill`).style.width = ((maxPos-minPos)/10)+'%';
 }
-function setLfoMinPos(pos){
-  const T = TARGETS[lfoTarget];
+function setLfoMinPos(idx, pos){
+  const L = lfo(idx);
+  const T = TARGETS[L.target.paramName];
   let v = T.toVal(parseFloat(pos));
-  if(v > lfoMax){ v = lfoMax; document.getElementById('lfo-min-sl').value = T.toPos(v); }
-  lfoMin = v; updateLfoRangeUi();
+  if(v > L.max){ v = L.max; document.getElementById(`lfo${idx}-min-sl`).value = T.toPos(v); }
+  L.min = v; updateLfoRangeUi(idx);
 }
-function setLfoMaxPos(pos){
-  const T = TARGETS[lfoTarget];
+function setLfoMaxPos(idx, pos){
+  const L = lfo(idx);
+  const T = TARGETS[L.target.paramName];
   let v = T.toVal(parseFloat(pos));
-  if(v < lfoMin){ v = lfoMin; document.getElementById('lfo-max-sl').value = T.toPos(v); }
-  lfoMax = v; updateLfoRangeUi();
+  if(v < L.min){ v = L.min; document.getElementById(`lfo${idx}-max-sl`).value = T.toPos(v); }
+  L.max = v; updateLfoRangeUi(idx);
 }
-function setLfoMinVal(v){
-  const T = TARGETS[lfoTarget];
-  lfoMin = clamp(v, T.unitMin, Math.min(T.unitMax, lfoMax));
-  updateLfoRangeUi();
+function setLfoMinVal(idx, v){
+  const L = lfo(idx); const T = TARGETS[L.target.paramName];
+  L.min = clamp(v, T.unitMin, Math.min(T.unitMax, L.max));
+  updateLfoRangeUi(idx);
 }
-function setLfoMaxVal(v){
-  const T = TARGETS[lfoTarget];
-  lfoMax = clamp(v, Math.max(T.unitMin, lfoMin), T.unitMax);
-  updateLfoRangeUi();
+function setLfoMaxVal(idx, v){
+  const L = lfo(idx); const T = TARGETS[L.target.paramName];
+  L.max = clamp(v, Math.max(T.unitMin, L.min), T.unitMax);
+  updateLfoRangeUi(idx);
 }
 
-function startLfoPreviewLoop(){
-  const canvas = document.getElementById('lfo-preview');
+function startLfoPreviewLoop(idx){
+  const L = lfo(idx);
+  const canvas = document.getElementById(`lfo${idx}-preview`);
   const ctx = canvas.getContext('2d');
-  const buf = [];
-  const BUF_SIZE = 120;
+  const buf = []; const BUF_SIZE = 90;
 
   function resize(){
     const dpr = window.devicePixelRatio||1;
@@ -979,112 +1068,117 @@ function startLfoPreviewLoop(){
   window.addEventListener('resize', resize);
 
   function tick(){
-    const sample = lfoTick();
+    const sample = lfoTick(L);
     buf.push(sample);
     if(buf.length > BUF_SIZE) buf.shift();
-
     const w = canvas.clientWidth, h = canvas.clientHeight;
     ctx.clearRect(0,0,w,h);
     ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(0,h/2); ctx.lineTo(w,h/2); ctx.stroke();
-    ctx.strokeStyle = lfoEnabled ? '#7abbe0' : '#3a4a5a';
+    ctx.strokeStyle = L.enabled ? '#7abbe0' : '#3a4a5a';
     ctx.lineWidth = 1.2;
     ctx.beginPath();
     for(let i=0;i<buf.length;i++){
       const x = (i/(BUF_SIZE-1))*w;
-      const y = h/2 - buf[i]*(h/2-3);
+      const y = h/2 - buf[i]*(h/2-2);
       if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
     }
     ctx.stroke();
 
-    if(lfoEnabled){
-      const modVal = lfoToTargetValue(sample);
-      applyLfoToTarget(modVal);
-      updateModulatedDisplay(modVal);
+    if(L.enabled){
+      const v = lfoToTargetValue(L, sample);
+      applyLfoToTarget(L, v);
+      updateModulatedDisplay(L, v);
     }
     requestAnimationFrame(tick);
   }
   tick();
 }
-function applyLfoToTarget(v){
-  switch(lfoTarget){
-    case 'freq':    if(testOsc)    testOsc.frequency.rampTo(Math.max(v,0.5), 0.015); break;
-    case 'pan':     if(testPanner) testPanner.pan.rampTo(clamp(v,-1,1), 0.015); break;
-    case 'volume':  if(testGain)   testGain.gain.rampTo(dbToGain(v)*adsr.aLevel, 0.015); break;
+function applyLfoToTarget(L, v){
+  const s = sg(L.target.sigIdx);
+  switch(L.target.paramName){
+    case 'freq':   if(s.osc)    s.osc.frequency.rampTo(Math.max(v,0.5), 0.015); break;
+    case 'pan':    if(s.panner) s.panner.pan.rampTo(clamp(v,-1,1), 0.015); break;
+    case 'volume': if(s.gain)   s.gain.gain.rampTo(dbToGain(v)*s.adsr.aLevel, 0.015); break;
     case 'pulseRate': break;
   }
 }
-function updateModulatedDisplay(v){
-  const T = TARGETS[lfoTarget];
+function updateModulatedDisplay(L, v){
+  const T = TARGETS[L.target.paramName];
+  const sIdx = L.target.sigIdx;
   let valEl, dotEl, slEl, pos;
-  switch(lfoTarget){
+  switch(L.target.paramName){
     case 'freq':
-      valEl = document.getElementById('test-freq-val');
-      dotEl = document.getElementById('test-freq-dot');
-      slEl  = document.getElementById('test-freq-sl');
+      valEl = document.getElementById(`sg${sIdx}-freq-val`);
+      dotEl = document.getElementById(`sg${sIdx}-freq-dot`);
+      slEl  = document.getElementById(`sg${sIdx}-freq-sl`);
       pos = freqLog.toPos(v)/1000;
       break;
-    case 'pan':
-      valEl = document.getElementById('test-pan-val');
-      pos = (v+1)/2;
-      // For pan, update the puck's Y position too
-      const puck = document.getElementById('sig-puck');
-      if(puck) puck.style.top = (pos*100)+'%';
+    case 'pan': {
+      valEl = document.getElementById(`sg${sIdx}-pan-val`);
+      const puck = document.getElementById(`sg${sIdx}-puck`);
+      if(puck) puck.style.top = ((v+1)/2*100)+'%';
       break;
-    case 'volume':
-      valEl = document.getElementById('test-gain-val');
-      const puck2 = document.getElementById('sig-puck');
+    }
+    case 'volume': {
+      valEl = document.getElementById(`sg${sIdx}-gain-val`);
+      const puck2 = document.getElementById(`sg${sIdx}-puck`);
       if(puck2) puck2.style.left = (((v-(-60))/66)*100)+'%';
       break;
+    }
     case 'pulseRate':
-      valEl = document.getElementById('pulse-rate-val');
-      dotEl = document.getElementById('pulse-rate-dot');
-      slEl  = document.getElementById('pulse-rate-sl');
+      valEl = document.getElementById(`sg${sIdx}-pulse-val`);
+      dotEl = document.getElementById(`sg${sIdx}-pulse-dot`);
+      slEl  = document.getElementById(`sg${sIdx}-pulse-sl`);
       pos = Math.log(v/20)/Math.log(5000/20);
       break;
   }
-  if(valEl){
-    valEl.textContent = T.fmt(v);
-    valEl.classList.add('modulated');
-  }
+  if(valEl){ valEl.textContent = T.fmt(v); valEl.classList.add('modulated'); }
   if(dotEl && slEl){
-    const leftPct = clamp(pos, 0, 1) * 100;
-    dotEl.style.left = `calc(${leftPct}% - 1.5px)`;
+    dotEl.style.left = `calc(${clamp(pos,0,1)*100}% - 1.5px)`;
     dotEl.classList.add('active');
   }
 }
-
-/* ══════════ GRAPHICAL ADSR ══════════ */
-const ADSR_VIEW = { w:320, h:160, mL:14, mR:12, mT:10, mB:18 };
-function adsrTimes(){
-  return {
-    tA: adsr.aMs,
-    tD: adsr.aMs + adsr.dMs,
-    tS: adsr.aMs + adsr.dMs + adsr.sMs,
-    tR: adsr.aMs + adsr.dMs + adsr.sMs + adsr.rMs,
-  };
+function clearModulatedDisplay(L){
+  const sIdx = L.target.sigIdx;
+  ['freq','pulse','pan','gain'].forEach(k => {
+    const dot = document.getElementById(`sg${sIdx}-${k}-dot`); if(dot) dot.classList.remove('active');
+    const v = document.getElementById(`sg${sIdx}-${k}-val`); if(v) v.classList.remove('modulated');
+  });
 }
-function adsrViewMaxMs(){ return Math.max(adsrTimes().tR * 1.25, 500); }
-function adsrCoords(){
+
+/* ════════════════════════════════════════════════════════════════
+   GRAPHICAL ADSR (per sig gen)
+   ════════════════════════════════════════════════════════════════ */
+const ADSR_VIEW = { w:320, h:130, mL:14, mR:12, mT:10, mB:18 };
+
+function adsrTimes(idx){
+  const a = sg(idx).adsr;
+  return { tA: a.aMs, tD: a.aMs+a.dMs, tS: a.aMs+a.dMs+a.sMs, tR: a.aMs+a.dMs+a.sMs+a.rMs };
+}
+function adsrViewMaxMs(idx){ return Math.max(adsrTimes(idx).tR * 1.25, 500); }
+function adsrCoords(idx){
+  const a = sg(idx).adsr;
   const {w,h,mL,mR,mT,mB} = ADSR_VIEW;
-  const t = adsrTimes();
-  const total = adsrViewMaxMs();
-  const plotW = w - mL - mR, plotH = h - mT - mB;
+  const t = adsrTimes(idx);
+  const total = adsrViewMaxMs(idx);
+  const plotW = w-mL-mR, plotH = h-mT-mB;
   const x = (ms) => mL + (ms/total)*plotW;
   const y = (amp) => mT + (1 - amp)*plotH;
   return {
     start: {x:x(0), y:y(0)},
-    peak:  {x:x(t.tA), y:y(adsr.aLevel)},
-    decay: {x:x(t.tD), y:y(adsr.dLevel)},
-    sust:  {x:x(t.tS), y:y(adsr.dLevel)},
+    peak:  {x:x(t.tA), y:y(a.aLevel)},
+    decay: {x:x(t.tD), y:y(a.dLevel)},
+    sust:  {x:x(t.tS), y:y(a.dLevel)},
     end:   {x:x(t.tR), y:y(0)},
     plotW, plotH, mL, mR, mT, mB, total, x, y,
   };
 }
-function drawAdsr(){
-  const svg = document.getElementById('adsr-svg');
+function drawAdsr(idx){
+  const svg = document.getElementById(`sg${idx}-adsr-svg`);
   const {w,h,mL,mR,mT,mB} = ADSR_VIEW;
-  const c = adsrCoords();
+  const c = adsrCoords(idx);
+  const a = sg(idx).adsr;
   while(svg.firstChild) svg.removeChild(svg.firstChild);
   const addLine = (x1,y1,x2,y2,cls='adsr-gridline') => {
     const el = document.createElementNS('http://www.w3.org/2000/svg','line');
@@ -1128,7 +1222,7 @@ function drawAdsr(){
     el.setAttribute('cx',p.x); el.setAttribute('cy',p.y);
     el.setAttribute('r',6);
     el.setAttribute('class','adsr-handle');
-    el.dataset.name = name;
+    el.dataset.name = name; el.dataset.idx = idx;
     el.addEventListener('pointerdown', onHandlePointerDown);
     svg.appendChild(el); return el;
   };
@@ -1143,17 +1237,18 @@ function drawAdsr(){
     el.textContent=text;
     el.dataset.editKind = opts.kind || '';
     el.dataset.value = opts.value ?? '';
+    el.dataset.idx = idx;
     svg.appendChild(el); return el;
   };
   const rightEdge = w - mR;
   const lblLeft = (x, wEst) => (x + wEst > rightEdge) ? x - wEst : x+2;
-  addLabel(c.peak.x-14,  c.peak.y-7,  fmt2(adsr.aMs)+'ms',        {kind:'aTime',  value:adsr.aMs});
-  addLabel(lblLeft(c.peak.x+2, 22), c.peak.y-7, fmtDb(adsr.aLevel), {kind:'aLevel', value:adsr.aLevel});
-  addLabel(c.decay.x-14, c.decay.y+14, fmt2(adsr.dMs)+'ms',       {kind:'dTime',  value:adsr.dMs});
-  addLabel(c.decay.x+2,  c.decay.y+14, fmtDb(adsr.dLevel),        {kind:'dLevel', value:adsr.dLevel});
-  addLabel(c.sust.x-16,  c.sust.y+14,  fmt2(adsr.sMs)+'ms',       {kind:'sTime',  value:adsr.sMs});
+  addLabel(c.peak.x-14,  c.peak.y-7,  round2(a.aMs)+'ms',        {kind:'aTime',  value:a.aMs});
+  addLabel(lblLeft(c.peak.x+2, 22), c.peak.y-7, fmtDb(a.aLevel), {kind:'aLevel', value:a.aLevel});
+  addLabel(c.decay.x-14, c.decay.y+14, round2(a.dMs)+'ms',       {kind:'dTime',  value:a.dMs});
+  addLabel(c.decay.x+2,  c.decay.y+14, fmtDb(a.dLevel),          {kind:'dLevel', value:a.dLevel});
+  addLabel(c.sust.x-16,  c.sust.y+14,  round2(a.sMs)+'ms',       {kind:'sTime',  value:a.sMs});
   const rLblX = Math.min(c.end.x-18, rightEdge-34);
-  addLabel(rLblX, c.end.y-5, fmt2(adsr.rMs)+'ms', {kind:'rTime', value:adsr.rMs});
+  addLabel(rLblX, c.end.y-5, round2(a.rMs)+'ms', {kind:'rTime', value:a.rMs});
 }
 function fmtDb(amp){
   if(amp<=0.001) return '-inf';
@@ -1171,8 +1266,8 @@ function msStrToMs(str){
   return Number.isNaN(v) ? null : Math.max(1, v);
 }
 
-function bindAdsrLabels(){
-  const wrap = document.getElementById('adsr-svg-wrap');
+function bindAdsrLabels(idx){
+  const wrap = document.getElementById(`sg${idx}-adsr-svg`).parentElement;
   wrap.addEventListener('click', (e)=>{
     const t = e.target;
     if(!(t instanceof SVGTextElement)) return;
@@ -1183,6 +1278,7 @@ function bindAdsrLabels(){
 function startLabelEdit(labelEl){
   const rect = labelEl.getBoundingClientRect();
   const kind = labelEl.dataset.editKind;
+  const idx = parseInt(labelEl.dataset.idx);
   const input = document.createElement('input');
   input.type='text';
   input.value = labelEl.textContent;
@@ -1191,81 +1287,81 @@ function startLabelEdit(labelEl){
   input.style.top  = (rect.top+window.scrollY-2)+'px';
   document.body.appendChild(input);
   input.focus(); input.select();
-  function commit(){ const raw=input.value; input.remove(); applyLabelEdit(kind, raw); }
+  function commit(){ const raw=input.value; input.remove(); applyLabelEdit(idx, kind, raw); }
   input.addEventListener('blur', commit);
   input.addEventListener('keydown', e=>{
     if(e.key==='Enter'){ e.preventDefault(); commit(); }
     else if(e.key==='Escape'){ e.preventDefault(); input.remove(); }
   });
 }
-function applyLabelEdit(kind, raw){
+function applyLabelEdit(idx, kind, raw){
+  const a = sg(idx).adsr;
   let v;
   switch(kind){
-    case 'aTime':  v=msStrToMs(raw); if(v!==null) adsr.aMs = round2(clamp(v,1,30000)); break;
-    case 'dTime':  v=msStrToMs(raw); if(v!==null) adsr.dMs = round2(clamp(v,1,30000)); break;
-    case 'sTime':  v=msStrToMs(raw); if(v!==null) adsr.sMs = round2(clamp(v,1,60000)); break;
-    case 'rTime':  v=msStrToMs(raw); if(v!==null) adsr.rMs = round2(clamp(v,1,30000)); break;
-    case 'aLevel': v=dbStrToAmp(raw); if(v!==null) adsr.aLevel = clamp(v,0,1); break;
-    case 'dLevel': v=dbStrToAmp(raw); if(v!==null) adsr.dLevel = clamp(v,0, adsr.aLevel); break;
+    case 'aTime':  v=msStrToMs(raw); if(v!==null) a.aMs = round2(clamp(v,1,30000)); break;
+    case 'dTime':  v=msStrToMs(raw); if(v!==null) a.dMs = round2(clamp(v,1,30000)); break;
+    case 'sTime':  v=msStrToMs(raw); if(v!==null) a.sMs = round2(clamp(v,1,60000)); break;
+    case 'rTime':  v=msStrToMs(raw); if(v!==null) a.rMs = round2(clamp(v,1,30000)); break;
+    case 'aLevel': v=dbStrToAmp(raw); if(v!==null) a.aLevel = clamp(v,0,1); break;
+    case 'dLevel': v=dbStrToAmp(raw); if(v!==null) a.dLevel = clamp(v,0, a.aLevel); break;
   }
-  applyAdsrToEngine();
-  drawAdsr();
+  applyAdsrToEngine(idx);
+  drawAdsr(idx);
 }
-function applyAdsrToEngine(){
-  if(!testEnvelope) return;
-  testEnvelope.attack  = adsr.aMs/1000;
-  testEnvelope.decay   = adsr.dMs/1000;
-  testEnvelope.sustain = adsr.dLevel;
-  testEnvelope.release = adsr.rMs/1000;
-  applyGainToTestGain();
+function applyAdsrToEngine(idx){
+  const s = sg(idx); if(!s.env) return;
+  s.env.attack  = s.adsr.aMs/1000;
+  s.env.decay   = s.adsr.dMs/1000;
+  s.env.sustain = s.adsr.dLevel;
+  s.env.release = s.adsr.rMs/1000;
+  applyGainToSg(idx);
 }
-function resetAdsrDefaults(){
-  adsr = {...ADSR_DEFAULTS};
-  applyAdsrToEngine();
-  drawAdsr();
+function resetAdsrDefaults(idx){
+  sg(idx).adsr = {...ADSR_DEFAULTS};
+  applyAdsrToEngine(idx);
+  drawAdsr(idx);
 }
 
 let dragState = null;
-function svgPoint(evt){
-  const svg = document.getElementById('adsr-svg');
-  const pt = svg.createSVGPoint();
-  pt.x = evt.clientX; pt.y = evt.clientY;
+function svgPoint(svg, evt){
+  const pt = svg.createSVGPoint(); pt.x = evt.clientX; pt.y = evt.clientY;
   return pt.matrixTransform(svg.getScreenCTM().inverse());
 }
 function onHandlePointerDown(e){
   e.preventDefault();
+  const idx = parseInt(e.target.dataset.idx);
   const name = e.target.dataset.name;
   e.target.classList.add('dragging');
   e.target.setPointerCapture(e.pointerId);
-  dragState = { name, pointerId:e.pointerId, el:e.target };
+  dragState = { idx, name, pointerId:e.pointerId, el:e.target, svg: e.target.closest('svg') };
   window.addEventListener('pointermove', onHandlePointerMove);
   window.addEventListener('pointerup',   onHandlePointerUp);
 }
 function onHandlePointerMove(e){
   if(!dragState) return;
-  const p = svgPoint(e);
+  const p = svgPoint(dragState.svg, e);
   const {w,h,mL,mR,mT,mB} = ADSR_VIEW;
   const plotW = w-mL-mR, plotH = h-mT-mB;
-  const viewMax = adsrViewMaxMs();
+  const viewMax = adsrViewMaxMs(dragState.idx);
   const xRaw = p.x - mL;
   const ms = clamp((xRaw/plotW) * viewMax, 0, 60000);
   const yClamp = clamp(p.y, mT, h-mB);
   const amp = 1 - (yClamp-mT)/plotH;
-  const name = dragState.name;
-  if(name==='peak'){
-    adsr.aMs = round2(clamp(ms,1,30000));
-    adsr.aLevel = clamp(amp,0,1);
-    if(adsr.dLevel > adsr.aLevel) adsr.dLevel = adsr.aLevel;
-  } else if(name==='decay'){
-    adsr.dMs = round2(clamp(ms - adsr.aMs, 1, 30000));
-    adsr.dLevel = clamp(amp, 0, adsr.aLevel);
-  } else if(name==='sust'){
-    adsr.sMs = round2(clamp(ms - adsr.aMs - adsr.dMs, 1, 60000));
-  } else if(name==='end'){
-    adsr.rMs = round2(clamp(ms - adsr.aMs - adsr.dMs - adsr.sMs, 1, 30000));
+  const a = sg(dragState.idx).adsr;
+  if(dragState.name==='peak'){
+    a.aMs = round2(clamp(ms,1,30000));
+    a.aLevel = clamp(amp,0,1);
+    if(a.dLevel > a.aLevel) a.dLevel = a.aLevel;
+  } else if(dragState.name==='decay'){
+    a.dMs = round2(clamp(ms - a.aMs, 1, 30000));
+    a.dLevel = clamp(amp, 0, a.aLevel);
+  } else if(dragState.name==='sust'){
+    a.sMs = round2(clamp(ms - a.aMs - a.dMs, 1, 60000));
+  } else if(dragState.name==='end'){
+    a.rMs = round2(clamp(ms - a.aMs - a.dMs - a.sMs, 1, 30000));
   }
-  applyAdsrToEngine();
-  drawAdsr();
+  applyAdsrToEngine(dragState.idx);
+  drawAdsr(dragState.idx);
 }
 function onHandlePointerUp(e){
   if(!dragState) return;
@@ -1276,9 +1372,10 @@ function onHandlePointerUp(e){
   window.removeEventListener('pointerup',   onHandlePointerUp);
 }
 
-/* ══════════ METERS (native stereo per-channel) ══════════ */
+/* ════════════════════════════════════════════════════════════════
+   METERS
+   ════════════════════════════════════════════════════════════════ */
 function rmsFromAnalyser(an){
-  if(!an) return 0;
   const buf = new Float32Array(an.fftSize);
   an.getFloatTimeDomainData(buf);
   let s = 0;
@@ -1286,31 +1383,25 @@ function rmsFromAnalyser(an){
   return Math.sqrt(s/buf.length);
 }
 function rmsToDb(rms){ return rms>1e-6 ? 20*Math.log10(rms) : -Infinity; }
-function dbToNorm(db){
-  if(db===-Infinity || db<-60) return 0;
-  return clamp((db + 60)/66, 0, 1);
-}
+function dbToNorm(db){ if(db===-Infinity || db<-60) return 0; return clamp((db + 60)/66, 0, 1); }
+
 function startMeterLoop(){
-  const pk = { outL:0, outR:0, tstL:0, tstR:0 };
+  const pk = { outL:0, outR:0, sg1L:0, sg1R:0, sg2L:0, sg2R:0 };
   function tick(){
     if(outAnL && outAnR){
-      const l = rmsToDb(rmsFromAnalyser(outAnL));
-      const r = rmsToDb(rmsFromAnalyser(outAnR));
-      const lN = dbToNorm(l), rN = dbToNorm(r);
+      const lN = dbToNorm(rmsToDb(rmsFromAnalyser(outAnL)));
+      const rN = dbToNorm(rmsToDb(rmsFromAnalyser(outAnR)));
       pk.outL = Math.max(pk.outL*0.992, lN);
       pk.outR = Math.max(pk.outR*0.992, rN);
       setMeterBars('out-level-l','out-pk-l', lN, pk.outL);
       setMeterBars('out-level-r','out-pk-r', rN, pk.outR);
     }
-    if(testAnL && testAnR){
-      const l = rmsToDb(rmsFromAnalyser(testAnL));
-      const r = rmsToDb(rmsFromAnalyser(testAnR));
-      const lN = dbToNorm(l), rN = dbToNorm(r);
-      pk.tstL = Math.max(pk.tstL*0.992, lN);
-      pk.tstR = Math.max(pk.tstR*0.992, rN);
-      // 2D pad horizontal meters (L on top half, R on bottom half)
-      const ml = document.getElementById('sig-meter-l');
-      const mr = document.getElementById('sig-meter-r');
+    for (const s of sigGens) {
+      if(!s.anL || !s.anR) continue;
+      const lN = dbToNorm(rmsToDb(rmsFromAnalyser(s.anL)));
+      const rN = dbToNorm(rmsToDb(rmsFromAnalyser(s.anR)));
+      const ml = document.getElementById(`sg${s.idx}-meter-l`);
+      const mr = document.getElementById(`sg${s.idx}-meter-r`);
       if(ml) ml.style.width = (lN*100).toFixed(1)+'%';
       if(mr) mr.style.width = (rN*100).toFixed(1)+'%';
     }
@@ -1325,7 +1416,9 @@ function setMeterBars(idLevel, idPeak, lev, pk){
   if(P) P.style.bottom = (pk*100).toFixed(1)+'%';
 }
 
-/* ══════════ LATENCY ══════════ */
+/* ════════════════════════════════════════════════════════════════
+   LATENCY READOUT
+   ════════════════════════════════════════════════════════════════ */
 function startLatencyReadout(){
   const update = () => {
     if(!rawCtx) return;
@@ -1342,35 +1435,195 @@ function startLatencyReadout(){
   setInterval(update, 2000);
 }
 
-/* ══════════ PRESETS ══════════ */
-function collectState(fx){
-  if(fx==='siggen'){
-    return {
-      mode: sigGenMode, wave: testWave, freq: testFreqHz,
-      gain: testGainDb, pan: testPan, pulse: pulseRateMs,
-      adsr: {...adsr},
-    };
+/* ════════════════════════════════════════════════════════════════
+   RECORDING (ported from fx-processor v54)
+   ════════════════════════════════════════════════════════════════ */
+function toggleRecord(){
+  if(!mediaStreamDest){ document.getElementById('rec-status').textContent='init audio first'; return; }
+  if(recordingMethod) stopRecord(); else startRecord();
+}
+function toggleRecFormat(){
+  if(recordingMethod) return;
+  recFormat = (recFormat === 'webm') ? 'wav' : 'webm';
+  const btn = document.getElementById('rec-fmt');
+  btn.textContent = recFormat.toUpperCase();
+  btn.classList.toggle('wav-mode', recFormat === 'wav');
+}
+function startRecord(){
+  recordChunks = []; pcmCapL = []; pcmCapR = [];
+  recordSoftWarned = false;
+  const ok = (recFormat === 'wav') ? startWavCapture() : startWebmCapture();
+  if(!ok) return;
+  recordingMethod = recFormat;
+  recordStartTime = Date.now();
+  const btn = document.getElementById('rec-btn');
+  btn.classList.add('recording');
+  btn.textContent = '■ STOP';
+  recordTimerId = setInterval(updateRecordStatus, 500);
+  updateRecordStatus();
+}
+function stopRecord(){
+  if(!recordingMethod) return;
+  if(recordingMethod === 'wav') stopWavCaptureAndDownload();
+  else stopWebmCaptureAndDownload();
+  if(recordTimerId){ clearInterval(recordTimerId); recordTimerId = null; }
+  const btn = document.getElementById('rec-btn');
+  btn.classList.remove('recording');
+  btn.textContent = '● REC';
+  recordingMethod = null;
+}
+function updateRecordStatus(){
+  const ms = Date.now() - recordStartTime;
+  const stEl = document.getElementById('rec-status');
+  if(ms >= REC_HARD_CAP_MS){ stopRecord(); if(stEl) stEl.textContent = 'auto-stop (60min cap)'; return; }
+  const totalSec = Math.floor(ms/1000);
+  const m = Math.floor(totalSec/60);
+  const s = totalSec % 60;
+  const time = m + ':' + (s<10?'0':'') + s;
+  if(ms >= REC_SOFT_CAP_MS && !recordSoftWarned){
+    recordSoftWarned = true;
+    if(stEl) stEl.textContent = '⚠ '+time+' (cap 60m)';
+  } else if(stEl) stEl.textContent = (recordSoftWarned?'⚠ ':'● ') + time;
+}
+function startWebmCapture(){
+  const candidates = ['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg;codecs=opus'];
+  const mime = candidates.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t));
+  try {
+    const opts = mime ? {mimeType:mime, audioBitsPerSecond: REC_OPUS_BITRATE} : {audioBitsPerSecond: REC_OPUS_BITRATE};
+    mediaRecorder = new MediaRecorder(mediaStreamDest.stream, opts);
+  } catch(e){
+    console.error(e); document.getElementById('rec-status').textContent = 'webm err: '+e.message; return false;
   }
-  if(fx==='lfo'){
-    return { rate:lfoRateHz, shape:lfoShape, target:lfoTarget,
-             ranges:JSON.parse(JSON.stringify(lfoRangesPerTarget)) };
+  mediaRecorder.ondataavailable = e => { if(e.data && e.data.size > 0) recordChunks.push(e.data); };
+  mediaRecorder.onstop = () => {};
+  mediaRecorder.start(1000);
+  return true;
+}
+function stopWebmCaptureAndDownload(){
+  if(!mediaRecorder) return;
+  mediaRecorder.onstop = () => {
+    const stEl = document.getElementById('rec-status');
+    if(recordChunks.length === 0){ if(stEl) stEl.textContent = 'no data'; return; }
+    const mime = mediaRecorder.mimeType || 'audio/webm';
+    const ext = mime.includes('mp4') ? '.m4a' : mime.includes('ogg') ? '.ogg' : '.webm';
+    const blob = new Blob(recordChunks, {type: mime});
+    recordChunks = [];
+    triggerDownload(blob, `lfo-adsr-test-${recordTimestamp()}${ext}`);
+    if(stEl) stEl.textContent = `saved ${(blob.size/1024/1024).toFixed(1)}MB`;
+  };
+  try { mediaRecorder.stop(); } catch(e) { console.warn('stop:', e); }
+}
+function startWavCapture(){
+  if(!rawCtx) return false;
+  try {
+    pcmCaptureNode = rawCtx.createScriptProcessor(4096, 2, 2);
+    pcmCaptureNode.onaudioprocess = (e) => {
+      pcmCapL.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+      pcmCapR.push(new Float32Array(e.inputBuffer.getChannelData(1)));
+      e.outputBuffer.getChannelData(0).set(e.inputBuffer.getChannelData(0));
+      e.outputBuffer.getChannelData(1).set(e.inputBuffer.getChannelData(1));
+    };
+    const tapBridge = rawCtx.createGain();
+    tapBridge.channelCount = 2; tapBridge.channelCountMode = 'explicit';
+    recordTap.connect(tapBridge);
+    tapBridge.connect(pcmCaptureNode);
+    const muted = rawCtx.createGain(); muted.gain.value = 0;
+    pcmCaptureNode.connect(muted); muted.connect(rawCtx.destination);
+    pcmCaptureNode.__mutedSink = muted;
+    pcmCaptureNode.__tapBridge = tapBridge;
+    return true;
+  } catch(err) {
+    console.error('startWavCapture:', err);
+    document.getElementById('rec-status').textContent = 'WAV err: '+(err.message||err);
+    pcmCaptureNode = null; return false;
   }
 }
-function applyState(fx, s){
-  if(fx==='siggen'){
-    setSigGenMode(s.mode || 'steady');
-    document.getElementById('test-wave').value = s.wave; setTestWave(s.wave);
-    setTestFreqHz(s.freq);
-    setTestGainDb(s.gain);
-    setTestPan(s.pan);
-    document.getElementById('pulse-rate-sl').value = s.pulse; setPulseRate(s.pulse);
-    if(s.adsr){ adsr = {...ADSR_DEFAULTS, ...s.adsr}; applyAdsrToEngine(); drawAdsr(); }
+function stopWavCaptureAndDownload(){
+  if(!pcmCaptureNode) return;
+  const stEl = document.getElementById('rec-status');
+  try { pcmCaptureNode.disconnect(); } catch{}
+  if(pcmCaptureNode.__mutedSink) try { pcmCaptureNode.__mutedSink.disconnect(); } catch{}
+  if(pcmCaptureNode.__tapBridge) try { pcmCaptureNode.__tapBridge.disconnect(); } catch{}
+  pcmCaptureNode.onaudioprocess = null;
+  pcmCaptureNode = null;
+  if(pcmCapL.length === 0){ if(stEl) stEl.textContent = 'no data'; return; }
+  const blob = encodeWavInt16PCM(pcmCapL, pcmCapR, rawCtx.sampleRate);
+  pcmCapL = []; pcmCapR = [];
+  triggerDownload(blob, `lfo-adsr-test-${recordTimestamp()}.wav`);
+  if(stEl) stEl.textContent = `saved ${(blob.size/1024/1024).toFixed(1)}MB`;
+}
+function encodeWavInt16PCM(chunksL, chunksR, sampleRate){
+  let total = 0;
+  for(let i=0;i<chunksL.length;i++) total += chunksL[i].length;
+  const dataSize = total * 2 * 2;
+  const buf = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buf);
+  const writeStr = (off,s) => { for(let i=0;i<s.length;i++) view.setUint8(off+i, s.charCodeAt(i)); };
+  writeStr(0,'RIFF'); view.setUint32(4, 36+dataSize, true);
+  writeStr(8,'WAVE');
+  writeStr(12,'fmt '); view.setUint32(16,16,true);
+  view.setUint16(20,1,true); view.setUint16(22,2,true);
+  view.setUint32(24,sampleRate,true); view.setUint32(28,sampleRate*2*2,true);
+  view.setUint16(32,4,true); view.setUint16(34,16,true);
+  writeStr(36,'data'); view.setUint32(40,dataSize,true);
+  let off = 44;
+  for(let c=0;c<chunksL.length;c++){
+    const L=chunksL[c], R=chunksR[c];
+    for(let i=0;i<L.length;i++){
+      let l = Math.max(-1, Math.min(1, L[i]));
+      let r = Math.max(-1, Math.min(1, R[i]));
+      view.setInt16(off, l<0?l*0x8000:l*0x7fff, true); off+=2;
+      view.setInt16(off, r<0?r*0x8000:r*0x7fff, true); off+=2;
+    }
   }
-  if(fx==='lfo'){
-    setLfoRateHz(s.rate);
-    document.getElementById('lfo-shape').value = s.shape; setLfoShape(s.shape);
-    if(s.ranges) Object.assign(lfoRangesPerTarget, s.ranges);
-    document.getElementById('lfo-target').value = s.target; setLfoTarget(s.target);
+  return new Blob([buf], {type:'audio/wav'});
+}
+function triggerDownload(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download=filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 5000);
+}
+function recordTimestamp(){
+  const d = new Date();
+  const pad = n => (n<10?'0':'')+n;
+  return d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'-'+pad(d.getHours())+pad(d.getMinutes())+pad(d.getSeconds());
+}
+
+/* ════════════════════════════════════════════════════════════════
+   PRESETS
+   ════════════════════════════════════════════════════════════════ */
+function collectState(fx){
+  if(fx.startsWith('sg')){
+    const idx = parseInt(fx.slice(2));
+    const s = sg(idx);
+    return { mode:s.mode, wave:s.wave, freq:s.freqHz, gain:s.gainDb, pan:s.pan, pulse:s.pulseMs, adsr:{...s.adsr} };
+  }
+  if(fx.startsWith('lfo')){
+    const idx = parseInt(fx.slice(3));
+    const L = lfo(idx);
+    return { rate:L.rateHz, shape:L.shape, target:`${L.target.sigIdx}:${L.target.paramName}`,
+             ranges: JSON.parse(JSON.stringify(L.rangesPerKey)) };
+  }
+}
+function applyState(fx, state){
+  if(fx.startsWith('sg')){
+    const idx = parseInt(fx.slice(2));
+    setSigGenMode(idx, state.mode || 'steady');
+    document.getElementById(`sg${idx}-wave`).value = state.wave; setSgWave(idx, state.wave);
+    setSgFreqHz(idx, state.freq);
+    setSgGainDb(idx, state.gain);
+    setSgPan(idx, state.pan);
+    document.getElementById(`sg${idx}-pulse-sl`).value = state.pulse; setSgPulse(idx, state.pulse);
+    if(state.adsr){ sg(idx).adsr = {...ADSR_DEFAULTS, ...state.adsr}; applyAdsrToEngine(idx); drawAdsr(idx); }
+  }
+  if(fx.startsWith('lfo')){
+    const idx = parseInt(fx.slice(3));
+    setLfoRateHz(idx, state.rate);
+    document.getElementById(`lfo${idx}-shape`).value = state.shape; setLfoShape(idx, state.shape);
+    if(state.ranges) Object.assign(lfo(idx).rangesPerKey, state.ranges);
+    setLfoTarget(idx, state.target || '1:freq');
   }
 }
 function handlePreset(evt, btn){
@@ -1383,8 +1636,7 @@ function handlePreset(evt, btn){
     btn.classList.add('saved');
     return;
   }
-  const s = presets[key];
-  if(s) applyState(fx, s);
+  if(presets[key]) applyState(fx, presets[key]);
 }
 function restorePresetUi(){
   document.querySelectorAll('.head-preset-slot').forEach(btn=>{
@@ -1393,9 +1645,11 @@ function restorePresetUi(){
   });
 }
 
-/* ══════════ EDITABLE VALUES ══════════ */
+/* ════════════════════════════════════════════════════════════════
+   EDITABLE VALUES
+   ════════════════════════════════════════════════════════════════ */
 function makeEditable(el, parseFn, applyFn){
-  if(el.__editableBound) return; el.__editableBound=true;
+  if(!el || el.__editableBound) return; el.__editableBound=true;
   el.addEventListener('click', ()=>{
     const rect = el.getBoundingClientRect();
     const input = document.createElement('input');
@@ -1418,40 +1672,37 @@ function makeEditable(el, parseFn, applyFn){
     });
   });
 }
-
-window.addEventListener('DOMContentLoaded', ()=>{
-  restorePresetUi();
-  makeEditable(document.getElementById('test-freq-val'),
-    v => parseFloat(v.replace(/[^\d.\-]/g,'')),
-    v => setTestFreqHz(v));
-  makeEditable(document.getElementById('test-gain-val'),
-    v => parseFloat(v.replace(/[^\d.\-]/g,'')),
-    v => setTestGainDb(v));
-  makeEditable(document.getElementById('test-pan-val'),
-    v => {
-      const s = String(v).trim().toUpperCase();
-      if(s==='C') return 0;
-      if(s.startsWith('L')) return -parseFloat(s.slice(1))/100;
-      if(s.startsWith('R')) return parseFloat(s.slice(1))/100;
-      return parseFloat(s);
-    },
-    v => setTestPan(v));
+function bindEditables(){
+  for (let i=1; i<=2; i++) {
+    makeEditable(document.getElementById(`sg${i}-freq-val`),
+      v => parseFloat(v.replace(/[^\d.\-]/g,'')),
+      v => setSgFreqHz(i, v));
+    makeEditable(document.getElementById(`sg${i}-gain-val`),
+      v => parseFloat(v.replace(/[^\d.\-]/g,'')),
+      v => setSgGainDb(i, v));
+    makeEditable(document.getElementById(`sg${i}-pan-val`),
+      v => { const s=String(v).trim().toUpperCase(); if(s==='C')return 0;
+             if(s.startsWith('L')) return -parseFloat(s.slice(1))/100;
+             if(s.startsWith('R')) return parseFloat(s.slice(1))/100;
+             return parseFloat(s); },
+      v => setSgPan(i, v));
+    makeEditable(document.getElementById(`sg${i}-pulse-val`),
+      v => parseFloat(v.replace(/[^\d.\-]/g,'')),
+      v => { document.getElementById(`sg${i}-pulse-sl`).value = v; setSgPulse(i, v); });
+    makeEditable(document.getElementById(`lfo${i}-rate-val`),
+      v => parseFloat(v.replace(/[^\d.\-]/g,'')),
+      v => setLfoRateHz(i, v));
+    makeEditable(document.getElementById(`lfo${i}-min-val`),
+      v => TARGETS[lfo(i).target.paramName].parse(v),
+      v => { if(!Number.isNaN(v)) setLfoMinVal(i, v); });
+    makeEditable(document.getElementById(`lfo${i}-max-val`),
+      v => TARGETS[lfo(i).target.paramName].parse(v),
+      v => { if(!Number.isNaN(v)) setLfoMaxVal(i, v); });
+  }
   makeEditable(document.getElementById('output-gain-val'),
     v => parseFloat(v.replace(/[^\d.\-]/g,'')),
     v => { document.getElementById('output-gain-db').value = v; setOutputGainDb(v); });
-  makeEditable(document.getElementById('pulse-rate-val'),
-    v => parseFloat(v.replace(/[^\d.\-]/g,'')),
-    v => { document.getElementById('pulse-rate-sl').value = v; setPulseRate(v); });
-  makeEditable(document.getElementById('lfo-rate-val'),
-    v => parseFloat(v.replace(/[^\d.\-]/g,'')),
-    v => setLfoRateHz(v));
-  makeEditable(document.getElementById('lfo-min-val'),
-    v => TARGETS[lfoTarget].parse(v),
-    v => { if(!Number.isNaN(v)) setLfoMinVal(v); });
-  makeEditable(document.getElementById('lfo-max-val'),
-    v => TARGETS[lfoTarget].parse(v),
-    v => { if(!Number.isNaN(v)) setLfoMaxVal(v); });
-});
+}
 </script>
 </body>
 </html>
