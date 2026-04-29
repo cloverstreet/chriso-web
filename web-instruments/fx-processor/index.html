@@ -431,7 +431,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 <!-- Version badge (always visible, top-right) -->
 <div id="version-badge" style="position:fixed;top:8px;right:10px;
      font-family:'Courier New',monospace;font-size:.6rem;letter-spacing:.16em;
-     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v56</div>
+     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v57</div>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
 <!-- START SCREEN                                                   -->
@@ -958,8 +958,9 @@ input.gain-meter-slider::-webkit-slider-thumb {
             style="padding:2px 6px;background:transparent;border:1px solid #2e2e2e;color:#888;
                    font-family:'Courier New',monospace;font-size:.56rem;font-weight:400;letter-spacing:.1em;
                    cursor:pointer;border-radius:2px;flex-shrink:0;">WEBM</button>
-          <span id="rec-status" style="font-size:.58rem;color:#555;letter-spacing:.05em;flex:1;text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">idle</span>
+          <span id="rec-status" style="font-size:.6rem;color:#888;letter-spacing:.05em;flex:1;text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">idle</span>
         </div>
+        <pre id="rec-debug" style="margin-top:4px;font-family:'Courier New',monospace;font-size:.5rem;color:#444;letter-spacing:.02em;line-height:1.25;white-space:pre-wrap;max-height:60px;overflow-y:auto;"></pre>
       </div>
 
     </div><!-- end outputs col-wrap -->
@@ -1769,9 +1770,22 @@ function setOutputGainDb(db){if(outputGainNode)outputGainNode.gain.rampTo(dbToGa
 //   • 'webm' — MediaRecorder + opus codec @ 192kbps. Compressed, RAM-efficient (~85MB/hr), small files.
 //   • 'wav'  — ScriptProcessor capture → 16-bit PCM WAV. Uncompressed, lossless,
 //             larger (~700MB/hr stereo @ 48kHz). Best for high-fidelity / engineering work.
+function recDebug(msg){
+  const el = document.getElementById('rec-debug');
+  if(!el) return;
+  const lines = (el.textContent||'').split('\n').filter(Boolean);
+  const t = new Date();
+  const ts = `${t.getMinutes().toString().padStart(2,'0')}:${t.getSeconds().toString().padStart(2,'0')}.${t.getMilliseconds().toString().padStart(3,'0').slice(0,2)}`;
+  lines.push(`${ts} ${msg}`);
+  while(lines.length > 6) lines.shift();
+  el.textContent = lines.join('\n');
+}
+
 function toggleRecord(){
+  recDebug(`toggleRecord fmt=${recFormat} method=${recordingMethod||'(none)'}`);
   if(!mediaStreamDest){
     document.getElementById('rec-status').textContent = 'init audio first';
+    recDebug('no mediaStreamDest');
     return;
   }
   if(recordingMethod) stopRecord();
@@ -1787,11 +1801,20 @@ function toggleRecFormat(){
   }
 }
 function startRecord(){
+  recDebug(`startRecord ${recFormat}`);
   recordChunks = []; pcmCapL = []; pcmCapR = [];
   recordSoftWarned = false;
   let ok = false;
-  if(recFormat === 'wav') ok = startWavCapture();
-  else                    ok = startWebmCapture();
+  try {
+    if(recFormat === 'wav') ok = startWavCapture();
+    else                    ok = startWebmCapture();
+  } catch(err) {
+    console.error('startRecord:', err);
+    recDebug('THROW: ' + (err.message||err));
+    document.getElementById('rec-status').textContent = 'startRec err: ' + (err.message||err);
+    return;
+  }
+  recDebug(`start${recFormat} returned ok=${ok}`);
   if(!ok) return;
   recordingMethod = recFormat;
   recordStartTime = Date.now();
@@ -1800,16 +1823,17 @@ function startRecord(){
   btn.textContent = '■ STOP';
   recordTimerId = setInterval(updateRecordStatus, 500);
   updateRecordStatus();
+  recDebug('UI updated, timer running');
 }
 function stopRecord(){
+  recDebug(`stopRecord ${recordingMethod}`);
   if(!recordingMethod) return;
-  // Always-clear pattern: wrap the format-specific stop in try/catch so a
-  // failure in encode/disconnect can't leave the UI stuck in recording state.
   try {
     if(recordingMethod === 'wav') stopWavCaptureAndDownload();
     else                          stopWebmCaptureAndDownload();
   } catch(err) {
     console.error('stopRecord:', err);
+    recDebug('stop THROW: ' + (err.message||err));
     const stEl = document.getElementById('rec-status');
     if(stEl) stEl.textContent = 'stop err: '+(err.message||err);
   }
@@ -1818,6 +1842,7 @@ function stopRecord(){
   btn.classList.remove('recording');
   btn.textContent = '● REC';
   recordingMethod = null;
+  recDebug('stop done; UI reset');
 }
 function updateRecordStatus(){
   const ms = Date.now() - recordStartTime;
@@ -1881,11 +1906,13 @@ function stopWebmCaptureAndDownload(){
 
 // ── WAV (uncompressed PCM) path ──
 function startWavCapture(){
+  recDebug(`wav: rawCtx=${!!rawCtx} recordTap=${!!recordTap}`);
   if(!rawCtx) { document.getElementById('rec-status').textContent='no audio ctx'; return false; }
   if(!recordTap) { document.getElementById('rec-status').textContent='no record tap'; return false; }
   try {
+    recDebug('wav: createScriptProcessor(4096,2,2)');
     pcmCaptureNode = rawCtx.createScriptProcessor(4096, 2, 2);
-    pcmCaptureNode.__chunks = 0; // diagnostic: counts onaudioprocess fires
+    pcmCaptureNode.__chunks = 0;
     pcmCaptureNode.onaudioprocess = (e) => {
       pcmCaptureNode.__chunks++;
       pcmCapL.push(new Float32Array(e.inputBuffer.getChannelData(0)));
@@ -1893,21 +1920,24 @@ function startWavCapture(){
       e.outputBuffer.getChannelData(0).set(e.inputBuffer.getChannelData(0));
       e.outputBuffer.getChannelData(1).set(e.inputBuffer.getChannelData(1));
     };
-    // Direct tap: Tone.Gain (recordTap) → native Gain bridge → ScriptProcessor.
-    // Same Tone→native pattern that v52 uses successfully for flanking-meter splitters.
+    recDebug('wav: createGain bridge');
     const tapBridge = rawCtx.createGain();
     tapBridge.channelCount = 2; tapBridge.channelCountMode = 'explicit';
+    recDebug('wav: recordTap → tapBridge');
     recordTap.connect(tapBridge);
+    recDebug('wav: tapBridge → pcmCaptureNode');
     tapBridge.connect(pcmCaptureNode);
-    // ScriptProcessor only fires when its output is connected.
+    recDebug('wav: createGain muted');
     const muted = rawCtx.createGain(); muted.gain.value = 0;
+    recDebug('wav: pcmCaptureNode → muted → destination');
     pcmCaptureNode.connect(muted); muted.connect(rawCtx.destination);
     pcmCaptureNode.__tapBridge = tapBridge;
     pcmCaptureNode.__mutedSink = muted;
-    console.log('WAV capture started, sampleRate=', rawCtx.sampleRate);
+    recDebug(`wav: ready, sr=${rawCtx.sampleRate}`);
     return true;
   } catch(err) {
     console.error('startWavCapture failed:', err);
+    recDebug('wav THROW: ' + (err.message||err));
     document.getElementById('rec-status').textContent = 'WAV err: ' + (err.message || err);
     pcmCaptureNode = null;
     return false;
