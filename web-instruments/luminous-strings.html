@@ -60,7 +60,7 @@
 <div id="invite">
   <span>touch to begin</span>
   <span class="hint">Z = bow &middot; X = tune &middot; D = delay in &middot; T = tuning panel</span>
-  <span class="hint" style="margin-top:1.5em;font-size:0.6rem;color:rgba(200,170,120,0.12)">v4.5</span>
+  <span class="hint" style="margin-top:1.5em;font-size:0.6rem;color:rgba(200,170,120,0.12)">v4.6</span>
 </div>
 <button id="tuningToggle">TUNING</button>
 <div id="tuningPanel">
@@ -100,26 +100,26 @@
 'use strict';
 
 // ===========================================================
-// LUMINOUS STRINGS v4.5
+// LUMINOUS STRINGS v4.6
 //
-// v4.5 changes:
-//   - Parameter interpolation (smoothing/slewing) for delay time and frequencies
-//   - Delay time uses setTargetAtTime with configurable time constant (DELAY_SMOOTH)
-//     for audible tape-delay pitch-warble effect when sweeping the knob
-//   - String frequencies use longer smoothing (FREQ_SMOOTH) for pitch glide on X key
-//   - cancelScheduledValues before new ramps to prevent automation event buildup
-//   - All audio params now use sample-rate interpolation via Web Audio AudioParam
+// v4.6 changes:
+//   - Strings rotated to a 25° diagonal (bottom-left → top-right). They pass
+//     UNDER the interface; controls take pointer priority — bow excitation is
+//     suppressed when the cursor is over a dial or toggle.
+//   - layoutStrings now assigns string.d (perpendicular distance from origin)
+//     rather than string.y. Cached endpoints Ax/Ay → Bx/By avoid per-frame math.
+//   - Bow detection uses perpendicular line crossing (perpCoord) instead of
+//     y-axis crossing. bowFrac is mouse projection onto string direction.
+//   - Particles redesigned (less 90s, more baroqueadelic):
+//     desaturated jewel-tone palette (S=28-40%), longer life (1.4-3.0s),
+//     soft halo + bloom + small core, damped omnidirectional motion with a
+//     subtle perpendicular settling drift (no upward sparkle pop).
+//   - String hue palette spans 260°→370° (purples → golds → burgundy) at
+//     S=32-55% so it reads as desaturated jewel tones.
 //
-// v4.5 changes:
-//   - Bigger dials (R=24), higher contrast, moved up from bottom
-//   - Removed Sustain/Decay dials — simplified to Attack-Release envelope
-//   - ATK dial: sqrt curve (~300ms at halfway point)
-//   - D.TIME dial: piecewise curve (10ms-1s first half, 1s-30s second half)
-//   - X key: hold to adjust fundamental via mouse X-axis (works with Z)
-//   - D key: toggle delay send on/off
-//   - Visual separator between play area and controls
-//   - Fixed formatTime display (<1ms threshold)
-//   - FUND dial updates frequencies live
+// v4.5 base:
+//   - Parameter interpolation (delay time / frequency smoothing)
+//   - Bigger dials, AR envelope only, X-key fundamental sweep, D-key delay toggle
 // ===========================================================
 
 var TUNING_PRESETS = [
@@ -149,6 +149,47 @@ var PROXIMITY_THRESHOLD = 28;
 var DECAY_MIN = 0.92;
 var DECAY_MAX = 0.999;
 var RAMP_TIME = 0.015;
+
+// ── String geometry: 25° diagonal, bottom-left → top-right ─────────
+// Direction vector along string (going up-right; Y axis points down on screen)
+var STRING_THETA = 25 * Math.PI / 180;
+var STRING_SIN = Math.sin(STRING_THETA);
+var STRING_COS = Math.cos(STRING_THETA);
+// Perpendicular axis used to identify and stack parallel strings.
+// perpCoord(x,y) = sinθ·x + cosθ·y. Both endpoints (0,0) and (W,H) have the
+// extreme values; the screen's perp range is [0, W·sinθ + H·cosθ].
+function perpCoord(x, y) { return STRING_SIN * x + STRING_COS * y; }
+// Find the two screen-edge intersection points of the line at perp distance d.
+// Line is parameterized as: x(t) = d·sinθ + t·cosθ,  y(t) = d·cosθ - t·sinθ.
+function lineEndpoints(d) {
+  var ts = [];
+  // x = 0
+  var t = -d * STRING_SIN / STRING_COS;
+  var y = d * STRING_COS - t * STRING_SIN;
+  if (y >= -0.5 && y <= H + 0.5) ts.push(t);
+  // x = W
+  t = (W - d * STRING_SIN) / STRING_COS;
+  y = d * STRING_COS - t * STRING_SIN;
+  if (y >= -0.5 && y <= H + 0.5) ts.push(t);
+  // y = 0
+  t = d * STRING_COS / STRING_SIN;
+  var x = d * STRING_SIN + t * STRING_COS;
+  if (x >= -0.5 && x <= W + 0.5) ts.push(t);
+  // y = H
+  t = (d * STRING_COS - H) / STRING_SIN;
+  x = d * STRING_SIN + t * STRING_COS;
+  if (x >= -0.5 && x <= W + 0.5) ts.push(t);
+  if (ts.length < 2) return null;
+  var tMin = Infinity, tMax = -Infinity;
+  for (var i = 0; i < ts.length; i++) { if (ts[i] < tMin) tMin = ts[i]; if (ts[i] > tMax) tMax = ts[i]; }
+  return {
+    Ax: d * STRING_SIN + tMin * STRING_COS,
+    Ay: d * STRING_COS - tMin * STRING_SIN,
+    Bx: d * STRING_SIN + tMax * STRING_COS,
+    By: d * STRING_COS - tMax * STRING_SIN,
+    length: tMax - tMin
+  };
+}
 
 // Parameter interpolation time constants (seconds)
 // These control how quickly params slew to new values at sample rate.
@@ -523,11 +564,15 @@ function LuminousString(index, total, freq) {
   this.index = index;
   this.total = total;
   this.freq = freq;
-  this.y = 0;
-  this.hue = total > 1 ? 18 + (index / (total - 1)) * 36 : 36;
+  // Diagonal layout: d = perpendicular distance from origin (0,0) to the string line.
+  // Endpoints Ax/Ay → Bx/By computed in layoutStrings(). bowFrac is bow position 0..1 along string.
+  this.d = 0;
+  this.Ax = 0; this.Ay = 0; this.Bx = 0; this.By = 0; this.length = 0;
+  this.bowFrac = 0.5;
+  // Hue: jewel-tone palette span (purples → golds → burgundy). Keeping desaturated downstream.
+  this.hue = total > 1 ? (260 + (index / (total - 1)) * 110) % 360 : 36;
   this.energy = 0;
   this.releaseDecay = (DECAY_MIN + DECAY_MAX) / 2;
-  this.bowX = 0.5;
   this.phase = Math.random() * Math.PI * 2;
   this.particles = [];
   this.gainNode = null;
@@ -579,23 +624,38 @@ LuminousString.prototype.destroy = function() {
   this.oscillators = [];
 };
 
-LuminousString.prototype.excite = function(mouseX, velocity) {
+LuminousString.prototype.excite = function(mx, my, velocity) {
   var amp = Math.min(velocity / 18, 1);
   this.peakTarget = Math.min(this.energy + amp * 0.35, 1);
   this.envPhase = 'attack';
-  this.bowX = mouseX / W;
 
-  // Cubic curve: staccato through middle, sustain far right
-  var xNorm = mouseX / W;
-  var curved = xNorm * xNorm * xNorm;
+  // Project mouse onto string direction → bowFrac (0 = A end, 1 = B end)
+  var dx = this.Bx - this.Ax, dy = this.By - this.Ay;
+  var len2 = dx * dx + dy * dy;
+  var t = len2 > 0 ? ((mx - this.Ax) * dx + (my - this.Ay) * dy) / len2 : 0.5;
+  this.bowFrac = Math.max(0, Math.min(1, t));
+
+  // Cubic curve: staccato near A end (bottom-left), sustain near B end (top-right)
+  var curved = this.bowFrac * this.bowFrac * this.bowFrac;
   this.releaseDecay = DECAY_MIN + curved * (DECAY_MAX - DECAY_MIN);
 
+  // Spawn particles AT the bow point on the string, with longer life and slower init velocity
+  var bx = this.Ax + this.bowFrac * dx;
+  var by = this.Ay + this.bowFrac * dy;
   var count = Math.ceil(amp * 3);
-  for (var i = 0; i < count && this.particles.length < 20; i++) {
+  for (var i = 0; i < count && this.particles.length < 24; i++) {
+    // Tiny random initial impulse — no systematic upward drift (no LFO-like pattern)
+    var ang = Math.random() * Math.PI * 2;
+    var sp = 0.3 + Math.random() * 0.9;
     this.particles.push({
-      x: mouseX + (Math.random() - 0.5) * 8, y: this.y,
-      vx: (Math.random() - 0.5) * 1.2, vy: -(Math.random() * 1.2 + 0.3),
-      life: 1, radius: Math.random() * 2 + 0.5
+      x: bx + (Math.random() - 0.5) * 6,
+      y: by + (Math.random() - 0.5) * 6,
+      vx: Math.cos(ang) * sp,
+      vy: Math.sin(ang) * sp,
+      life: 1,
+      maxLife: 1.4 + Math.random() * 1.6, // 1.4–3.0s — much longer than the 90s sparkles
+      radius: 0.7 + Math.random() * 1.6,
+      huJitter: (Math.random() - 0.5) * 16  // small hue offset per particle
     });
   }
 };
@@ -636,29 +696,39 @@ LuminousString.prototype.update = function(dt) {
   for (var i = this.particles.length - 1; i >= 0; i--) {
     var p = this.particles[i];
     p.x += p.vx; p.y += p.vy;
-    p.vy -= 0.008; p.vx *= 0.995;
-    p.life -= 0.012;
+    // Damped — both axes lose energy each frame (no upward gravity, no neon trails)
+    p.vx *= 0.972; p.vy *= 0.972;
+    // Subtle pull along screen-perpendicular-to-strings (down-right at 25°),
+    // gives particles a slow "settling" drift instead of arcade-rocket pop
+    p.vx += STRING_SIN * 0.006;
+    p.vy += STRING_COS * 0.006;
+    p.life -= dt / p.maxLife;
     if (p.life <= 0) this.particles.splice(i, 1);
   }
 };
 
 LuminousString.prototype.draw = function(context, time) {
+  if (!this.length) return;
   var segments = 80;
   var breathe = 0.015 * Math.sin(time * 0.0008 + this.index * 0.7);
   var pathX = new Float64Array(segments + 1);
   var pathY = new Float64Array(segments + 1);
 
+  var dx = this.Bx - this.Ax, dy = this.By - this.Ay;
+  // Perpendicular displacement direction (rotated 90° from string direction).
+  // Use STRING_PERP_X/Y → here precomputed: perp = (sinθ, cosθ).
   for (var i = 0; i <= segments; i++) {
     var frac = i / segments;
-    var x = frac * W;
-    var dy = breathe * Math.sin(Math.PI * frac) * 3;
+    var bx = this.Ax + dx * frac;
+    var by = this.Ay + dy * frac;
+    var disp = breathe * Math.sin(Math.PI * frac) * 3;
     if (this.energy > 0.001) {
-      var distFromBow = Math.abs(frac - this.bowX);
+      var distFromBow = Math.abs(frac - this.bowFrac);
       var envelope = Math.exp(-distFromBow * 5) * Math.sin(Math.PI * frac);
-      dy += this.energy * 16 * envelope * Math.sin(this.phase);
+      disp += this.energy * 16 * envelope * Math.sin(this.phase);
     }
-    pathX[i] = x;
-    pathY[i] = this.y + dy;
+    pathX[i] = bx + disp * STRING_SIN;
+    pathY[i] = by + disp * STRING_COS;
   }
 
   function strokePath() {
@@ -668,28 +738,38 @@ LuminousString.prototype.draw = function(context, time) {
     context.stroke();
   }
 
+  // Energetic glow — desaturated jewel rather than neon
   if (this.energy > 0.01) {
-    context.strokeStyle = 'hsla(' + this.hue + ',80%,58%,' + (this.energy * 0.04) + ')';
+    context.strokeStyle = 'hsla(' + this.hue + ',45%,52%,' + (this.energy * 0.05) + ')';
     context.lineWidth = 14 + this.energy * 18;
     strokePath();
-    context.strokeStyle = 'hsla(' + this.hue + ',80%,60%,' + (this.energy * 0.08) + ')';
+    context.strokeStyle = 'hsla(' + this.hue + ',55%,55%,' + (this.energy * 0.10) + ')';
     context.lineWidth = 4 + this.energy * 8;
     strokePath();
   }
 
+  // Resting line — desaturated, slightly muted
   var restAlpha = 0.18;
   var alpha = restAlpha + this.energy * (1 - restAlpha);
-  var lightness = 32 + this.energy * 38;
-  context.strokeStyle = 'hsla(' + this.hue + ',50%,' + lightness + '%,' + alpha + ')';
+  var lightness = 30 + this.energy * 35;
+  context.strokeStyle = 'hsla(' + this.hue + ',32%,' + lightness + '%,' + alpha + ')';
   context.lineWidth = 0.6 + this.energy * 1.8;
   strokePath();
 
+  // Baroqueadelic particles: soft halo + soft core, longer life, desaturated jewel hues
   for (var pi = 0; pi < this.particles.length; pi++) {
     var p = this.particles[pi];
-    context.beginPath();
-    context.arc(p.x, p.y, p.radius * p.life, 0, Math.PI * 2);
-    context.fillStyle = 'hsla(' + (this.hue + 8) + ',70%,72%,' + (p.life * 0.4) + ')';
-    context.fill();
+    var ph = (this.hue + (p.huJitter || 0) + 360) % 360;
+    var r = p.radius * (0.5 + p.life * 0.7);
+    // Outer halo — very low opacity, broad
+    context.fillStyle = 'hsla(' + ph + ',28%,42%,' + (p.life * 0.10) + ')';
+    context.beginPath(); context.arc(p.x, p.y, r * 2.6, 0, Math.PI * 2); context.fill();
+    // Mid bloom
+    context.fillStyle = 'hsla(' + ph + ',34%,52%,' + (p.life * 0.22) + ')';
+    context.beginPath(); context.arc(p.x, p.y, r * 1.4, 0, Math.PI * 2); context.fill();
+    // Core — small, never highly saturated
+    context.fillStyle = 'hsla(' + ph + ',40%,62%,' + (p.life * 0.45) + ')';
+    context.beginPath(); context.arc(p.x, p.y, r * 0.6, 0, Math.PI * 2); context.fill();
   }
 };
 
@@ -715,11 +795,20 @@ function buildStrings() {
 function layoutStrings() {
   if (!W || !H) return;
   var n = strings.length;
-  var topMargin = H * 0.06;
-  var bottomMargin = Math.max(H * 0.08, 220);
-  var span = H - topMargin - bottomMargin;
+  // Total perpendicular range across the screen at 25°: from corner (0,0)=0 to
+  // corner (W,H) = W·sinθ + H·cosθ. Index 0 = bottom-left (high d), index N-1 = top-right (low d).
+  var totalPerp = W * STRING_SIN + H * STRING_COS;
+  var margin = totalPerp * 0.10;
+  var span = totalPerp - 2 * margin;
   for (var i = 0; i < n; i++) {
-    strings[i].y = n > 1 ? (H - bottomMargin) - (i / (n - 1)) * span : H / 2;
+    var d = n > 1 ? (totalPerp - margin) - (i / (n - 1)) * span : totalPerp / 2;
+    strings[i].d = d;
+    var ep = lineEndpoints(d);
+    if (ep) {
+      strings[i].Ax = ep.Ax; strings[i].Ay = ep.Ay;
+      strings[i].Bx = ep.Bx; strings[i].By = ep.By;
+      strings[i].length = ep.length;
+    }
   }
 }
 
@@ -813,22 +902,26 @@ function onPointerMove(x, y) {
   var overToggle = isOverAnyToggle(x, y) >= 0;
   canvas.style.cursor = (hoveringDial >= 0 || overToggle) ? 'pointer' : 'none';
 
-  // Z key: bow engagement — can work simultaneously with X
-  if (prevX !== null && started && bowEngaged) {
+  // Z key: bow engagement. Strings pass UNDER the interface visually, but the interface
+  // takes pointer priority — when hovering a dial or toggle, no excite events fire.
+  var overInterface = (hoveringDial >= 0) || overToggle;
+  if (prevX !== null && started && bowEngaged && !overInterface) {
     var dx = mouseX - prevX, dy = mouseY - prevY;
     var speed = Math.sqrt(dx * dx + dy * dy);
-    var hSpeed = Math.abs(dx);
+    var prevPerp = perpCoord(prevX, prevY);
+    var curPerp  = perpCoord(mouseX, mouseY);
+    var perpSpeed = Math.abs(curPerp - prevPerp);
 
     for (var si = 0; si < strings.length; si++) {
       var s = strings[si];
-      var crossed = (prevY < s.y && mouseY >= s.y) || (prevY > s.y && mouseY <= s.y);
+      var crossed = (prevPerp < s.d && curPerp >= s.d) || (prevPerp > s.d && curPerp <= s.d);
       if (crossed) {
-        s.excite(mouseX, speed);
+        s.excite(mouseX, mouseY, speed);
       } else {
-        var dist = Math.abs(mouseY - s.y);
+        var dist = Math.abs(curPerp - s.d);
         var threshold = strings.length > 20 ? 20 : PROXIMITY_THRESHOLD;
-        if (dist < threshold && hSpeed > 1.5) {
-          s.excite(mouseX, (1 - dist / threshold) * hSpeed * 0.4);
+        if (dist < threshold && perpSpeed > 1.5) {
+          s.excite(mouseX, mouseY, (1 - dist / threshold) * perpSpeed * 0.4);
         }
       }
     }
@@ -1027,13 +1120,25 @@ function drawHUD(cx) {
       cx.fillText(fundamental.toFixed(1) + ' Hz', mouseX, mouseY - 20);
     }
 
-    // Z key: show staccato/sustain label
-    if (bowEngaged) {
-      var xNorm = mouseX / W;
-      var sl = xNorm < 0.2 ? 'staccato' : xNorm > 0.85 ? 'sustain' : '';
-      if (sl) {
-        cx.fillStyle = 'rgba(200,170,120,0.15)'; cx.font = '9px Georgia, serif';
-        cx.textAlign = 'center'; cx.fillText(sl, mouseX, mouseY + 22);
+    // Z key: staccato/sustain label — based on bowFrac of nearest string (projection
+    // onto string direction), not raw screen X, since strings are now diagonal.
+    if (bowEngaged && strings.length > 0) {
+      var nearest = null, nearestPerpDist = Infinity;
+      var curPerp = perpCoord(mouseX, mouseY);
+      for (var si = 0; si < strings.length; si++) {
+        var d = Math.abs(curPerp - strings[si].d);
+        if (d < nearestPerpDist) { nearestPerpDist = d; nearest = strings[si]; }
+      }
+      if (nearest && nearest.length) {
+        var sdx = nearest.Bx - nearest.Ax, sdy = nearest.By - nearest.Ay;
+        var len2 = sdx*sdx + sdy*sdy;
+        var bowFrac = ((mouseX - nearest.Ax)*sdx + (mouseY - nearest.Ay)*sdy) / len2;
+        bowFrac = Math.max(0, Math.min(1, bowFrac));
+        var sl = bowFrac < 0.2 ? 'staccato' : bowFrac > 0.85 ? 'sustain' : '';
+        if (sl) {
+          cx.fillStyle = 'rgba(200,170,120,0.15)'; cx.font = '9px Georgia, serif';
+          cx.textAlign = 'center'; cx.fillText(sl, mouseX, mouseY + 22);
+        }
       }
     }
   }
@@ -1059,9 +1164,10 @@ function frame(time) {
 
   // Cursor
   if (cursorVisible && hoveringDial < 0 && draggingDial === null) {
-    var nd = Infinity, nh = 35;
+    var nd = Infinity, nh = 280; // jewel-tone default
+    var curPerp = perpCoord(mouseX, mouseY);
     for (var si = 0; si < strings.length; si++) {
-      var d = Math.abs(mouseY - strings[si].y);
+      var d = Math.abs(curPerp - strings[si].d);
       if (d < nd) { nd = d; nh = strings[si].hue; }
     }
     var prox = Math.max(0, 1 - nd / 60);
