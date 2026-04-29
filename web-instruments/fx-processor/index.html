@@ -431,7 +431,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 <!-- Version badge (always visible, top-right) -->
 <div id="version-badge" style="position:fixed;top:8px;right:10px;
      font-family:'Courier New',monospace;font-size:.6rem;letter-spacing:.16em;
-     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v58</div>
+     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v60</div>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
 <!-- START SCREEN                                                   -->
@@ -465,7 +465,8 @@ input.gain-meter-slider::-webkit-slider-thumb {
 
     <!-- ════════ INPUTS COLUMN ════════ -->
     <div class="col-wrap">
-      <div class="col-label">INPUTS</div>
+      <!-- v59: column labels removed; module titles already say what column they belong to -->
+
 
       <!-- MIC INPUT module -->
       <div class="module half" id="mic-module">
@@ -902,7 +903,6 @@ input.gain-meter-slider::-webkit-slider-thumb {
 
 <!-- ════════ OUTPUTS COLUMN ════════ -->
     <div class="col-wrap">
-      <div class="col-label">OUTPUTS</div>
 
       <!-- OUTPUT module -->
       <div class="module half" id="output-module">
@@ -1804,19 +1804,30 @@ function startRecord(){
   recDebug(`startRecord ${recFormat}`);
   recordChunks = []; pcmCapL = []; pcmCapR = [];
   recordSoftWarned = false;
+  if (recFormat === 'wav') {
+    // WAV uses AudioWorklet, which is async (module load).
+    startWavCapture().then(ok => {
+      recDebug(`startwav returned ok=${ok}`);
+      if (ok) _finalizeRecordStart('wav');
+    }).catch(err => {
+      console.error('startWavCapture rejected:', err);
+      recDebug('wav REJECT: ' + (err.message||err));
+      document.getElementById('rec-status').textContent = 'WAV err: ' + (err.message||err);
+    });
+    return;
+  }
   let ok = false;
-  try {
-    if(recFormat === 'wav') ok = startWavCapture();
-    else                    ok = startWebmCapture();
-  } catch(err) {
-    console.error('startRecord:', err);
+  try { ok = startWebmCapture(); }
+  catch (err) {
     recDebug('THROW: ' + (err.message||err));
     document.getElementById('rec-status').textContent = 'startRec err: ' + (err.message||err);
     return;
   }
-  recDebug(`start${recFormat} returned ok=${ok}`);
-  if(!ok) return;
-  recordingMethod = recFormat;
+  recDebug(`startwebm returned ok=${ok}`);
+  if (ok) _finalizeRecordStart('webm');
+}
+function _finalizeRecordStart(method){
+  recordingMethod = method;
   recordStartTime = Date.now();
   const btn = document.getElementById('rec-btn');
   btn.classList.add('recording');
@@ -1905,34 +1916,66 @@ function stopWebmCaptureAndDownload(){
 }
 
 // ── WAV (uncompressed PCM) path ──
-function startWavCapture(){
+// AudioWorklet processor for WAV capture (defined inline as Blob URL).
+// ScriptProcessorNode is unavailable on Tone.js 14.8.49's BaseContext
+// (filtered out as deprecated), so we use the modern AudioWorklet API.
+const WAV_WORKLET_CODE = `
+class WavCaptureProcessor extends AudioWorkletProcessor {
+  process(inputs) {
+    const input = inputs[0];
+    if (input && input.length >= 1) {
+      const ch0 = input[0];
+      const ch1 = input[1] || ch0;
+      this.port.postMessage({
+        l: new Float32Array(ch0),
+        r: new Float32Array(ch1)
+      });
+    }
+    return true;
+  }
+}
+registerProcessor('wav-capture', WavCaptureProcessor);
+`;
+
+async function startWavCapture(){
   recDebug(`wav: rawCtx=${!!rawCtx} recordTap=${!!recordTap}`);
   if(!rawCtx) { document.getElementById('rec-status').textContent='no audio ctx'; return false; }
   if(!recordTap) { document.getElementById('rec-status').textContent='no record tap'; return false; }
+  if(!rawCtx.audioWorklet) {
+    recDebug('wav: no audioWorklet on rawCtx');
+    document.getElementById('rec-status').textContent = 'WAV err: no AudioWorklet support';
+    return false;
+  }
   try {
-    recDebug('wav: createScriptProcessor(4096,2,2)');
-    pcmCaptureNode = rawCtx.createScriptProcessor(4096, 2, 2);
-    pcmCaptureNode.__chunks = 0;
-    pcmCaptureNode.onaudioprocess = (e) => {
-      pcmCaptureNode.__chunks++;
-      pcmCapL.push(new Float32Array(e.inputBuffer.getChannelData(0)));
-      pcmCapR.push(new Float32Array(e.inputBuffer.getChannelData(1)));
-      e.outputBuffer.getChannelData(0).set(e.inputBuffer.getChannelData(0));
-      e.outputBuffer.getChannelData(1).set(e.inputBuffer.getChannelData(1));
+    if (!rawCtx.__wavWorkletLoaded) {
+      recDebug('wav: addModule(blob)');
+      const blob = new Blob([WAV_WORKLET_CODE], {type:'application/javascript'});
+      const url = URL.createObjectURL(blob);
+      await rawCtx.audioWorklet.addModule(url);
+      URL.revokeObjectURL(url);
+      rawCtx.__wavWorkletLoaded = true;
+      recDebug('wav: worklet module loaded');
+    }
+    recDebug('wav: new AudioWorkletNode');
+    const worklet = new AudioWorkletNode(rawCtx, 'wav-capture', {
+      numberOfInputs: 1, numberOfOutputs: 0,
+      channelCount: 2, channelCountMode: 'explicit', channelInterpretation: 'speakers',
+    });
+    worklet.__chunks = 0;
+    worklet.port.onmessage = (e) => {
+      worklet.__chunks++;
+      pcmCapL.push(e.data.l);
+      pcmCapR.push(e.data.r);
     };
+    pcmCaptureNode = worklet;
     recDebug('wav: createGain bridge');
     const tapBridge = rawCtx.createGain();
     tapBridge.channelCount = 2; tapBridge.channelCountMode = 'explicit';
     recDebug('wav: recordTap → tapBridge');
     recordTap.connect(tapBridge);
-    recDebug('wav: tapBridge → pcmCaptureNode');
-    tapBridge.connect(pcmCaptureNode);
-    recDebug('wav: createGain muted');
-    const muted = rawCtx.createGain(); muted.gain.value = 0;
-    recDebug('wav: pcmCaptureNode → muted → destination');
-    pcmCaptureNode.connect(muted); muted.connect(rawCtx.destination);
+    recDebug('wav: tapBridge → worklet');
+    tapBridge.connect(worklet);
     pcmCaptureNode.__tapBridge = tapBridge;
-    pcmCaptureNode.__mutedSink = muted;
     recDebug(`wav: ready, sr=${rawCtx.sampleRate}`);
     return true;
   } catch(err) {
@@ -1947,11 +1990,11 @@ function stopWavCaptureAndDownload(){
   const stEl = document.getElementById('rec-status');
   if(!pcmCaptureNode){ if(stEl) stEl.textContent='no capture node'; return; }
   const finalChunks = pcmCaptureNode.__chunks || 0;
-  // Disconnect everything first — even if encoding throws below, the audio graph is clean.
   try { pcmCaptureNode.disconnect(); } catch(e){}
   if(pcmCaptureNode.__tapBridge) try { pcmCaptureNode.__tapBridge.disconnect(); } catch(e){}
-  if(pcmCaptureNode.__mutedSink) try { pcmCaptureNode.__mutedSink.disconnect(); } catch(e){}
-  pcmCaptureNode.onaudioprocess = null;
+  // AudioWorkletNode: clear port handler. Old ScriptProcessor used onaudioprocess.
+  if(pcmCaptureNode.port) pcmCaptureNode.port.onmessage = null;
+  if(pcmCaptureNode.onaudioprocess !== undefined) pcmCaptureNode.onaudioprocess = null;
   pcmCaptureNode = null;
   if(pcmCapL.length === 0){
     if(stEl) stEl.textContent = `no data (chunks=${finalChunks})`;
