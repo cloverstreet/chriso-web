@@ -431,7 +431,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 <!-- Version badge (always visible, top-right) -->
 <div id="version-badge" style="position:fixed;top:8px;right:10px;
      font-family:'Courier New',monospace;font-size:.6rem;letter-spacing:.16em;
-     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v55</div>
+     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v56</div>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
 <!-- START SCREEN                                                   -->
@@ -816,10 +816,10 @@ input.gain-meter-slider::-webkit-slider-thumb {
         </div>
         <div class="danger-zone" id="fb-danger">⚠ RUNAWAY — reduce feedback!</div>
       </div>
-      <!-- WET → OUT (delay's direct out — DRY removed in v55) -->
+      <!-- MIX → OUT (delay's direct out — DRY removed in v55, renamed v56) -->
       <div style="margin-bottom:9px;">
         <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
-          <label style="font-size:.66rem;letter-spacing:.08em;color:#aaa;">WET → OUT</label>
+          <label style="font-size:.66rem;letter-spacing:.08em;color:#aaa;">MIX → OUT</label>
           <span class="ctrl-val" id="delay-wet-val" data-value="0.501" style="font-size:.72rem;">-6.0 dB</span>
         </div>
         <input type="range" id="delay-wet" min="0" max="1" step="0.01" value="0.501"
@@ -828,7 +828,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
       <!-- FEEDBACK TO PITCH SHIFT (dangerous but musical!) -->
       <div style="margin-bottom:0;padding-top:7px;border-top:1px solid #1a1a1a;">
         <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
-          <label style="font-size:.66rem;letter-spacing:.08em;color:#e0a050;">WET → PITCH SHIFT</label>
+          <label style="font-size:.66rem;letter-spacing:.08em;color:#e0a050;">MIX → PITCH SHIFT</label>
           <span class="ctrl-val" id="delay-to-pitch-val" data-value="0" style="font-size:.72rem;">-inf</span>
         </div>
         <input type="range" id="delay-to-pitch" min="0" max="1" step="0.01" value="0"
@@ -1831,11 +1831,17 @@ function updateRecordStatus(){
   const m = Math.floor(totalSec/60);
   const s = totalSec % 60;
   const time = m + ':' + (s<10?'0':'') + s;
+  // WAV chunk diagnostic: show how many onaudioprocess fires we've accumulated.
+  // 0 chunks means audio isn't reaching the ScriptProcessor (capture broken).
+  let suffix = '';
+  if(recordingMethod === 'wav' && pcmCaptureNode){
+    suffix = ' · ' + (pcmCaptureNode.__chunks || 0) + 'ch';
+  }
   if(ms >= REC_SOFT_CAP_MS && !recordSoftWarned){
     recordSoftWarned = true;
-    if(stEl) stEl.textContent = '⚠ '+time+' (cap 60m)';
+    if(stEl) stEl.textContent = '⚠ '+time+' (cap 60m)' + suffix;
   } else {
-    if(stEl){ stEl.textContent = (recordSoftWarned?'⚠ ':'● ') + time; }
+    if(stEl){ stEl.textContent = (recordSoftWarned?'⚠ ':'● ') + time + suffix; }
   }
 }
 
@@ -1876,26 +1882,27 @@ function stopWebmCaptureAndDownload(){
 // ── WAV (uncompressed PCM) path ──
 function startWavCapture(){
   if(!rawCtx) { document.getElementById('rec-status').textContent='no audio ctx'; return false; }
-  if(!mediaStreamDest) { document.getElementById('rec-status').textContent='no media stream'; return false; }
+  if(!recordTap) { document.getElementById('rec-status').textContent='no record tap'; return false; }
   try {
-    // ScriptProcessor — deprecated but works everywhere for offline capture.
     pcmCaptureNode = rawCtx.createScriptProcessor(4096, 2, 2);
+    pcmCaptureNode.__chunks = 0; // diagnostic: counts onaudioprocess fires
     pcmCaptureNode.onaudioprocess = (e) => {
+      pcmCaptureNode.__chunks++;
       pcmCapL.push(new Float32Array(e.inputBuffer.getChannelData(0)));
       pcmCapR.push(new Float32Array(e.inputBuffer.getChannelData(1)));
       e.outputBuffer.getChannelData(0).set(e.inputBuffer.getChannelData(0));
       e.outputBuffer.getChannelData(1).set(e.inputBuffer.getChannelData(1));
     };
-    // Pure-native path: tap mediaStreamDest's existing MediaStream (already fed by
-    // recordTap in initAudio). createMediaStreamSource gives us a native AudioNode
-    // we can connect to ScriptProcessor with no Tone↔native bridging risk.
-    const wavSrc = rawCtx.createMediaStreamSource(mediaStreamDest.stream);
-    wavSrc.connect(pcmCaptureNode);
-    // ScriptProcessor only fires onaudioprocess when its output is connected.
-    // Sink to a muted gain → destination.
+    // Direct tap: Tone.Gain (recordTap) → native Gain bridge → ScriptProcessor.
+    // Same Tone→native pattern that v52 uses successfully for flanking-meter splitters.
+    const tapBridge = rawCtx.createGain();
+    tapBridge.channelCount = 2; tapBridge.channelCountMode = 'explicit';
+    recordTap.connect(tapBridge);
+    tapBridge.connect(pcmCaptureNode);
+    // ScriptProcessor only fires when its output is connected.
     const muted = rawCtx.createGain(); muted.gain.value = 0;
     pcmCaptureNode.connect(muted); muted.connect(rawCtx.destination);
-    pcmCaptureNode.__source = wavSrc;
+    pcmCaptureNode.__tapBridge = tapBridge;
     pcmCaptureNode.__mutedSink = muted;
     console.log('WAV capture started, sampleRate=', rawCtx.sampleRate);
     return true;
@@ -1909,13 +1916,17 @@ function startWavCapture(){
 function stopWavCaptureAndDownload(){
   const stEl = document.getElementById('rec-status');
   if(!pcmCaptureNode){ if(stEl) stEl.textContent='no capture node'; return; }
+  const finalChunks = pcmCaptureNode.__chunks || 0;
   // Disconnect everything first — even if encoding throws below, the audio graph is clean.
   try { pcmCaptureNode.disconnect(); } catch(e){}
-  if(pcmCaptureNode.__source)    try { pcmCaptureNode.__source.disconnect(); } catch(e){}
+  if(pcmCaptureNode.__tapBridge) try { pcmCaptureNode.__tapBridge.disconnect(); } catch(e){}
   if(pcmCaptureNode.__mutedSink) try { pcmCaptureNode.__mutedSink.disconnect(); } catch(e){}
   pcmCaptureNode.onaudioprocess = null;
   pcmCaptureNode = null;
-  if(pcmCapL.length === 0){ if(stEl) stEl.textContent = 'no data'; pcmCapL=[]; pcmCapR=[]; return; }
+  if(pcmCapL.length === 0){
+    if(stEl) stEl.textContent = `no data (chunks=${finalChunks})`;
+    pcmCapL=[]; pcmCapR=[]; return;
+  }
   const blob = encodeWavInt16PCM(pcmCapL, pcmCapR, rawCtx.sampleRate);
   pcmCapL = []; pcmCapR = [];
   triggerDownload(blob, `fx-processor-${recordTimestamp()}.wav`);
