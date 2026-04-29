@@ -17,8 +17,8 @@
     transition: opacity 1.2s ease-out;
   }
   #invite.gone { opacity: 0; pointer-events: none }
-  #invite span { color: rgba(200,170,120,0.4); font: 1rem Georgia, serif; letter-spacing: .25em }
-  #invite .hint { font-size: 0.72rem; color: rgba(200,170,120,0.22); letter-spacing: .15em }
+  #invite span { color: rgba(200,170,120,0.4); font: 1.25rem Georgia, serif; letter-spacing: .25em }
+  #invite .hint { font-size: 0.9rem; color: rgba(200,170,120,0.22); letter-spacing: .15em }
   #tuningPanel {
     position: fixed; top: 0; right: -320px;
     width: 300px; height: 100%; padding: 20px 18px;
@@ -26,35 +26,35 @@
     border-left: 1px solid rgba(200,170,120,0.08);
     z-index: 20; overflow-y: auto;
     transition: right 0.3s ease;
-    color: rgba(200,170,120,0.6); font-size: 12px;
+    color: rgba(200,170,120,0.6); font-size: 14px;
   }
   #tuningPanel.open { right: 0 }
-  #tuningPanel h3 { font-size: 13px; font-weight: normal; color: rgba(200,170,120,0.5); letter-spacing: 0.15em; margin: 0 0 14px 0; text-transform: uppercase }
-  #tuningPanel label { display: block; margin: 10px 0 4px 0; font-size: 10px; letter-spacing: 0.1em; color: rgba(200,170,120,0.35); text-transform: uppercase }
+  #tuningPanel h3 { font-size: 15px; font-weight: normal; color: rgba(200,170,120,0.5); letter-spacing: 0.15em; margin: 0 0 14px 0; text-transform: uppercase }
+  #tuningPanel label { display: block; margin: 10px 0 4px 0; font-size: 12px; letter-spacing: 0.1em; color: rgba(200,170,120,0.35); text-transform: uppercase }
   #tuningPanel select, #tuningPanel input[type="text"], #tuningPanel textarea {
     width: 100%; padding: 6px 8px;
     background: rgba(200,170,120,0.05); border: 1px solid rgba(200,170,120,0.12);
-    color: rgba(200,170,120,0.7); font: 11px Georgia, serif; border-radius: 3px; outline: none;
+    color: rgba(200,170,120,0.7); font: 13px Georgia, serif; border-radius: 3px; outline: none;
   }
   #tuningPanel select:focus, #tuningPanel input:focus, #tuningPanel textarea:focus { border-color: rgba(200,170,120,0.3) }
-  #tuningPanel textarea { height: 90px; resize: vertical; font-family: monospace; font-size: 10px }
+  #tuningPanel textarea { height: 90px; resize: vertical; font-family: monospace; font-size: 12px }
   #tuningPanel .btn-row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap }
   #tuningPanel button {
-    padding: 5px 10px; font: 10px Georgia, serif;
+    padding: 5px 10px; font: 12px Georgia, serif;
     background: rgba(200,170,120,0.08); border: 1px solid rgba(200,170,120,0.15);
     color: rgba(200,170,120,0.6); border-radius: 3px; cursor: pointer; letter-spacing: 0.05em;
   }
   #tuningPanel button:hover { background: rgba(200,170,120,0.15); color: rgba(200,170,120,0.85) }
   #tuningPanel .divider { border: none; border-top: 1px solid rgba(200,170,120,0.06); margin: 14px 0 }
-  #tuningPanel .ratios-display { font: 10px monospace; color: rgba(200,170,120,0.4); line-height: 1.6; margin: 6px 0; max-height: 200px; overflow-y: auto }
+  #tuningPanel .ratios-display { font: 12px monospace; color: rgba(200,170,120,0.4); line-height: 1.6; margin: 6px 0; max-height: 200px; overflow-y: auto }
   #tuningToggle, #bowToggle {
     position: fixed; top: 12px; z-index: 25;
-    padding: 5px 10px; font: 10px Georgia, serif;
+    padding: 6px 14px; font: 12px Georgia, serif;
     background: rgba(200,170,120,0.06); border: 1px solid rgba(200,170,120,0.1);
     color: rgba(200,170,120,0.3); border-radius: 3px; cursor: pointer; letter-spacing: 0.1em;
   }
   #tuningToggle { right: 12px; }
-  #bowToggle    { right: 86px; }
+  #bowToggle    { right: 100px; }
   #tuningToggle:hover, #bowToggle:hover { color: rgba(200,170,120,0.6); border-color: rgba(200,170,120,0.25) }
   /* Bow panel — same skin as tuning panel, mirrored on left so they don't collide */
   #bowPanel {
@@ -92,7 +92,7 @@
 <div id="invite">
   <span>touch to begin</span>
   <span class="hint">Z = bow &middot; X = tune &middot; D = delay in &middot; T = tuning &middot; B = bow panel</span>
-  <span class="hint" style="margin-top:1.5em;font-size:0.6rem;color:rgba(200,170,120,0.12)">v4.7</span>
+  <span class="hint" style="margin-top:1.5em;font-size:0.85rem;color:rgba(200,170,120,0.12)">v4.8</span>
 </div>
 <button id="tuningToggle">TUNING</button>
 <button id="bowToggle">BOW</button>
@@ -1090,7 +1090,7 @@ function drawDials(cx) {
   var groups = layout.groups;
 
   // Group labels
-  cx.font = '9px Georgia, serif';
+  cx.font = '12px Georgia, serif';
   cx.textAlign = 'center';
   for (var g = 0; g < groups.length; g++) {
     cx.fillStyle = 'rgba(200,170,120,0.22)';
@@ -1126,18 +1126,18 @@ function drawDials(cx) {
 
     // Label
     cx.fillStyle = 'rgba(200,170,120,' + (0.5 + bb * 0.3) + ')';
-    cx.font = (hov ? 12 : 10) + 'px Georgia, serif'; cx.textAlign = 'center';
+    cx.font = (hov ? 15 : 13) + 'px Georgia, serif'; cx.textAlign = 'center';
     cx.fillText(dials[idx].label, dp.x, dp.y + DIAL_R + 16);
 
     // Value readout
     var displayVal = getDialDisplay(idx);
     cx.fillStyle = 'rgba(200,170,120,' + (0.45 + bb * 0.35) + ')';
-    cx.font = (hov ? 12 : 10) + 'px Georgia, serif';
+    cx.font = (hov ? 15 : 13) + 'px Georgia, serif';
     cx.fillText(displayVal, dp.x, dp.y + 4);
 
     // Drag hint
     if (hov && draggingDial === null) {
-      cx.fillStyle = 'rgba(200,170,120,0.18)'; cx.font = '9px Georgia, serif';
+      cx.fillStyle = 'rgba(200,170,120,0.18)'; cx.font = '12px Georgia, serif';
       cx.fillText('drag \u2195', dp.x, dp.y - DIAL_R - 6);
     }
   }
@@ -1152,7 +1152,7 @@ function drawDials(cx) {
     cx.fillStyle = active
       ? 'rgba(200,170,120,' + (thov ? 0.6 : 0.4) + ')'
       : 'rgba(200,170,120,' + (thov ? 0.3 : 0.15) + ')';
-    cx.font = '9px Georgia, serif'; cx.textAlign = 'center';
+    cx.font = '12px Georgia, serif'; cx.textAlign = 'center';
     cx.fillText(label, tp.x, tp.y + 3);
   }
 }
@@ -1161,7 +1161,7 @@ function drawDials(cx) {
 function drawHUD(cx) {
   // Modifier key status (top-right area)
   var statusY = H - 30;
-  cx.font = '10px Georgia, serif'; cx.textAlign = 'right';
+  cx.font = '13px Georgia, serif'; cx.textAlign = 'right';
 
   // Bow status
   cx.fillStyle = 'rgba(200,170,120,' + (bowEngaged ? 0.5 : 0.15) + ')';
@@ -1177,7 +1177,7 @@ function drawHUD(cx) {
 
   // Tuning info (top-left)
   cx.fillStyle = 'rgba(200,170,120,0.2)';
-  cx.font = '10px Georgia, serif'; cx.textAlign = 'left';
+  cx.font = '13px Georgia, serif'; cx.textAlign = 'left';
   var currentPreset = null;
   for (var pi = 0; pi < TUNING_PRESETS.length; pi++) {
     var p = TUNING_PRESETS[pi];
@@ -1197,7 +1197,7 @@ function drawHUD(cx) {
     // X key: show frequency near cursor
     if (fundEngaged) {
       cx.fillStyle = 'rgba(200,170,120,0.45)';
-      cx.font = '11px Georgia, serif'; cx.textAlign = 'center';
+      cx.font = '14px Georgia, serif'; cx.textAlign = 'center';
       cx.fillText(fundamental.toFixed(1) + ' Hz', mouseX, mouseY - 20);
     }
 
@@ -1217,7 +1217,7 @@ function drawHUD(cx) {
         bowFrac = Math.max(0, Math.min(1, bowFrac));
         var sl = bowFrac < 0.2 ? 'staccato' : bowFrac > 0.85 ? 'sustain' : '';
         if (sl) {
-          cx.fillStyle = 'rgba(200,170,120,0.15)'; cx.font = '9px Georgia, serif';
+          cx.fillStyle = 'rgba(200,170,120,0.15)'; cx.font = '12px Georgia, serif';
           cx.textAlign = 'center'; cx.fillText(sl, mouseX, mouseY + 22);
         }
       }
