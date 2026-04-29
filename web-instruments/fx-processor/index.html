@@ -431,7 +431,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 <!-- Version badge (always visible, top-right) -->
 <div id="version-badge" style="position:fixed;top:8px;right:10px;
      font-family:'Courier New',monospace;font-size:.6rem;letter-spacing:.16em;
-     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v57</div>
+     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v58</div>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
 <!-- START SCREEN                                                   -->
@@ -2102,10 +2102,15 @@ function loadFxPreset(fx,slot){
   const s=localStorage.getItem(`fx_${fx}_${slot}`); if(!s)return;
   applyFxState(fx,JSON.parse(s));
 }
+// IS preset save/restore. Convention (v58):
+//   • Output module is NEVER part of the IS preset world (gain/mute/device/channels
+//     are user-chosen routing, not musical). Stays put when teleporting between presets.
+//   • Audio Input module's basic settings (device, channel, mute) excluded too, BUT
+//     gain/pan/direct-out are kept — those are musical level / positioning choices.
+//   • Tab Capture's source choice excluded; its gain is musical and could be added later.
 function getGlobalState(){
   return {
     inputGainDb:parseFloat(document.getElementById('input-gain-db').value),
-    outputGainDb:parseFloat(document.getElementById('output-gain-db').value),
     micPan:parseFloat((document.getElementById('mic-pan-sl')||{value:0}).value),
     micDirect:parseFloat((document.getElementById('mic-direct-sl')||{value:0}).value),
     testDirect:parseFloat((document.getElementById('test-direct-sl')||{value:0}).value),
@@ -2119,14 +2124,14 @@ function getGlobalState(){
 }
 function applyGlobalState(s){
   document.getElementById('input-gain-db').value=s.inputGainDb; setInputGainDb(s.inputGainDb);
-  if(s.outputGainDb!==undefined){document.getElementById('output-gain-db').value=s.outputGainDb; setOutputGainDb(s.outputGainDb);}
+  // outputGainDb intentionally NOT restored — output module excluded from IS world
   if(s.micPan!==undefined){const mp=document.getElementById('mic-pan-sl'); if(mp){mp.value=s.micPan; setMicPan(s.micPan);}}
   if(s.micDirect!==undefined){const mdr=document.getElementById('mic-direct-sl'); if(mdr){mdr.value=s.micDirect; setMicDirect(s.micDirect);}}
   if(s.testDirect!==undefined){const tdr=document.getElementById('test-direct-sl'); if(tdr){tdr.value=s.testDirect; setTestDirect(s.testDirect);}}
   document.getElementById('test-wave').value=s.testWave; setTestWave(s.testWave);
   setTestFreqHz(s.testFreqHz); document.getElementById('test-gain-sl').value=s.testGainDb; setTestGainDb(s.testGainDb);
   if(s.testEnabled!==testEnabled) toggleTestTone();
-  // mic mute not restored from presets
+  // mic mute, output gain/mute, output device/channels — all preserved (not part of IS state)
   if(s.pitchBypassed!==undefined && s.pitchBypassed!==pitchBypassed) toggleFxBypass('pitch');
   if(s.delayBypassed!==undefined && s.delayBypassed!==delayBypassed) toggleFxBypass('delay');
   applyFxState('pitch',s.pitch); applyFxState('delay',s.delay);
@@ -2417,10 +2422,12 @@ function psInterpolate(cx, cy, W, H, defaults) {
   const weights = dists.map(d => 1 / Math.pow(d, PS_IDW_POWER));
   const total   = weights.reduce((s, w) => s + w, 0);
 
-  // Blend numeric params
-  const numKeys = ['inputGainDb','outputGainDb','testGainDb','testFreqHz',
-    'pitch.window','pitch.semi','pitch.wetdry',
-    'delay.time','delay.fb','delay.dry','delay.wet'];
+  // Blend numeric params. Output module excluded from IS world (v58):
+  // outputGainDb is NOT blended — output stays where the user puts it.
+  // pitch.wetdry / delay.dry removed in v55; no longer in the blend.
+  const numKeys = ['inputGainDb','testGainDb','testFreqHz',
+    'pitch.window','pitch.semi',
+    'delay.time','delay.fb','delay.wet'];
 
   const result = {testEnabled: placed[0].testEnabled,
                   testWave: placed[0].testWave,
@@ -2440,10 +2447,9 @@ function psInterpolate(cx, cy, W, H, defaults) {
     }
   });
 
-  // Flatten for applyGlobalState compat
+  // Flatten for applyGlobalState compat. outputGainDb intentionally absent.
   const flat = {
     inputGainDb: result.inputGainDb,
-    outputGainDb: result.outputGainDb,
     testEnabled: result.testEnabled,
     testWave: result.testWave,
     testFreqHz: result.testFreqHz,
