@@ -145,7 +145,10 @@ var TUNING_PRESETS = [
 // --- Core state ---
 var fundamental = 55;
 var ratios = TUNING_PRESETS[0].ratios.slice();
-var PROXIMITY_THRESHOLD = 28;
+// Proximity threshold expanded — strings respond from further away.
+// Combined with the sqrt excite curve, this makes small/slow motions registers
+// expressively even when the bow isn't crossing exactly through a string.
+var PROXIMITY_THRESHOLD = 60;
 var DECAY_MIN = 0.92;
 var DECAY_MAX = 0.999;
 var RAMP_TIME = 0.015;
@@ -625,7 +628,10 @@ LuminousString.prototype.destroy = function() {
 };
 
 LuminousString.prototype.excite = function(mx, my, velocity) {
-  var amp = Math.min(velocity / 18, 1);
+  // Sqrt response curve: small motions get disproportionately more amp
+  // than fast ones. velocity=1 → 0.22, velocity=4 → 0.45, velocity=16 → 0.89, velocity≥20 → 1.0.
+  // Linear (old): velocity=1 → 0.056, velocity=20 → 1.0 — fast movements dominated.
+  var amp = Math.min(Math.sqrt(velocity / 20), 1);
   this.peakTarget = Math.min(this.energy + amp * 0.35, 1);
   this.envPhase = 'attack';
 
@@ -919,9 +925,14 @@ function onPointerMove(x, y) {
         s.excite(mouseX, mouseY, speed);
       } else {
         var dist = Math.abs(curPerp - s.d);
-        var threshold = strings.length > 20 ? 20 : PROXIMITY_THRESHOLD;
-        if (dist < threshold && perpSpeed > 1.5) {
-          s.excite(mouseX, mouseY, (1 - dist / threshold) * perpSpeed * 0.4);
+        // Threshold scales down a bit when many strings are packed close together
+        var threshold = strings.length > 20 ? 38 : PROXIMITY_THRESHOLD;
+        // Lower speed gate (was 1.5 → 0.5) so tiny finger nudges register.
+        // Falloff softened: (1 - d/t)^0.7 instead of linear, so even far strings
+        // get a hint of energy from a quick swipe.
+        if (dist < threshold && perpSpeed > 0.5) {
+          var falloff = Math.pow(1 - dist / threshold, 0.7);
+          s.excite(mouseX, mouseY, falloff * perpSpeed * 0.7);
         }
       }
     }
