@@ -1,0 +1,4 @@
+{
+  "_note": "Events Christopher has rejected. The agent skips these in future runs. Each entry: {id, title, rejected_at, reason (optional freeform from decide.php or manual edit)}",
+  "events": []
+}

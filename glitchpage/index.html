@@ -43,19 +43,29 @@
 
   #nav a {
     font-family: 'Courier New', monospace;
-    font-size: clamp(14px, 2vw, 22px);
+    font-size: clamp(17px, 2.35vw, 27px);
     font-weight: 400;
     letter-spacing: 0.12em;
-    color: #444;                   /* dark grey — subtle */
+    color: #7a7468;                /* warm muted grey — Baroqueadelic */
     text-decoration: none;
-    text-transform: lowercase;
     transition: color 0.25s ease, text-shadow 0.25s ease;
     cursor: pointer;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1.2;
+  }
+
+  #nav a .sublabel {
+    font-size: 0.55em;
+    letter-spacing: 0.2em;
+    opacity: 0.65;
+    margin-top: 0.25em;
   }
 
   #nav a:hover {
-    color: #999;
-    text-shadow: 0 0 12px rgba(180,180,180,0.3);
+    color: #dccfae;                /* warm champagne on hover */
+    text-shadow: 0 0 14px rgba(220,200,160,0.45);
   }
 </style>
 </head>
@@ -70,12 +80,21 @@ const nav = document.getElementById('nav');
 
 [
   { label: 'about',           href: '/about/' },
-  { label: 'web instruments', href: '/web-instruments/' },
-  { label: 'lessons',         href: '/lessons/' }
-].forEach(({label, href}) => {
+  { label: 'Web Instruments', href: '/web-instruments/', sublabel: '(in progress)' },
+  { label: 'lessons',         href: '/lessons/' },
+  { label: 'recommended events', href: '/calendar/',    sublabel: 'public calendar' }
+].forEach(({label, href, sublabel}) => {
   const a = document.createElement('a');
   a.href = href;
-  a.textContent = label;
+  const main = document.createElement('span');
+  main.textContent = label;
+  a.appendChild(main);
+  if (sublabel) {
+    const sub = document.createElement('span');
+    sub.className = 'sublabel';
+    sub.textContent = sublabel;
+    a.appendChild(sub);
+  }
   nav.appendChild(a);
 });
 wireNavAudio();
@@ -114,14 +133,74 @@ function resize() {
   renderText();
 }
 
+// ── Baroqueadelic per-letter motion state ─────────────────────────────
+// Each letter in 'ChristopherO!' gets its own trio of mass-spring
+// channels (R / G / B). That's 3 × N independent oscillators, each
+// driven by a multi-harmonic target (fundamental + two irrational
+// overtones per channel).  No two letters move alike.  Within each
+// letter, the three channels beat against each other. The result is
+// polyrhythmic, polyphonic motion across ~40 simultaneous oscillators.
+const PHI = 1.6180339887;
+const TEXT_STR = 'ChristopherO!';
+const letters = [];
+
+function makeLetter(char, sxLeft, yCenter, w, fs, i) {
+  // y is the text baseline-middle position; expand sy/sh generously
+  // so drawImage slices capture the full glyph bounding box.
+  return {
+    char,
+    sx: sxLeft,
+    sy: yCenter - fs * 0.75,
+    sw: w,
+    sh: fs * 1.5,
+    idx: i,
+    chans: [
+      { x:0, y:0, vx:0, vy:0,
+        k: 0.0042, d: 0.905,
+        fr: 0.019,               phase: i * 0.37,
+        rx: 1.00, ry: 0.95, yRatio: 1 / PHI,
+        mWeightX:  0.55, mWeightY:  0.38 },
+      { x:0, y:0, vx:0, vy:0,
+        k: 0.0031, d: 0.922,
+        fr: 0.019 * PHI,         phase: 2.09 + i * 0.43,
+        rx: 0.82, ry: 1.20, yRatio: PHI,
+        mWeightX: -0.40, mWeightY:  0.52 },
+      { x:0, y:0, vx:0, vy:0,
+        k: 0.0058, d: 0.882,
+        fr: 0.019 * PHI * PHI,   phase: 4.19 + i * 0.29,
+        rx: 1.08, ry: 0.78, yRatio: 1 / (PHI * PHI),
+        mWeightX:  0.32, mWeightY: -0.46 }
+    ]
+  };
+}
+
 function renderText() {
   octx.clearRect(0, 0, off.width, off.height);
   const fs = Math.min(off.width * 0.13, 130);
   octx.font         = `900 ${fs}px 'Courier New', monospace`;
-  octx.textAlign    = 'center';
+  octx.textAlign    = 'left';
   octx.textBaseline = 'middle';
-  octx.fillStyle    = '#f0f0f0';
-  octx.fillText('ChristopherO!', off.width / 2, off.height / 2);
+  octx.fillStyle    = '#ede3c8';   /* warm champagne — Baroqueadelic base tint */
+
+  // Per-letter layout: measure widths, center the whole word, render
+  // each letter at a known x so we can carve them back out later.
+  const widths = [];
+  let totalW = 0;
+  for (const ch of TEXT_STR) {
+    const w = octx.measureText(ch).width;
+    widths.push(w);
+    totalW += w;
+  }
+  const startX = (off.width - totalW) / 2;
+  const yCenter = off.height / 2;
+
+  letters.length = 0;
+  let x = startX;
+  for (let i = 0; i < TEXT_STR.length; i++) {
+    octx.fillText(TEXT_STR[i], x, yCenter);
+    letters.push(makeLetter(TEXT_STR[i], x, yCenter, widths[i], fs, i));
+    x += widths[i];
+  }
 }
 
 resize();
@@ -133,6 +212,9 @@ let mx = 0, my = 0, lx = 0, ly = 0;
 let energy = 0, peak = 0;
 
 document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
+
+
+// (per-letter channel state lives on `letters[]`, defined above)
 
 
 // ══════════════════════════════════════════════════════════════════════
@@ -300,31 +382,133 @@ function initAudio() {
 // ── Granular engine ───────────────────────────────────────────────────
 // Much wider randomization of start points, durations, inter-grain
 // timing, and playback rates for a more organic granular character.
+// ── 3D grain trajectories ─────────────────────────────────────────────
+// Each grain is a little physical object: it appears at some 3D
+// position relative to the listener, has a velocity, and sweeps a
+// trajectory across the stereo field (HRTF-panned).  Types below are
+// gestural — whoosh past, drift nearby, shoot away, pass overhead,
+// fade into distance.  Intentionally un-realistic: longer-than-life
+// durations, exaggerated Doppler, gestures that couldn't happen in
+// actual rooms.  Listener is at origin facing -z.  Units are metres
+// (approx — Panner refDistance = 1m).
+const GRAIN_TYPES = [
+  { name: 'whoosh',       weight: 0.24, durRange: [0.30, 1.40],
+    // Fast pass-by: from one side to the other, close to head
+    make: () => {
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const z = -0.8 + Math.random() * 2.8;
+      const y = (Math.random() - 0.5) * 2.0;
+      const r = 8 + Math.random() * 7;
+      return {
+        start: { x: side * r, y, z },
+        end:   { x: -side * r, y: y + (Math.random() - 0.5) * 1.0, z: z + (Math.random() - 0.5) * 2 }
+      };
+    }
+  },
+  { name: 'drift',        weight: 0.22, durRange: [0.60, 2.50],
+    // Slow near-ear float, small arc
+    make: () => {
+      const a = Math.random() * Math.PI * 2;
+      const r = 1.2 + Math.random() * 2.2;
+      const da = (Math.random() < 0.5 ? -1 : 1) * (0.2 + Math.random() * 0.9);
+      return {
+        start: { x: Math.cos(a) * r,        y: (Math.random()-0.5)*1.6, z: Math.sin(a) * r },
+        end:   { x: Math.cos(a + da) * r*1.3, y: (Math.random()-0.5)*1.6, z: Math.sin(a + da) * r*1.3 }
+      };
+    }
+  },
+  { name: 'shooting-star', weight: 0.18, durRange: [0.55, 3.80],
+    // Starts far behind, shoots past listener to far ahead
+    make: () => {
+      const offX = (Math.random() - 0.5) * 6;
+      const offY = (Math.random() - 0.5) * 3;
+      return {
+        start: { x: offX,                y: offY,                z: 5 + Math.random() * 4 },
+        end:   { x: offX * -1.5 + (Math.random()-0.5)*3, y: offY * 0.5, z: -8 - Math.random() * 6 }
+      };
+    }
+  },
+  { name: 'fading-away',  weight: 0.18, durRange: [1.20, 6.00],
+    // Starts close-ish, recedes into distance. Longest-lived type.
+    make: () => {
+      const a = Math.random() * Math.PI * 2;
+      const r1 = 0.8 + Math.random() * 1.8;
+      const r2 = 14 + Math.random() * 22;
+      return {
+        start: { x: Math.cos(a) * r1, y: (Math.random()-0.5)*2.0, z: Math.sin(a) * r1 },
+        end:   { x: Math.cos(a) * r2, y: (Math.random()-0.5)*4.0, z: Math.sin(a) * r2 }
+      };
+    }
+  },
+  { name: 'overhead-arc', weight: 0.12, durRange: [0.60, 3.00],
+    // Passes overhead (positive y), front to back or side to side
+    make: () => {
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const yPeak = 3 + Math.random() * 4;
+      return {
+        start: { x: side * (4 + Math.random() * 3), y: yPeak * 0.6, z: 2 + Math.random() * 2 },
+        end:   { x: -side * (4 + Math.random() * 3), y: yPeak * 0.6, z: -2 - Math.random() * 2 }
+      };
+    }
+  },
+  { name: 'rushing-in',   weight: 0.06, durRange: [0.40, 1.80],
+    // Rare: far-off grain suddenly rushes in close. Loud end-pan.
+    make: () => {
+      const a = Math.random() * Math.PI * 2;
+      const r1 = 12 + Math.random() * 10;
+      const off = (Math.random() - 0.5) * 0.6;
+      return {
+        start: { x: Math.cos(a) * r1, y: (Math.random()-0.5)*3, z: Math.sin(a) * r1 },
+        end:   { x: off, y: off * 0.5, z: -0.5 + Math.random() * 1 }
+      };
+    }
+  }
+];
+const GRAIN_WEIGHT_SUM = GRAIN_TYPES.reduce((s, t) => s + t.weight, 0);
+
+function pickGrainType() {
+  let r = Math.random() * GRAIN_WEIGHT_SUM;
+  for (const t of GRAIN_TYPES) {
+    if ((r -= t.weight) < 0) return t;
+  }
+  return GRAIN_TYPES[0];
+}
+
 function scheduleGrains() {
   function tick() {
     if (!audioCtx || !grainBuffer) { setTimeout(tick, 100); return; }
     const e = audioEnergy;
 
-    // Wider response: lower threshold (was 3), denser at low energy
-    // Random jitter on interval for less mechanical rhythm
-    const baseInterval = Math.max(12, 350 - e * 3.5);
-    const interval = baseInterval * (0.5 + Math.random());  // ±50% jitter
+    // Still sparser + jittered base rate
+    const baseInterval = Math.max(22, 520 - e * 3.0);
+    const interval = baseInterval * (0.25 + Math.random() * 1.5);
 
-    if (e > 1) {                  // was > 3
+    if (e > 1) {
       const now   = audioCtx.currentTime;
-      const count = Math.min(5, 1 + Math.floor(e / 60));   // up to 5
+      const count = Math.min(3, 1 + Math.floor(e / 80));
       perfStats.grainCount += count;
 
       for (let i = 0; i < count; i++) {
-        // Wider duration range: 3ms to 120ms
-        const dur  = 0.003 + Math.random() * Math.random() * 0.12;
-        // Wider pitch: 0.1x to 5x with bias toward extremes
-        const rate = Math.pow(2, (Math.random() * 2 - 1) * 2.3);
-        const amp  = Math.min(0.35, e / 250) * (0.15 + Math.random() * 0.85);
+        const type = pickGrainType();
+        const [dMin, dMax] = type.durRange;
+        // Bias toward middle of range, with occasional extreme end
+        const rd = Math.random();
+        const dur = dMin + (dMax - dMin) * (Math.random() < 0.3 ? rd * rd : rd);
 
-        // Random start position — wider jumps
-        const offset = Math.random() * (grainBuffer.duration - 0.15);
+        // Very wide pitch
+        const rate = Math.pow(2, (Math.random() * 2 - 1) * 3.5);
 
+        // Cubic-biased amplitude — many quiet, occasional shouts
+        const ampRand = Math.random();
+        const amp = Math.min(0.45, e / 200) * (0.03 + ampRand * ampRand * ampRand * 1.6);
+
+        const offset = Math.random() * Math.max(0.01, grainBuffer.duration - dur - 0.05);
+
+        const traj = type.make();
+        const dStart = Math.hypot(traj.start.x, traj.start.y, traj.start.z);
+        const dEnd   = Math.hypot(traj.end.x,   traj.end.y,   traj.end.z);
+
+        // ── Signal chain: src → filter → gain → panner → granGain ──
         const src = audioCtx.createBufferSource();
         src.buffer = grainBuffer;
         src.playbackRate.value = rate;
@@ -332,28 +516,69 @@ function scheduleGrains() {
         const filt = audioCtx.createBiquadFilter();
         const filtTypes = ['bandpass', 'highpass', 'lowpass', 'notch'];
         filt.type = filtTypes[Math.floor(Math.random() * filtTypes.length)];
-        filt.frequency.value = 200 + Math.random() * 8000;
-        filt.Q.value = 0.5 + Math.random() * 12;
+        filt.frequency.value = 120 + Math.random() * 11500;
+        filt.Q.value = 0.3 + Math.random() * Math.random() * 22;
 
         const g = audioCtx.createGain();
-        // Random per-grain delay for scatter (0 to 30ms)
-        const schedTime = now + i * 0.006 + Math.random() * 0.03;
-        // Variable attack: 1ms to 8ms
-        const attack = 0.001 + Math.random() * 0.007;
+
+        const panner = audioCtx.createPanner();
+        panner.panningModel  = 'HRTF';
+        panner.distanceModel = 'inverse';
+        panner.refDistance   = 1;
+        panner.maxDistance   = 40;
+        panner.rolloffFactor = 1.1;
+
+        const schedTime = now + i * 0.004 + Math.random() * 0.07;
+
+        // Seed panner positions
+        const setP = (p, x, y, z, t) => {
+          p.positionX.setValueAtTime(x, t);
+          p.positionY.setValueAtTime(y, t);
+          p.positionZ.setValueAtTime(z, t);
+        };
+        setP(panner, traj.start.x, traj.start.y, traj.start.z, schedTime);
+        panner.positionX.linearRampToValueAtTime(traj.end.x, schedTime + dur);
+        panner.positionY.linearRampToValueAtTime(traj.end.y, schedTime + dur);
+        panner.positionZ.linearRampToValueAtTime(traj.end.z, schedTime + dur);
+
+        // ── Gain envelope: attack · hold · long tail ──
+        const attack   = 0.0003 + Math.random() * Math.random() * 0.030;
+        const holdFrac = 0.15 + Math.random() * 0.70;
         g.gain.setValueAtTime(0, schedTime);
         g.gain.linearRampToValueAtTime(amp, schedTime + attack);
-        g.gain.setValueAtTime(amp, schedTime + dur * (0.3 + Math.random() * 0.4));
+        g.gain.setValueAtTime(amp, schedTime + dur * holdFrac);
         g.gain.exponentialRampToValueAtTime(0.001, schedTime + dur);
 
         src.connect(filt);
         filt.connect(g);
-        g.connect(granGain);
-        src.start(schedTime, offset, dur + 0.02);
+        g.connect(panner);
+        panner.connect(granGain);
+        src.start(schedTime, offset, dur + 0.05);
 
-        // Pitch bend: more frequent, wider range
-        if (e > 60 && Math.random() < 0.4) {
+        // ── Exaggerated Doppler via playbackRate ramp ──
+        // Real Doppler: f' = f * c / (c - v_r).  We just use a
+        // clamped linear mapping of radial-distance-change-per-sec
+        // into a pitch factor.  Lower SOUND_SPEED = more audible
+        // pitch swings. Using ~18 m/s makes even casual movement
+        // sing, which is the point.
+        const SOUND_SPEED = 18;
+        const radialPerSec = (dStart - dEnd) / dur;   // + approaching
+        const dopplerFactor = Math.max(0.55, Math.min(1.75,
+          1 + radialPerSec / SOUND_SPEED
+        ));
+        // If approaching, start lower & ramp up; if receding, start
+        // higher & ramp down. Split the swing evenly so the grain's
+        // average pitch = `rate`.
+        const startRate = rate / Math.sqrt(dopplerFactor);
+        const endRate   = rate * Math.sqrt(dopplerFactor);
+        src.playbackRate.setValueAtTime(startRate, schedTime);
+        src.playbackRate.linearRampToValueAtTime(endRate, schedTime + dur);
+
+        // ── Occasional extra artistic bend on top ──
+        if (e > 40 && Math.random() < 0.4) {
+          const bendFactor = Math.pow(2, (Math.random() * 2 - 1) * 1.8);
           src.playbackRate.linearRampToValueAtTime(
-            rate * (0.1 + Math.random() * 5), schedTime + dur * 0.7
+            endRate * bendFactor, schedTime + dur * 0.95
           );
         }
       }
@@ -978,45 +1203,81 @@ function draw() {
 
   const e = peak;
 
-  // ── 1. RGB channel break-apart ──────────────────────────────────
-  // Each channel orbits independently — different speeds, different
-  // radii, different ellipse ratios.  At low energy the three nearly
-  // overlap (white text).  At high energy they fly apart.
-  const spread = e * 0.35;                  // base separation radius
+  // ── 1. Per-letter chromatic break-apart — Baroqueadelic ─────────
+  // Each letter has its own (R,G,B) trio of mass-spring channels.
+  // Each channel chases a multi-harmonic target: fundamental +
+  // two irrational overtones (φ, φ²), so the trajectory never
+  // repeats cleanly.  Per-letter index staggers phase so the
+  // word moves as a scattered chorus rather than a single string.
+  // Wider vertical travel leaves the slice-tear layer room to
+  // read through — the "stuff underneath" stays visible between
+  // the drifting letters.  Blend is 'screen' (capped-additive)
+  // instead of 'lighter' so overlaps glow without blowing out.
+  const spread = e * 0.40;
+  const mouseCx = (mx - W / 2) / Math.max(1, W / 2);   // -1 .. +1
+  const mouseCy = (my - H / 2) / Math.max(1, H / 2);
+  const mousePull = 40 + Math.min(120, e * 1.2);
 
-  const rAngle = frame * 0.041;            // red orbit — slow
-  const gAngle = frame * 0.029 + 2.09;    // green — offset 120°
-  const bAngle = frame * 0.053 + 4.19;    // blue — fastest, offset 240°
+  // Advance every letter's three springs
+  for (const L of letters) {
+    for (let k = 0; k < 3; k++) {
+      const c = L.chans[k];
+      const a  = frame * c.fr + c.phase;
+      // Multi-harmonic x: 1 + 1/φ ≈ 0.42, 1/φ² ≈ 0.38 — use 0.42, 0.18
+      const hx = Math.cos(a)
+               + Math.cos(a * PHI + c.phase * 1.3) * 0.42
+               + Math.cos(a * PHI * PHI + c.phase * 0.7) * 0.18;
+      // Multi-harmonic y on a different base rate (Lissajous)
+      const ay2 = a * c.yRatio;
+      const hy = Math.sin(ay2)
+               + Math.sin(ay2 * PHI + c.phase * 1.1) * 0.42
+               + Math.sin(ay2 * PHI * PHI + c.phase * 0.4) * 0.18;
 
-  // Wobble factors — each channel has slight independent jitter
-  const jitter = e > 40 ? (e / 300) * 6 : 0;
-  const rJx = Math.sin(frame * 0.17) * jitter;
-  const rJy = Math.cos(frame * 0.13) * jitter;
-  const gJx = Math.sin(frame * 0.23 + 1) * jitter;
-  const gJy = Math.cos(frame * 0.19 + 2) * jitter;
-  const bJx = Math.sin(frame * 0.31 + 3) * jitter;
-  const bJy = Math.cos(frame * 0.27 + 4) * jitter;
+      // Per-letter index-phase adds a slow traveling wave across the word
+      const letterWaveX = Math.cos(frame * 0.007 + L.idx * 0.73) * 0.35;
+      const letterWaveY = Math.sin(frame * 0.011 + L.idx * 0.91) * 0.55;
 
-  const rx = Math.cos(rAngle) * spread * 1.0  + rJx;
-  const ry = Math.sin(rAngle) * spread * 0.55 + rJy;
-  const gx = Math.cos(gAngle) * spread * 0.85 + gJx;
-  const gy = Math.sin(gAngle) * spread * 0.70 + gJy;
-  const bx = Math.cos(bAngle) * spread * 1.1  + bJx;
-  const by = Math.sin(bAngle) * spread * 0.50 + bJy;
+      const ox = (hx * 0.58 + letterWaveX) * spread * c.rx * 0.78;
+      const oy = (hy * 0.58 + letterWaveY) * spread * c.ry * 1.40;  // wider vertical
 
-  tint(off, redC, rctx, 255, 0, 0);
-  tint(off, grnC, gctx, 0, 255, 0);
-  tint(off, bluC, bctx, 0, 0, 255);
+      const tx = ox + mouseCx * mousePull * c.mWeightX;
+      const ty = oy + mouseCy * mousePull * c.mWeightY;
 
+      const ax = (tx - c.x) * c.k;
+      const ay = (ty - c.y) * c.k;
+      c.vx = (c.vx + ax) * c.d;
+      c.vy = (c.vy + ay) * c.d;
+      c.x += c.vx;
+      c.y += c.vy;
+    }
+  }
+
+  // Desaturated jewel tones — warm rose, sage, periwinkle
+  tint(off, redC, rctx, 224, 112, 140);   // antique rose
+  tint(off, grnC, gctx, 132, 186, 162);   // dusty sage
+  tint(off, bluC, bctx, 142, 146, 214);   // periwinkle
+
+  // Softer blend than 'lighter': 'screen' caps at white instead of
+  // super-adding, keeping jewel tones from blowing out to neon.
   ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  // At low energy, channels are nearly opaque and overlapping → white
-  // At high energy, they separate and each channel shows distinctly
-  const channelAlpha = 0.7 + 0.3 * Math.min(1, e / 150);
+  ctx.globalCompositeOperation = 'screen';
+  const channelAlpha = 0.56 + 0.28 * Math.min(1, e / 150);
   ctx.globalAlpha = channelAlpha;
-  ctx.drawImage(redC, rx, ry);
-  ctx.drawImage(grnC, gx, gy);
-  ctx.drawImage(bluC, bx, by);
+
+  const tinted = [redC, grnC, bluC];
+  const jitter = e > 40 ? (e / 500) * 3 : 0;
+  for (const L of letters) {
+    for (let k = 0; k < 3; k++) {
+      const c = L.chans[k];
+      const jx = jitter ? (Math.random() - 0.5) * jitter : 0;
+      const jy = jitter ? (Math.random() - 0.5) * jitter : 0;
+      ctx.drawImage(
+        tinted[k],
+        L.sx, L.sy, L.sw, L.sh,
+        L.sx + c.x + jx, L.sy + c.y + jy, L.sw, L.sh
+      );
+    }
+  }
   ctx.restore();
 
   // ── 2. Horizontal slice tearing — much bigger ────────────────────

@@ -1,0 +1,1766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LFO + Graphical ADSR — Test Case v0.5</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:#0d0d0d; color:#d0d0d0;
+  font-family:'Courier New',monospace; font-size:13px;
+  min-height:100vh; display:flex; flex-direction:column;
+  align-items:center; padding:16px 12px; overflow-x:auto;
+}
+
+#version-badge {
+  position:fixed; top:8px; right:10px;
+  font-family:'Courier New',monospace; font-size:.6rem;
+  letter-spacing:.16em; color:#555; pointer-events:none; z-index:50;
+}
+
+#start-screen {
+  display:flex; flex-direction:column; align-items:center; gap:18px; margin-top:18vh;
+}
+#start-btn {
+  padding:14px 44px; background:transparent;
+  border:1px solid #c8a854; color:#c8a854;
+  font-family:'Courier New',monospace; font-size:.9rem;
+  letter-spacing:.2em; cursor:pointer; transition:all .2s;
+}
+#start-btn:hover { background:#c8a854; color:#000; }
+#start-btn:disabled { opacity:.4; cursor:default; }
+
+#board { display:none; flex-direction:row; align-items:flex-start; gap:8px; }
+.col-wrap { display:flex; flex-direction:column; gap:6px; flex-shrink:0; }
+.col-label {
+  font-size:.6rem; letter-spacing:.28em; color:#666;
+  text-align:center; padding:0 0 3px; text-transform:uppercase;
+}
+
+.module {
+  background:#111; border:1px solid #242424;
+  border-radius:5px; padding:8px 10px 9px;
+  position:relative; flex-shrink:0; width:218px;
+}
+.module.wide { width:320px; }
+.mod-head {
+  display:flex; align-items:center; gap:5px;
+  margin-bottom:7px; padding-bottom:6px;
+  border-bottom:1px solid #1e1e1e;
+}
+.mod-title {
+  font-size:.7rem; letter-spacing:.12em; color:#bbb;
+  text-transform:uppercase; flex-shrink:0;
+}
+.mod-head .head-presets {
+  display:flex; gap:2px; margin-left:auto; margin-right:4px;
+}
+.head-preset-slot {
+  width:18px; height:18px; background:transparent;
+  border:1px solid #1e1e1e; color:#555;
+  font-family:'Courier New',monospace; font-size:.55rem;
+  cursor:pointer; border-radius:2px; transition:all .1s;
+  text-align:center; line-height:16px; padding:0;
+}
+.head-preset-slot.saved { border-color:#3a6a3a; color:#6b9; }
+.head-preset-slot:hover { border-color:#444; color:#888; }
+.head-preset-slot.saved:hover { border-color:#5a5; }
+
+.byp-btn {
+  padding:2px 7px; background:rgba(30,80,30,.4);
+  border:1px solid #2a6a2a; color:#4c4;
+  font-family:'Courier New',monospace; font-size:.66rem;
+  font-weight:600; letter-spacing:.04em; cursor:pointer;
+  border-radius:2px; transition:all .15s; white-space:nowrap;
+  text-shadow:0 0 8px rgba(80,200,80,.4);
+}
+.byp-btn.off {
+  background:rgba(30,30,30,.4); border-color:#555;
+  color:#555; text-shadow:none; font-weight:400;
+}
+.byp-btn.muted {
+  background:rgba(80,20,20,.5); border-color:#8a2a2a;
+  color:#c44; text-shadow:none;
+}
+
+.ctrl-val {
+  font-size:.68rem; color:#c8a854; white-space:nowrap; cursor:text;
+}
+.ctrl-val:hover { color:#e8c874; text-decoration:underline dotted #666; }
+.ctrl-val.modulated { color:#7abbe0; }
+.ctrl-val.modulated:hover { color:#9cdcf0; }
+
+.slider-row { margin-bottom:6px; }
+.slider-label-row {
+  display:flex; align-items:baseline; justify-content:space-between;
+  margin-bottom:2px;
+}
+.slider-label { font-size:.62rem; letter-spacing:.12em; color:#999; }
+.slider-label.tgt2 { color:#666; font-style:italic; }
+.ctrl-inline { display:flex; align-items:center; gap:6px; margin-bottom:5px; }
+.ctrl-inline label {
+  font-size:.62rem; letter-spacing:.12em; color:#888;
+  flex-shrink:0; min-width:48px;
+}
+
+input[type="range"] {
+  -webkit-appearance:none; width:100%; height:3px;
+  background:#2a2a2a; outline:none; border-radius:2px; cursor:pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance:none; width:12px; height:12px;
+  background:#c8a854; border-radius:50%; cursor:pointer;
+}
+select {
+  flex:1; min-width:0; background:#161616; border:1px solid #2e2e2e;
+  color:#c0c0c0; font-family:'Courier New',monospace;
+  font-size:.66rem; padding:2px 4px; outline:none;
+  cursor:pointer; border-radius:2px;
+}
+select optgroup { font-style:normal; color:#888; }
+
+.sgmode-btn {
+  flex:1; padding:3px 0; background:transparent; border:none;
+  color:#555; font-family:'Courier New',monospace; font-size:.58rem;
+  letter-spacing:.1em; cursor:pointer; transition:all .12s; text-transform:uppercase;
+}
+.sgmode-btn.sgmode-active { background:rgba(60,100,60,.35); color:#7ba; }
+.sgmode-btn:hover { color:#888; }
+
+/* Dual-handle range */
+.range-dual { position:relative; width:100%; height:16px; }
+.range-dual .track {
+  position:absolute; left:0; right:0; top:6px; height:3px;
+  background:#2a2a2a; border-radius:2px; pointer-events:none;
+}
+.range-dual .fill {
+  position:absolute; top:6px; height:3px;
+  background:#7abbe0; opacity:0.4; border-radius:2px; pointer-events:none;
+}
+.range-dual input[type="range"] {
+  position:absolute; left:0; top:0; width:100%; height:16px;
+  background:transparent; -webkit-appearance:none;
+  pointer-events:none; outline:none;
+}
+.range-dual input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance:none; width:12px; height:12px; border-radius:50%;
+  background:#c8a854; cursor:pointer; pointer-events:auto;
+}
+.range-dual input.range-max::-webkit-slider-thumb { background:#e0b858; }
+
+/* Mod-dot indicator on sig gen sliders */
+.slider-wrap { position:relative; }
+.mod-dot {
+  position:absolute; top:-4px; width:3px; height:10px;
+  background:#7abbe0; border-radius:1px;
+  box-shadow:0 0 6px rgba(122,187,224,.8);
+  pointer-events:none; display:none;
+}
+.mod-dot.active { display:block; }
+.mod-dot.dot2 { background:#e8c874; box-shadow:0 0 6px rgba(232,200,116,.8); }
+
+/* 2D gain/pan pad with crosshairs */
+.gp-pad-wrap { display:flex; justify-content:center; padding:2px 0; }
+.gp-pad {
+  position:relative; width:204px; height:80px;
+  background:#060606; border:1px solid #1a1a1a; border-radius:3px;
+  overflow:hidden; cursor:grab; touch-action:none;
+}
+.gp-pad:active { cursor:grabbing; }
+.gp-meter {
+  position:absolute; left:0; height:calc(50% - 1px); width:0%;
+  background:linear-gradient(to right,#1a5a1a 0%,#2a9a2a 58%,#7ab020 70%,#b89010 82%,#c06010 90%,#e02020 100%);
+}
+.gp-meter-l { top:0; }
+.gp-meter-r { bottom:0; }
+.gp-zero-line {
+  position:absolute; top:0; bottom:0; left:83.33%;
+  width:1px; background:rgba(200,200,100,0.45); pointer-events:none;
+}
+.gp-zero-label {
+  position:absolute; top:50%; left:calc(83.33% + 2px);
+  transform:translateY(-50%);
+  font-family:'Courier New',monospace; font-size:.46rem;
+  color:rgba(200,200,100,0.55); pointer-events:none; line-height:1;
+}
+.gp-center-line {
+  position:absolute; left:0; right:0; top:50%; height:1px;
+  background:rgba(255,255,255,0.07); pointer-events:none;
+}
+/* Crosshair: vertical line at gain X, horizontal line at pan Y, ball at intersection */
+.gp-cross {
+  position:absolute; pointer-events:none;
+  width:0; height:0; top:0; left:0;
+}
+.gp-vline {
+  position:absolute; top:-300px; bottom:-300px;
+  left:0; width:1px;
+  background:rgba(106,174,224,0.42);
+  transform:translateX(-50%);
+}
+.gp-hline {
+  position:absolute; left:-400px; right:-400px;
+  top:0; height:1px;
+  background:rgba(106,174,224,0.42);
+  transform:translateY(-50%);
+}
+.gp-puck {
+  position:absolute; width:9px; height:9px; border-radius:50%;
+  background:#6aaee0; border:1px solid rgba(255,255,255,0.45);
+  box-shadow:0 0 7px rgba(100,160,220,0.85);
+  top:0; left:0; transform:translate(-50%,-50%);
+}
+.gp-readout {
+  display:flex; justify-content:space-between;
+  font-size:.6rem; color:#888; letter-spacing:.05em;
+  margin-top:3px; padding:0 1px;
+}
+.gp-readout .k { color:#666; letter-spacing:.12em; text-transform:uppercase; }
+
+/* ADSR */
+#sg1-adsr-svg, #sg2-adsr-svg { display:block; width:100%; height:130px; cursor:default; touch-action:none; }
+.adsr-panel { margin-top:6px; padding:6px 4px 4px; border-top:1px solid #1a1a1a; }
+.adsr-label-row { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:3px; }
+.adsr-label-row .lbl { font-size:.56rem; color:#666; letter-spacing:.14em; text-transform:uppercase; }
+.adsr-svg-wrap { position:relative; background:#070707; border:1px solid #1a1a1a; border-radius:3px; }
+.adsr-seg { fill:none; stroke:#4a7a9a; stroke-width:1.5; }
+.adsr-handle { fill:#0d0d0d; stroke:#c8a854; stroke-width:1.5; cursor:grab; }
+.adsr-handle:hover { fill:#c8a854; }
+.adsr-handle.dragging { cursor:grabbing; fill:#c8a854; }
+.adsr-gridline { stroke:#1a1a1a; stroke-width:1; }
+.adsr-gridlabel { font-family:'Courier New',monospace; font-size:8px; fill:#444; letter-spacing:.05em; }
+.adsr-pointlabel { font-family:'Courier New',monospace; font-size:9px; fill:#c8a854; pointer-events:auto; }
+.adsr-pointlabel.editable { cursor:text; }
+.adsr-pointlabel.editable:hover { fill:#e8c874; }
+.adsr-editbox {
+  position:absolute; background:#000; border:1px solid #c8a854;
+  color:#e8c874; font-family:'Courier New',monospace; font-size:10px;
+  padding:1px 4px; outline:none; border-radius:2px; z-index:20;
+  width:58px;
+}
+.adsr-defaults-btn {
+  font-size:.55rem; padding:1px 6px; background:transparent;
+  border:1px solid #333; color:#666;
+  font-family:'Courier New',monospace; letter-spacing:.08em;
+  cursor:pointer; border-radius:2px; transition:all .15s;
+}
+.adsr-defaults-btn:hover { border-color:#c8a854; color:#c8a854; }
+
+.lfo-preview { width:100%; height:28px; background:#070707; border:1px solid #1a1a1a; border-radius:3px; margin-top:4px; }
+
+.gain-meter-wrap { position:relative; width:22px; flex-shrink:0; }
+.gain-meter-bg { position:absolute; bottom:0; left:0; width:100%; height:100%; display:flex; gap:2px; }
+.gain-meter-wrap::before {
+  content:""; position:absolute; left:-2px; right:-2px;
+  bottom:var(--zero-db, 83.33%); height:1px;
+  background:rgba(200,200,100,0.45); z-index:1; pointer-events:none;
+}
+.gain-meter-wrap::after {
+  content:"0"; position:absolute; left:-11px;
+  bottom:calc(var(--zero-db, 83.33%) - 5px);
+  font-family:'Courier New',monospace; font-size:.46rem;
+  color:rgba(200,200,100,0.55); line-height:1; z-index:1; pointer-events:none;
+}
+.gain-meter-bar { flex:1; position:relative; background:linear-gradient(to top,#0d1a0d 0%,#121f12 80%,#0f0f0f 100%); border-radius:2px; overflow:hidden; }
+.gain-meter-level { position:absolute; bottom:0; left:0; width:100%; background:linear-gradient(to top,#1a5a1a 0%,#2a9a2a 68%,#7ab020 78%,#b89010 85%,#c06010 91%,#c83010 96%,#e02020 100%); }
+.gain-meter-peak { position:absolute; width:100%; height:2px; background:rgba(255,255,255,.6); }
+input.gain-meter-slider {
+  position:absolute; top:0; left:0; z-index:2;
+  writing-mode:vertical-lr; direction:rtl; width:100%; height:100%;
+  background:transparent; -webkit-appearance:none; cursor:pointer; outline:none;
+}
+input.gain-meter-slider::-webkit-slider-thumb {
+  -webkit-appearance:none; width:26px; height:5px;
+  background:#6aaee0; border-radius:1px; cursor:pointer;
+  box-shadow:0 0 4px rgba(100,160,220,0.5);
+}
+
+#rec-btn:hover { border-color:#8a3a3a; color:#c66; }
+#rec-btn.recording {
+  background:rgba(180,30,30,.7); border-color:#e02020;
+  color:#fff; text-shadow:0 0 8px rgba(255,80,80,.8);
+  animation:rec-pulse 0.9s ease-in-out infinite;
+  box-shadow:0 0 12px rgba(224,32,32,.6);
+}
+#rec-fmt:hover { border-color:#444; color:#aaa; }
+#rec-fmt.wav-mode { border-color:#3a4a6a; color:#7abbe0; }
+#rec-fmt.wav-mode:hover { border-color:#5a6a8a; color:#9cdcf0; }
+@keyframes rec-pulse {
+  0%,100% { opacity:1; box-shadow:0 0 12px rgba(224,32,32,.6); }
+  50%     { opacity:.55; box-shadow:0 0 4px rgba(224,32,32,.3); }
+}
+
+.key-hint { font-size:.56rem; color:#555; letter-spacing:.08em; }
+</style>
+</head>
+<body>
+
+<div id="version-badge">LFO + ADSR TEST · v0.5</div>
+
+<div id="start-screen">
+  <div style="font-size:.78rem;letter-spacing:.28em;color:#666;">LFO + GRAPHICAL ADSR — TEST CASE</div>
+  <button id="start-btn" onclick="initAudio()">INITIALISE AUDIO</button>
+  <div id="start-status" style="font-size:.62rem;color:#555;letter-spacing:.15em;">click to start Tone.js context</div>
+  <pre id="start-error" style="display:none;max-width:600px;color:#e05050;font-size:.6rem;letter-spacing:.05em;background:#1a0d0d;border:1px solid #5a2a2a;padding:8px;border-radius:3px;white-space:pre-wrap;"></pre>
+</div>
+
+<div id="board">
+  <div class="col-wrap" id="lfo-col">
+    <div class="col-label">modulators</div>
+  </div>
+  <div class="col-wrap" id="sig-col-1">
+    <div class="col-label">signal 1</div>
+  </div>
+  <div class="col-wrap" id="sig-col-2">
+    <div class="col-label">signal 2</div>
+  </div>
+  <div class="col-wrap" id="out-col">
+    <div class="col-label">output</div>
+  </div>
+</div>
+
+<script>
+/* ════════════════════════════════════════════════════════════════
+   v0.5
+   - 3 LFO modulators (was 2) + 2 signal generators + 1 output (with REC)
+   - Each LFO has TWO collapsible target slots (target2 = OFF by default)
+   - 2D gain/pan pad: crosshairs (vline + hline + ball) for clearer XY readout
+   - LFO preview canvas: resize defers to first tick (board-shown timing fix)
+   - Recording: WEBM (opus 192kbps) | WAV (16-bit PCM) toggle
+   ════════════════════════════════════════════════════════════════ */
+
+const APP_VERSION = 'v0.5';
+const NUM_LFOS = 3;
+
+/* ══════════ UTILITIES ══════════ */
+function dbToGain(db){ return Math.pow(10, db/20); }
+function clamp(v,lo,hi){ return Math.max(lo, Math.min(hi,v)); }
+function round2(n){ return Math.round(n*100)/100; }
+
+const freqLog = {
+  minHz:20, maxHz:20000,
+  toHz(pos){ return this.minHz*Math.pow(this.maxHz/this.minHz, pos/1000); },
+  toPos(hz){ return clamp((Math.log(hz/this.minHz)/Math.log(this.maxHz/this.minHz))*1000,0,1000); },
+};
+const rateLog = {
+  minHz:0.05, maxHz:50,
+  toHz(pos){ return this.minHz*Math.pow(this.maxHz/this.minHz, pos/1000); },
+  toPos(hz){ return clamp((Math.log(hz/this.minHz)/Math.log(this.maxHz/this.minHz))*1000,0,1000); },
+};
+function stereoGain(g) {
+  const opts = {channelCount:2, channelCountMode:'explicit', channelInterpretation:'speakers'};
+  const n = new Tone.Gain(g);
+  try { Object.assign(n.input, opts); Object.assign(n.output, opts); } catch(e){}
+  return n;
+}
+
+/* ══════════ TARGET CONFIGS ══════════ */
+const TARGETS = {
+  freq: {
+    label:'Hz', unitMin:20, unitMax:20000, defaultMin:80, defaultMax:800, scale:'log',
+    toPos(v){ return clamp((Math.log(v/this.unitMin)/Math.log(this.unitMax/this.unitMin))*1000,0,1000); },
+    toVal(pos){ return this.unitMin*Math.pow(this.unitMax/this.unitMin, pos/1000); },
+    fmt(v){ return v>=1000 ? round2(v/1000)+'kHz' : round2(v)+'Hz'; },
+    parse(s){ s=String(s).trim().toLowerCase(); const k=s.includes('k'); const n=parseFloat(s.replace(/[^0-9.\-]/g,'')); return k?n*1000:n; },
+  },
+  pulseRate: {
+    label:'ms', unitMin:20, unitMax:10000, defaultMin:200, defaultMax:2000, scale:'log',
+    toPos(v){ return clamp((Math.log(v/this.unitMin)/Math.log(this.unitMax/this.unitMin))*1000,0,1000); },
+    toVal(pos){ return this.unitMin*Math.pow(this.unitMax/this.unitMin, pos/1000); },
+    fmt(v){ return round2(v)+'ms'; },
+    parse(s){ return parseFloat(String(s).replace(/[^0-9.\-]/g,'')); },
+  },
+  pan: {
+    label:'', unitMin:-1, unitMax:1, defaultMin:-0.8, defaultMax:0.8, scale:'linear',
+    toPos(v){ return clamp(((v-this.unitMin)/(this.unitMax-this.unitMin))*1000,0,1000); },
+    toVal(pos){ return this.unitMin + (pos/1000)*(this.unitMax-this.unitMin); },
+    fmt(v){ if(Math.abs(v)<0.02)return'C'; return (v<0?'L':'R')+Math.round(Math.abs(v)*100); },
+    parse(s){ s=String(s).trim().toUpperCase(); if(s==='C')return 0; if(s.startsWith('L'))return -parseFloat(s.slice(1))/100; if(s.startsWith('R'))return parseFloat(s.slice(1))/100; return parseFloat(s); },
+  },
+  volume: {
+    label:'dB', unitMin:-60, unitMax:6, defaultMin:-24, defaultMax:0, scale:'linear',
+    toPos(v){ return clamp(((v-this.unitMin)/(this.unitMax-this.unitMin))*1000,0,1000); },
+    toVal(pos){ return this.unitMin + (pos/1000)*(this.unitMax-this.unitMin); },
+    fmt(v){ return round2(v)+'dB'; },
+    parse(s){ return parseFloat(String(s).replace(/[^0-9.\-]/g,'')); },
+  },
+};
+
+/* ══════════ STATE ══════════ */
+let rawCtx=null;
+let outputGainNode=null, outputMuteNode=null;
+let outSplit=null, outAnL=null, outAnR=null;
+const sigGens = []; // sigGens[0..1]
+const lfos = [];    // lfos[0..2]
+let outputMuted=false, outputGainDb=-6;
+
+let recordTap=null, mediaStreamDest=null, mediaRecorder=null;
+let recordChunks=[], recordStartTime=0, recordTimerId=null, recordSoftWarned=false;
+let recFormat='webm', recordingMethod=null;
+let pcmCapL=[], pcmCapR=[], pcmCaptureNode=null;
+const REC_SOFT_CAP_MS = 30*60*1000;
+const REC_HARD_CAP_MS = 60*60*1000;
+const REC_OPUS_BITRATE = 192000;
+
+const ADSR_DEFAULTS = { aMs:20, aLevel:1.0, dMs:50, dLevel:0.251, sMs:100, rMs:100 };
+
+const PRESET_KEY = 'lfo-adsr-test:presets:v05';
+let presets = (() => { try { return JSON.parse(localStorage.getItem(PRESET_KEY)||'{}'); } catch { return {}; } })();
+function savePresets(){ localStorage.setItem(PRESET_KEY, JSON.stringify(presets)); }
+
+/* ══════════ TEMPLATES ══════════ */
+function targetSelect(idxA, idxB) {
+  // idxA = LFO idx (1..3), idxB = target slot (1 or 2)
+  const offOpt = idxB === 2 ? '<option value="off">— off —</option>' : '';
+  return `<select id="lfo${idxA}-target${idxB}" onchange="setLfoTarget(${idxA}, ${idxB}, this.value)">
+    ${offOpt}
+    <optgroup label="SIG 1">
+      <option value="1:freq">Freq</option>
+      <option value="1:pulseRate">Pulse Rate</option>
+      <option value="1:pan">Pan</option>
+      <option value="1:volume">Volume</option>
+    </optgroup>
+    <optgroup label="SIG 2">
+      <option value="2:freq">Freq</option>
+      <option value="2:pulseRate">Pulse Rate</option>
+      <option value="2:pan">Pan</option>
+      <option value="2:volume">Volume</option>
+    </optgroup>
+  </select>`;
+}
+function rangeBlock(idxA, idxB) {
+  const hidden = idxB === 2 ? 'style="display:none"' : '';
+  return `<div class="slider-row" id="lfo${idxA}-range${idxB}-row" style="margin-bottom:4px;${idxB===2?'display:none':''}">
+    <div class="slider-label-row">
+      <span class="slider-label${idxB===2?' tgt2':''}">RANGE${idxB===2?' (2)':''}</span>
+      <span style="font-size:.6rem;color:#888;">
+        <span class="ctrl-val" id="lfo${idxA}-min${idxB}-val" data-value="" style="font-size:.6rem;">—</span>
+        <span style="color:#444;"> .. </span>
+        <span class="ctrl-val" id="lfo${idxA}-max${idxB}-val" data-value="" style="font-size:.6rem;">—</span>
+      </span>
+    </div>
+    <div class="range-dual">
+      <div class="track"></div>
+      <div class="fill" id="lfo${idxA}-range${idxB}-fill"></div>
+      <input type="range" class="range-min" id="lfo${idxA}-min${idxB}-sl" min="0" max="1000" step="any" value="300" oninput="setLfoMinPos(${idxA}, ${idxB}, this.value)">
+      <input type="range" class="range-max" id="lfo${idxA}-max${idxB}-sl" min="0" max="1000" step="any" value="700" oninput="setLfoMaxPos(${idxA}, ${idxB}, this.value)">
+    </div>
+  </div>`;
+}
+
+function lfoTemplate(idx){
+  return `
+<div class="module" id="lfo${idx}-module">
+  <div class="mod-head">
+    <span class="mod-title">LFO ${idx}</span>
+    <div class="head-presets">
+      ${[1,2,3,4,5,6].map(n => `<button class="head-preset-slot" data-slot="${n-1}" data-fx="lfo${idx}" onclick="handlePreset(event, this)">${n}</button>`).join('')}
+    </div>
+    <button class="byp-btn off" id="lfo${idx}-enable-btn" onclick="toggleLfo(${idx})">OFF</button>
+  </div>
+
+  <div class="slider-row">
+    <div class="slider-label-row">
+      <span class="slider-label">RATE</span>
+      <span class="ctrl-val" id="lfo${idx}-rate-val" data-value="2" style="font-size:.66rem;">2.00 Hz</span>
+    </div>
+    <input type="range" id="lfo${idx}-rate-sl" min="0" max="1000" step="any" value="434" oninput="setLfoRatePos(${idx}, this.value)">
+  </div>
+
+  <div class="ctrl-inline">
+    <label>SHAPE</label>
+    <select id="lfo${idx}-shape" onchange="setLfoShape(${idx}, this.value)">
+      <option value="sine">Sine</option>
+      <option value="triangle">Triangle</option>
+      <option value="sawtooth">Sawtooth</option>
+      <option value="square">Square</option>
+    </select>
+  </div>
+
+  <div class="ctrl-inline">
+    <label>TARGET 1</label>
+    ${targetSelect(idx, 1)}
+  </div>
+  ${rangeBlock(idx, 1)}
+
+  <div class="ctrl-inline">
+    <label>TARGET 2</label>
+    ${targetSelect(idx, 2)}
+  </div>
+  ${rangeBlock(idx, 2)}
+
+  <canvas class="lfo-preview" id="lfo${idx}-preview"></canvas>
+</div>`;
+}
+
+function sigGenTemplate(idx){
+  return `
+<div class="module wide" id="sg${idx}-module">
+  <div class="mod-head">
+    <span class="mod-title">SIG GEN ${idx}</span>
+    <div class="head-presets">
+      ${[1,2,3,4,5,6].map(n => `<button class="head-preset-slot" data-slot="${n-1}" data-fx="sg${idx}" onclick="handlePreset(event, this)">${n}</button>`).join('')}
+    </div>
+    <button class="byp-btn off" id="sg${idx}-enable-btn" onclick="toggleSigGen(${idx})">OFF</button>
+  </div>
+
+  <div style="display:flex;gap:0;margin-bottom:7px;border:1px solid #1e1e1e;border-radius:2px;overflow:hidden;">
+    <button class="sgmode-btn sgmode-active" id="sg${idx}-mode-steady" onclick="setSigGenMode(${idx},'steady')">STEADY</button>
+    <button class="sgmode-btn" id="sg${idx}-mode-pulsed" onclick="setSigGenMode(${idx},'pulsed')">PULSED</button>
+  </div>
+
+  <div class="ctrl-inline">
+    <label>WAVEFORM</label>
+    <select id="sg${idx}-wave" onchange="setSgWave(${idx}, this.value)">
+      <option value="sine">Sine</option>
+      <option value="square">Square</option>
+      <option value="sawtooth">Sawtooth</option>
+      <option value="triangle">Triangle</option>
+    </select>
+  </div>
+
+  <div class="slider-row">
+    <div class="slider-label-row">
+      <span class="slider-label">FREQ</span>
+      <span class="ctrl-val" id="sg${idx}-freq-val" data-value="220">220 Hz</span>
+    </div>
+    <div class="slider-wrap">
+      <input type="range" id="sg${idx}-freq-sl" min="0" max="1000" step="any" value="347" oninput="setSgFreqPos(${idx}, this.value)">
+      <div class="mod-dot" id="sg${idx}-freq-dot1"></div>
+      <div class="mod-dot dot2" id="sg${idx}-freq-dot2"></div>
+    </div>
+  </div>
+
+  <div class="slider-row" id="sg${idx}-pulse-row" style="display:none;">
+    <div class="slider-label-row">
+      <span class="slider-label">PULSE RATE</span>
+      <span class="ctrl-val" id="sg${idx}-pulse-val" data-value="1000">1000 ms</span>
+    </div>
+    <div class="slider-wrap">
+      <input type="range" id="sg${idx}-pulse-sl" min="20" max="5000" step="10" value="1000" oninput="setSgPulse(${idx}, this.value)">
+      <div class="mod-dot" id="sg${idx}-pulse-dot1"></div>
+      <div class="mod-dot dot2" id="sg${idx}-pulse-dot2"></div>
+    </div>
+  </div>
+
+  <div class="slider-row" style="margin-bottom:4px;">
+    <div class="slider-label-row">
+      <span class="slider-label">GAIN · PAN <span style="color:#444;font-size:.5rem;letter-spacing:.05em;">(L/R = gain · U/D = pan)</span></span>
+    </div>
+    <div class="gp-pad-wrap">
+      <div class="gp-pad" id="sg${idx}-gp-pad" data-sg="${idx}">
+        <div class="gp-meter gp-meter-l" id="sg${idx}-meter-l"></div>
+        <div class="gp-meter gp-meter-r" id="sg${idx}-meter-r"></div>
+        <div class="gp-center-line"></div>
+        <div class="gp-zero-line"></div>
+        <div class="gp-zero-label">0</div>
+        <div class="gp-cross" id="sg${idx}-cross">
+          <div class="gp-vline"></div>
+          <div class="gp-hline"></div>
+          <div class="gp-puck"></div>
+        </div>
+      </div>
+    </div>
+    <div class="gp-readout">
+      <span><span class="k">gain</span> <span class="ctrl-val" id="sg${idx}-gain-val" data-value="-12">-12 dB</span></span>
+      <span><span class="k">pan</span> <span class="ctrl-val" id="sg${idx}-pan-val" data-value="0">C</span></span>
+    </div>
+  </div>
+
+  <div style="display:flex;justify-content:flex-end;margin-top:2px;">
+    <span class="key-hint"><span style="color:#666;">${idx===1?'SPACE':'ENTER'}</span> = fire pulse</span>
+  </div>
+
+  <div class="adsr-panel">
+    <div class="adsr-label-row">
+      <span class="lbl">Envelope · drag handles · click labels</span>
+      <button class="adsr-defaults-btn" onclick="resetAdsrDefaults(${idx})">RESET</button>
+    </div>
+    <div class="adsr-svg-wrap">
+      <svg id="sg${idx}-adsr-svg" viewBox="0 0 320 130" preserveAspectRatio="none"></svg>
+    </div>
+  </div>
+</div>`;
+}
+
+function outputTemplate(){
+  return `
+<div class="module" id="output-module">
+  <div class="mod-head">
+    <span class="mod-title">OUTPUT</span>
+    <button class="byp-btn" id="output-mute" onclick="toggleOutputMute()" style="margin-left:auto;">ON</button>
+  </div>
+  <div style="display:flex;justify-content:center;height:160px;min-height:160px;margin-bottom:4px;">
+    <div class="gain-meter-wrap" style="height:160px;">
+      <div class="gain-meter-bg">
+        <div class="gain-meter-bar">
+          <div class="gain-meter-level" id="out-level-l" style="height:0%"></div>
+          <div class="gain-meter-peak" id="out-pk-l" style="bottom:0%"></div>
+        </div>
+        <div class="gain-meter-bar">
+          <div class="gain-meter-level" id="out-level-r" style="height:0%"></div>
+          <div class="gain-meter-peak" id="out-pk-r" style="bottom:0%"></div>
+        </div>
+      </div>
+      <input class="gain-meter-slider" type="range" id="output-gain-db" min="-60" max="12" step="0.5" value="-6" oninput="setOutputGainDb(this.value)">
+    </div>
+  </div>
+  <div style="text-align:center;margin-top:3px;">
+    <span class="ctrl-val" id="output-gain-val" data-value="-6" style="font-size:.7rem;">-6 dB</span>
+  </div>
+
+  <div style="margin-top:8px;padding-top:7px;border-top:1px solid #1a1a1a;display:flex;align-items:center;gap:6px;">
+    <button id="rec-btn" onclick="toggleRecord()"
+      title="Record the output mix"
+      style="padding:3px 10px;background:transparent;border:1px solid #5a2a2a;color:#a44;
+             font-family:'Courier New',monospace;font-size:.66rem;font-weight:600;letter-spacing:.08em;
+             cursor:pointer;border-radius:2px;transition:all .15s;flex-shrink:0;">● REC</button>
+    <button id="rec-fmt" onclick="toggleRecFormat()"
+      title="WEBM (opus 192kbps) / WAV (16-bit PCM) toggle"
+      style="padding:2px 6px;background:transparent;border:1px solid #2e2e2e;color:#888;
+             font-family:'Courier New',monospace;font-size:.56rem;font-weight:400;letter-spacing:.1em;
+             cursor:pointer;border-radius:2px;flex-shrink:0;">WEBM</button>
+    <span id="rec-status" style="font-size:.58rem;color:#555;letter-spacing:.05em;flex:1;text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">idle</span>
+  </div>
+
+  <hr style="border:none;border-top:1px solid #1a1a1a;margin:8px 0;">
+  <div style="font-size:.54rem;color:#555;letter-spacing:.1em;">
+    <div id="out-latency-base">base —</div>
+    <div id="out-latency-out">out —</div>
+    <div id="out-latency-total" style="color:#7abbe0;">RT —</div>
+  </div>
+</div>`;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   INIT
+   ════════════════════════════════════════════════════════════════ */
+async function initAudio(){
+  const btn = document.getElementById('start-btn');
+  const st  = document.getElementById('start-status');
+  const err = document.getElementById('start-error');
+  if(err) err.style.display='none';
+  btn.disabled = true;
+  st.textContent = 'starting Tone...';
+  try {
+    await _initAudio();
+  } catch(e) {
+    console.error('initAudio failed:', e);
+    st.textContent = 'init failed — see error below';
+    if(err){ err.style.display='block'; err.textContent = (e && e.stack) ? e.stack : String(e); }
+    btn.disabled = false;
+  }
+}
+
+async function _initAudio(){
+  await Tone.start();
+  Tone.context.lookAhead = 0;
+  rawCtx = Tone.context.rawContext;
+
+  outputGainNode = stereoGain(dbToGain(outputGainDb));
+  outputMuteNode = stereoGain(1);
+
+  for (let i=1; i<=2; i++) {
+    const sg = {
+      idx: i, enabled: false, mode: 'steady', wave: 'sine',
+      freqHz: i===1 ? 220 : 330,
+      gainDb: -6,
+      pan: i===1 ? -0.3 : 0.3,
+      pulseMs: 1000, pulseInterval: null,
+      adsr: {...ADSR_DEFAULTS},
+    };
+    sg.osc = new Tone.Oscillator(sg.freqHz, sg.wave).start();
+    sg.env = new Tone.AmplitudeEnvelope({
+      attack: sg.adsr.aMs/1000, decay: sg.adsr.dMs/1000,
+      sustain: sg.adsr.dLevel, release: sg.adsr.rMs/1000,
+    });
+    sg.panner = new Tone.Panner(sg.pan);
+    sg.gain = stereoGain(dbToGain(sg.gainDb));
+    sg.osc.connect(sg.env);
+    sg.env.connect(sg.panner);
+    sg.panner.connect(sg.gain);
+    sg.split = rawCtx.createChannelSplitter(2);
+    sg.anL = rawCtx.createAnalyser(); sg.anL.fftSize = 1024; sg.anL.smoothingTimeConstant = 0.4;
+    sg.anR = rawCtx.createAnalyser(); sg.anR.fftSize = 1024; sg.anR.smoothingTimeConstant = 0.4;
+    sg.split.connect(sg.anL, 0); sg.split.connect(sg.anR, 1);
+    sg.gain.connect(sg.split);
+    sg.env.triggerAttack();
+    sigGens.push(sg);
+  }
+
+  // 3 LFOs. Each has two target slots. Default: target1 = sigi.freq, target2 = off.
+  for (let i=1; i<=NUM_LFOS; i++) {
+    const lfo = {
+      idx: i,
+      enabled: false,
+      rateHz: 2, shape: 'sine',
+      targets: [
+        { sigIdx: ((i-1) % 2) + 1, paramName: 'freq',
+          min: TARGETS.freq.defaultMin, max: TARGETS.freq.defaultMax },
+        { sigIdx: 0, paramName: 'off', min: 0, max: 0 },
+      ],
+      rangesPerKey: {
+        '1:freq':      {min:TARGETS.freq.defaultMin,      max:TARGETS.freq.defaultMax},
+        '2:freq':      {min:TARGETS.freq.defaultMin,      max:TARGETS.freq.defaultMax},
+        '1:pulseRate': {min:TARGETS.pulseRate.defaultMin, max:TARGETS.pulseRate.defaultMax},
+        '2:pulseRate': {min:TARGETS.pulseRate.defaultMin, max:TARGETS.pulseRate.defaultMax},
+        '1:pan':       {min:TARGETS.pan.defaultMin,       max:TARGETS.pan.defaultMax},
+        '2:pan':       {min:TARGETS.pan.defaultMin,       max:TARGETS.pan.defaultMax},
+        '1:volume':    {min:TARGETS.volume.defaultMin,    max:TARGETS.volume.defaultMax},
+        '2:volume':    {min:TARGETS.volume.defaultMin,    max:TARGETS.volume.defaultMax},
+      },
+      phase: 0, lastT: performance.now(),
+    };
+    lfos.push(lfo);
+  }
+
+  for (const sg of sigGens) sg.gain.connect(outputGainNode);
+
+  outSplit = rawCtx.createChannelSplitter(2);
+  outAnL = rawCtx.createAnalyser(); outAnL.fftSize = 1024; outAnL.smoothingTimeConstant = 0.4;
+  outAnR = rawCtx.createAnalyser(); outAnR.fftSize = 1024; outAnR.smoothingTimeConstant = 0.4;
+  outSplit.connect(outAnL, 0); outSplit.connect(outAnR, 1);
+  outputGainNode.connect(outSplit);
+
+  recordTap = stereoGain(1);
+  for (const sg of sigGens) {
+    try { sg.gain.disconnect(outputGainNode); } catch(e){}
+    sg.gain.connect(recordTap);
+  }
+  recordTap.connect(outputGainNode);
+  try { mediaStreamDest = rawCtx.createMediaStreamDestination(); recordTap.connect(mediaStreamDest); }
+  catch(e) { console.warn('MediaStreamDestination unavailable:', e); }
+
+  outputGainNode.connect(outputMuteNode);
+  outputMuteNode.toDestination();
+
+  // Build DOM modules
+  const lfoCol = document.getElementById('lfo-col');
+  for (let i=1; i<=NUM_LFOS; i++) lfoCol.insertAdjacentHTML('beforeend', lfoTemplate(i));
+  document.getElementById('sig-col-1').insertAdjacentHTML('beforeend', sigGenTemplate(1));
+  document.getElementById('sig-col-2').insertAdjacentHTML('beforeend', sigGenTemplate(2));
+  document.getElementById('out-col').insertAdjacentHTML('beforeend', outputTemplate());
+
+  // Show board BEFORE laying out preview canvases — fixes the clientWidth=0 bug
+  // that was making LFO previews invisible after init.
+  document.getElementById('start-screen').style.display = 'none';
+  document.getElementById('board').style.display = 'flex';
+
+  for (const sg of sigGens) {
+    document.getElementById(`sg${sg.idx}-freq-sl`).value = freqLog.toPos(sg.freqHz);
+    setSgFreqPos(sg.idx, freqLog.toPos(sg.freqHz));
+    setSgPan(sg.idx, sg.pan);
+    setSgGainDb(sg.idx, sg.gainDb);
+    bindGainPanPad(sg.idx);
+    drawAdsr(sg.idx);
+    bindAdsrLabels(sg.idx);
+    updateCross(sg.idx);
+  }
+  for (const L of lfos) {
+    setLfoTarget(L.idx, 1, `${L.targets[0].sigIdx}:${L.targets[0].paramName}`, true);
+    setLfoTarget(L.idx, 2, `${L.targets[1].sigIdx}:${L.targets[1].paramName}`, true);
+    document.getElementById(`lfo${L.idx}-target1`).value = `${L.targets[0].sigIdx}:${L.targets[0].paramName}`;
+    document.getElementById(`lfo${L.idx}-target2`).value = L.targets[1].paramName === 'off' ? 'off' : `${L.targets[1].sigIdx}:${L.targets[1].paramName}`;
+    updateLfoRangeUi(L.idx, 1);
+    updateLfoRangeUi(L.idx, 2);
+    startLfoPreviewLoop(L.idx);
+  }
+  bindEditables();
+  startMeterLoop();
+  startLatencyReadout();
+  restorePresetUi();
+
+  window.addEventListener('keydown', (e)=>{
+    if(e.target.tagName==='INPUT' || e.target.tagName==='SELECT' || e.target.tagName==='BUTTON') return;
+    if(e.code==='Space' && sigGens[0]?.enabled && sigGens[0].mode==='pulsed'){ e.preventDefault(); firePulse(1); }
+    if(e.code==='Enter' && sigGens[1]?.enabled && sigGens[1].mode==='pulsed'){ e.preventDefault(); firePulse(2); }
+  });
+}
+
+/* ══════════ SIG GEN ══════════ */
+function sg(idx){ return sigGens[idx-1]; }
+
+function toggleSigGen(idx){
+  const s = sg(idx);
+  s.enabled = !s.enabled;
+  const btn = document.getElementById(`sg${idx}-enable-btn`);
+  btn.textContent = s.enabled ? 'ON' : 'OFF';
+  btn.classList.toggle('off', !s.enabled);
+  if(s.enabled){
+    if(s.mode==='steady') s.env.triggerAttack();
+    else startPulseLoop(idx);
+  } else {
+    s.env.triggerRelease();
+    stopPulseLoop(idx);
+  }
+}
+function setSigGenMode(idx, mode){
+  const s = sg(idx);
+  s.mode = mode;
+  document.getElementById(`sg${idx}-mode-steady`).classList.toggle('sgmode-active', mode==='steady');
+  document.getElementById(`sg${idx}-mode-pulsed`).classList.toggle('sgmode-active', mode==='pulsed');
+  document.getElementById(`sg${idx}-pulse-row`).style.display = mode==='pulsed' ? '' : 'none';
+  if(s.enabled){
+    if(mode==='steady'){ stopPulseLoop(idx); s.env.triggerAttack(); }
+    else { s.env.triggerRelease(); startPulseLoop(idx); }
+  }
+}
+function setSgWave(idx, w){ const s=sg(idx); s.wave=w; if(s.osc) s.osc.type=w; }
+function setSgFreqPos(idx, pos){
+  const s = sg(idx);
+  const hz = freqLog.toHz(parseFloat(pos));
+  s.freqHz = hz;
+  applyFreqToOsc(idx);
+  const el = document.getElementById(`sg${idx}-freq-val`);
+  el.textContent = hz>=1000 ? round2(hz/1000)+' kHz' : round2(hz)+' Hz';
+  el.dataset.value = hz;
+}
+function setSgFreqHz(idx, hz){
+  hz = clamp(parseFloat(hz), freqLog.minHz, freqLog.maxHz);
+  document.getElementById(`sg${idx}-freq-sl`).value = freqLog.toPos(hz);
+  setSgFreqPos(idx, freqLog.toPos(hz));
+}
+function applyFreqToOsc(idx){
+  const s = sg(idx);
+  if(!s.osc) return;
+  if(isLfoDriving(idx,'freq')) return;
+  s.osc.frequency.value = Math.max(s.freqHz,0.5);
+}
+function setSgGainDb(idx, db){
+  const s = sg(idx);
+  s.gainDb = clamp(parseFloat(db), -60, 6);
+  applyGainToSg(idx);
+  const el = document.getElementById(`sg${idx}-gain-val`);
+  el.textContent = round2(s.gainDb)+' dB';
+  el.dataset.value = s.gainDb;
+  updateCross(idx);
+}
+function applyGainToSg(idx){
+  const s = sg(idx);
+  if(!s.gain) return;
+  if(isLfoDriving(idx,'volume')) return;
+  s.gain.gain.value = dbToGain(s.gainDb)*s.adsr.aLevel;
+}
+function setSgPan(idx, p){
+  const s = sg(idx);
+  s.pan = clamp(parseFloat(p), -1, 1);
+  applyPanToPanner(idx);
+  const el = document.getElementById(`sg${idx}-pan-val`);
+  if(Math.abs(s.pan)<0.02) el.textContent='C';
+  else el.textContent = (s.pan<0?'L':'R') + Math.round(Math.abs(s.pan)*100);
+  el.dataset.value = s.pan;
+  updateCross(idx);
+}
+function applyPanToPanner(idx){
+  const s = sg(idx);
+  if(!s.panner) return;
+  if(isLfoDriving(idx,'pan')) return;
+  s.panner.pan.value = s.pan;
+}
+function setSgPulse(idx, ms){
+  const s = sg(idx);
+  s.pulseMs = parseInt(ms);
+  const el = document.getElementById(`sg${idx}-pulse-val`);
+  el.textContent = s.pulseMs + ' ms';
+  el.dataset.value = s.pulseMs;
+  if(s.enabled && s.mode==='pulsed') startPulseLoop(idx);
+}
+function startPulseLoop(idx){
+  const s = sg(idx);
+  stopPulseLoop(idx);
+  const fire = () => {
+    if(!s.enabled || s.mode!=='pulsed') return;
+    firePulse(idx);
+    let rate = s.pulseMs;
+    for (const L of lfos) {
+      if(!L.enabled) continue;
+      for (const t of L.targets) {
+        if(t.sigIdx===idx && t.paramName==='pulseRate'){
+          rate = clamp(t.min + (t.max - t.min) * (lfoTick(L) + 1)/2, 20, 30000);
+          break;
+        }
+      }
+    }
+    s.pulseInterval = setTimeout(fire, rate);
+  };
+  fire();
+}
+function stopPulseLoop(idx){ const s=sg(idx); if(s.pulseInterval){ clearTimeout(s.pulseInterval); s.pulseInterval=null; } }
+function firePulse(idx){
+  const s = sg(idx);
+  if(!s.env) return;
+  const dur = (s.adsr.aMs + s.adsr.dMs + s.adsr.sMs)/1000;
+  s.env.triggerAttackRelease(dur, Tone.now());
+}
+
+function isLfoDriving(sigIdx, paramName){
+  for (const L of lfos) {
+    if(!L.enabled) continue;
+    for (const t of L.targets) {
+      if(t.sigIdx===sigIdx && t.paramName===paramName) return true;
+    }
+  }
+  return false;
+}
+
+/* ══════════ 2D GAIN/PAN PAD WITH CROSSHAIRS ══════════ */
+function updateCross(idx){
+  const s = sg(idx);
+  const cross = document.getElementById(`sg${idx}-cross`);
+  if(!cross || !s) return;
+  const xPct = clamp((s.gainDb - (-60))/66, 0, 1) * 100;
+  const yPct = clamp((s.pan + 1)/2, 0, 1) * 100;
+  cross.style.left = xPct + '%';
+  cross.style.top  = yPct + '%';
+}
+function bindGainPanPad(idx){
+  const pad = document.getElementById(`sg${idx}-gp-pad`);
+  let dragging = false;
+  function updateFromEvent(e){
+    const rect = pad.getBoundingClientRect();
+    const x = clamp(e.clientX - rect.left, 0, rect.width);
+    const y = clamp(e.clientY - rect.top, 0, rect.height);
+    setSgGainDb(idx, -60 + (x/rect.width)*66);
+    setSgPan(idx, (y/rect.height)*2 - 1);
+  }
+  pad.addEventListener('pointerdown', (e)=>{
+    dragging = true; pad.setPointerCapture(e.pointerId); updateFromEvent(e);
+  });
+  pad.addEventListener('pointermove', (e)=>{ if(dragging) updateFromEvent(e); });
+  pad.addEventListener('pointerup',   (e)=>{ dragging=false; try { pad.releasePointerCapture(e.pointerId); } catch{} });
+  pad.addEventListener('pointercancel',()=>{ dragging=false; });
+  pad.addEventListener('dblclick', ()=>{ setSgGainDb(idx, 0); setSgPan(idx, 0); });
+}
+
+/* ══════════ OUTPUT ══════════ */
+function setOutputGainDb(db){
+  outputGainDb = parseFloat(db);
+  if(outputGainNode) outputGainNode.gain.rampTo(dbToGain(outputGainDb), 0.05);
+  const el = document.getElementById('output-gain-val');
+  el.textContent = round2(outputGainDb)+' dB';
+  el.dataset.value = outputGainDb;
+}
+function toggleOutputMute(){
+  outputMuted = !outputMuted;
+  if(outputMuteNode) outputMuteNode.gain.rampTo(outputMuted?0:1, 0.05);
+  const b = document.getElementById('output-mute');
+  b.textContent = outputMuted ? 'OFF' : 'ON';
+  b.classList.toggle('muted', outputMuted);
+}
+
+/* ══════════ LFO ══════════ */
+function lfo(idx){ return lfos[idx-1]; }
+
+function lfoTick(L){
+  const now = performance.now();
+  const dt = Math.max(0, (now - L.lastT)/1000);
+  L.lastT = now;
+  L.phase = (L.phase + dt * L.rateHz) % 1;
+  switch(L.shape){
+    case 'sine':     return Math.sin(L.phase * Math.PI * 2);
+    case 'triangle': return L.phase < 0.5 ? (L.phase*4 - 1) : (3 - L.phase*4);
+    case 'sawtooth': return L.phase*2 - 1;
+    case 'square':   return L.phase < 0.5 ? 1 : -1;
+  }
+  return 0;
+}
+function lfoToValue(t, sample){ return t.min + (t.max - t.min) * (sample + 1) / 2; }
+
+function toggleLfo(idx){
+  const L = lfo(idx);
+  L.enabled = !L.enabled;
+  const btn = document.getElementById(`lfo${idx}-enable-btn`);
+  btn.textContent = L.enabled ? 'ON' : 'OFF';
+  btn.classList.toggle('off', !L.enabled);
+  if(!L.enabled){
+    // Restore base values for ALL of this LFO's targets
+    for (const t of L.targets) {
+      if(t.sigIdx >= 1 && t.paramName !== 'off') {
+        applyFreqToOsc(t.sigIdx); applyPanToPanner(t.sigIdx); applyGainToSg(t.sigIdx);
+      }
+    }
+    clearAllModulationDots();
+  }
+}
+function setLfoRatePos(idx, pos){
+  const L = lfo(idx);
+  L.rateHz = rateLog.toHz(parseFloat(pos));
+  const el = document.getElementById(`lfo${idx}-rate-val`);
+  el.textContent = round2(L.rateHz) + ' Hz';
+  el.dataset.value = L.rateHz;
+}
+function setLfoRateHz(idx, hz){
+  hz = clamp(parseFloat(hz), rateLog.minHz, rateLog.maxHz);
+  document.getElementById(`lfo${idx}-rate-sl`).value = rateLog.toPos(hz);
+  setLfoRatePos(idx, rateLog.toPos(hz));
+}
+function setLfoShape(idx, s){ lfo(idx).shape = s; }
+
+function setLfoTarget(idx, slot, key, skipUiSelect){
+  const L = lfo(idx);
+  const tIdx = slot - 1;
+  const cur = L.targets[tIdx];
+  // Save current range to old key (if it had one)
+  if (cur.paramName !== 'off') {
+    L.rangesPerKey[`${cur.sigIdx}:${cur.paramName}`] = {min: cur.min, max: cur.max};
+    if(cur.sigIdx >= 1) {
+      applyFreqToOsc(cur.sigIdx); applyPanToPanner(cur.sigIdx); applyGainToSg(cur.sigIdx);
+    }
+  }
+  clearAllModulationDots();
+
+  // Hide range slider for this slot if "off", show otherwise
+  const rangeRow = document.getElementById(`lfo${idx}-range${slot}-row`);
+
+  if (key === 'off') {
+    L.targets[tIdx] = { sigIdx: 0, paramName: 'off', min: 0, max: 0 };
+    if (rangeRow) rangeRow.style.display = 'none';
+  } else {
+    const [sigIdxStr, paramName] = key.split(':');
+    const sigIdx = parseInt(sigIdxStr);
+    const saved = L.rangesPerKey[key] || {
+      min: TARGETS[paramName].defaultMin,
+      max: TARGETS[paramName].defaultMax,
+    };
+    L.targets[tIdx] = { sigIdx, paramName, min: saved.min, max: saved.max };
+    if (rangeRow) rangeRow.style.display = '';
+    updateLfoRangeUi(idx, slot);
+  }
+
+  if(!skipUiSelect) document.getElementById(`lfo${idx}-target${slot}`).value = key;
+}
+function updateLfoRangeUi(idx, slot){
+  const L = lfo(idx);
+  const t = L.targets[slot-1];
+  if (t.paramName === 'off') return;
+  const T = TARGETS[t.paramName];
+  const minSl = document.getElementById(`lfo${idx}-min${slot}-sl`);
+  const maxSl = document.getElementById(`lfo${idx}-max${slot}-sl`);
+  if(!minSl || !maxSl) return;
+  const minPos = T.toPos(t.min), maxPos = T.toPos(t.max);
+  minSl.value = minPos; maxSl.value = maxPos;
+  const minValEl = document.getElementById(`lfo${idx}-min${slot}-val`);
+  const maxValEl = document.getElementById(`lfo${idx}-max${slot}-val`);
+  if(minValEl){ minValEl.textContent = T.fmt(t.min); minValEl.dataset.value = t.min; }
+  if(maxValEl){ maxValEl.textContent = T.fmt(t.max); maxValEl.dataset.value = t.max; }
+  const fill = document.getElementById(`lfo${idx}-range${slot}-fill`);
+  if(fill){
+    fill.style.left  = (minPos/10)+'%';
+    fill.style.width = ((maxPos-minPos)/10)+'%';
+  }
+}
+function setLfoMinPos(idx, slot, pos){
+  const L = lfo(idx);
+  const t = L.targets[slot-1];
+  if (t.paramName === 'off') return;
+  const T = TARGETS[t.paramName];
+  let v = T.toVal(parseFloat(pos));
+  if(v > t.max){ v = t.max; document.getElementById(`lfo${idx}-min${slot}-sl`).value = T.toPos(v); }
+  t.min = v; updateLfoRangeUi(idx, slot);
+}
+function setLfoMaxPos(idx, slot, pos){
+  const L = lfo(idx);
+  const t = L.targets[slot-1];
+  if (t.paramName === 'off') return;
+  const T = TARGETS[t.paramName];
+  let v = T.toVal(parseFloat(pos));
+  if(v < t.min){ v = t.min; document.getElementById(`lfo${idx}-max${slot}-sl`).value = T.toPos(v); }
+  t.max = v; updateLfoRangeUi(idx, slot);
+}
+function setLfoMinVal(idx, slot, v){
+  const L = lfo(idx);
+  const t = L.targets[slot-1];
+  if (t.paramName === 'off') return;
+  const T = TARGETS[t.paramName];
+  t.min = clamp(v, T.unitMin, Math.min(T.unitMax, t.max));
+  updateLfoRangeUi(idx, slot);
+}
+function setLfoMaxVal(idx, slot, v){
+  const L = lfo(idx);
+  const t = L.targets[slot-1];
+  if (t.paramName === 'off') return;
+  const T = TARGETS[t.paramName];
+  t.max = clamp(v, Math.max(T.unitMin, t.min), T.unitMax);
+  updateLfoRangeUi(idx, slot);
+}
+
+function startLfoPreviewLoop(idx){
+  const L = lfo(idx);
+  const canvas = document.getElementById(`lfo${idx}-preview`);
+  const ctx = canvas.getContext('2d');
+  const buf = []; const BUF_SIZE = 90;
+
+  let lastW = 0, lastH = 0;
+  function ensureSized(){
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (w === 0 || h === 0) return false;
+    if (w !== lastW || h !== lastH) {
+      const dpr = window.devicePixelRatio||1;
+      canvas.width = w*dpr; canvas.height = h*dpr;
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+      lastW = w; lastH = h;
+    }
+    return true;
+  }
+  window.addEventListener('resize', ensureSized);
+
+  function tick(){
+    const sample = lfoTick(L);
+    buf.push(sample);
+    if(buf.length > BUF_SIZE) buf.shift();
+    if (ensureSized()) {
+      const w = canvas.clientWidth, h = canvas.clientHeight;
+      ctx.clearRect(0,0,w,h);
+      ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0,h/2); ctx.lineTo(w,h/2); ctx.stroke();
+      ctx.strokeStyle = L.enabled ? '#7abbe0' : '#3a4a5a';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      for(let i=0;i<buf.length;i++){
+        const x = (i/(BUF_SIZE-1))*w;
+        const y = h/2 - buf[i]*(h/2-2);
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.stroke();
+    }
+
+    if(L.enabled){
+      // Apply BOTH targets — same LFO sample, different ranges
+      for (let slot=0; slot<L.targets.length; slot++) {
+        const t = L.targets[slot];
+        if (t.paramName === 'off') continue;
+        const v = lfoToValue(t, sample);
+        applyLfoToTarget(L, t, v);
+        updateModulatedDisplay(L, t, v, slot+1);
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+  tick();
+}
+function applyLfoToTarget(L, t, v){
+  const s = sg(t.sigIdx);
+  if(!s) return;
+  switch(t.paramName){
+    case 'freq':   if(s.osc)    s.osc.frequency.value = Math.max(v,0.5); break;
+    case 'pan':    if(s.panner) s.panner.pan.value    = clamp(v,-1,1); break;
+    case 'volume': if(s.gain)   s.gain.gain.value     = dbToGain(v)*s.adsr.aLevel; break;
+    case 'pulseRate': break; // sampled per-pulse in startPulseLoop
+  }
+}
+function updateModulatedDisplay(L, t, v, slot){
+  const T = TARGETS[t.paramName];
+  const sIdx = t.sigIdx;
+  let valEl = null, dotEl = null, slEl = null, pos = 0;
+  switch(t.paramName){
+    case 'freq':
+      valEl = document.getElementById(`sg${sIdx}-freq-val`);
+      dotEl = document.getElementById(`sg${sIdx}-freq-dot${slot}`);
+      slEl  = document.getElementById(`sg${sIdx}-freq-sl`);
+      pos = freqLog.toPos(v)/1000;
+      break;
+    case 'pan': {
+      valEl = document.getElementById(`sg${sIdx}-pan-val`);
+      // For pan modulation, drive the crosshair Y
+      const cross = document.getElementById(`sg${sIdx}-cross`);
+      if(cross) cross.style.top = ((v+1)/2*100)+'%';
+      break;
+    }
+    case 'volume': {
+      valEl = document.getElementById(`sg${sIdx}-gain-val`);
+      const cross2 = document.getElementById(`sg${sIdx}-cross`);
+      if(cross2) cross2.style.left = (((v-(-60))/66)*100)+'%';
+      break;
+    }
+    case 'pulseRate':
+      valEl = document.getElementById(`sg${sIdx}-pulse-val`);
+      dotEl = document.getElementById(`sg${sIdx}-pulse-dot${slot}`);
+      slEl  = document.getElementById(`sg${sIdx}-pulse-sl`);
+      pos = Math.log(v/20)/Math.log(5000/20);
+      break;
+  }
+  if(valEl){ valEl.textContent = T.fmt(v); valEl.classList.add('modulated'); }
+  if(dotEl && slEl){
+    dotEl.style.left = `calc(${clamp(pos,0,1)*100}% - 1.5px)`;
+    dotEl.classList.add('active');
+  }
+}
+function clearAllModulationDots(){
+  // Clear every dot/modulated indicator on every sig gen
+  for (const s of sigGens) {
+    ['freq','pulse'].forEach(k => {
+      [1,2].forEach(slot => {
+        const dot = document.getElementById(`sg${s.idx}-${k}-dot${slot}`);
+        if(dot) dot.classList.remove('active');
+      });
+    });
+    ['freq','pulse','pan','gain'].forEach(k => {
+      const v = document.getElementById(`sg${s.idx}-${k}-val`);
+      if(v) v.classList.remove('modulated');
+    });
+  }
+}
+
+/* ══════════ GRAPHICAL ADSR ══════════ */
+const ADSR_VIEW = { w:320, h:130, mL:14, mR:12, mT:10, mB:18 };
+
+function adsrTimes(idx){
+  const a = sg(idx).adsr;
+  return { tA: a.aMs, tD: a.aMs+a.dMs, tS: a.aMs+a.dMs+a.sMs, tR: a.aMs+a.dMs+a.sMs+a.rMs };
+}
+function adsrViewMaxMs(idx){ return Math.max(adsrTimes(idx).tR * 1.25, 500); }
+function adsrCoords(idx){
+  const a = sg(idx).adsr;
+  const {w,h,mL,mR,mT,mB} = ADSR_VIEW;
+  const t = adsrTimes(idx);
+  const total = adsrViewMaxMs(idx);
+  const plotW = w-mL-mR, plotH = h-mT-mB;
+  const x = (ms) => mL + (ms/total)*plotW;
+  const y = (amp) => mT + (1 - amp)*plotH;
+  return {
+    start: {x:x(0), y:y(0)},
+    peak:  {x:x(t.tA), y:y(a.aLevel)},
+    decay: {x:x(t.tD), y:y(a.dLevel)},
+    sust:  {x:x(t.tS), y:y(a.dLevel)},
+    end:   {x:x(t.tR), y:y(0)},
+    plotW, plotH, mL, mR, mT, mB, total, x, y,
+  };
+}
+function drawAdsr(idx){
+  const svg = document.getElementById(`sg${idx}-adsr-svg`);
+  const {w,h,mL,mR,mT,mB} = ADSR_VIEW;
+  const c = adsrCoords(idx);
+  const a = sg(idx).adsr;
+  while(svg.firstChild) svg.removeChild(svg.firstChild);
+  const addLine = (x1,y1,x2,y2,cls='adsr-gridline') => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg','line');
+    el.setAttribute('x1',x1); el.setAttribute('y1',y1);
+    el.setAttribute('x2',x2); el.setAttribute('y2',y2);
+    el.setAttribute('class',cls);
+    svg.appendChild(el); return el;
+  };
+  const addText = (x,y,text,cls='adsr-gridlabel') => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg','text');
+    el.setAttribute('x',x); el.setAttribute('y',y);
+    el.setAttribute('class',cls); el.textContent=text;
+    svg.appendChild(el); return el;
+  };
+  addLine(mL, c.y(1.0), w-mR, c.y(1.0));
+  addLine(mL, c.y(0.251), w-mR, c.y(0.251));
+  addLine(mL, c.y(0), w-mR, c.y(0));
+  addText(2, c.y(1.0)+3, '0dB');
+  addText(2, c.y(0.251)+3, '-12');
+  addLine(c.peak.x,  mT, c.peak.x,  h-mB);
+  addLine(c.decay.x, mT, c.decay.x, h-mB);
+  addLine(c.sust.x,  mT, c.sust.x,  h-mB);
+  addLine(c.end.x,   mT, c.end.x,   h-mB);
+  addText((c.start.x+c.peak.x)/2-3,  h-5, 'A');
+  addText((c.peak.x+c.decay.x)/2-3,  h-5, 'D');
+  addText((c.decay.x+c.sust.x)/2-3,  h-5, 'S');
+  addText((c.sust.x+c.end.x)/2-3,    h-5, 'R');
+  const addSeg = (x1,y1,x2,y2) => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg','line');
+    el.setAttribute('x1',x1); el.setAttribute('y1',y1);
+    el.setAttribute('x2',x2); el.setAttribute('y2',y2);
+    el.setAttribute('class','adsr-seg');
+    svg.appendChild(el); return el;
+  };
+  addSeg(c.start.x, c.start.y, c.peak.x,  c.peak.y);
+  addSeg(c.peak.x,  c.peak.y,  c.decay.x, c.decay.y);
+  addSeg(c.decay.x, c.decay.y, c.sust.x,  c.sust.y);
+  addSeg(c.sust.x,  c.sust.y,  c.end.x,   c.end.y);
+  const addHandle = (p, name) => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    el.setAttribute('cx',p.x); el.setAttribute('cy',p.y);
+    el.setAttribute('r',6);
+    el.setAttribute('class','adsr-handle');
+    el.dataset.name = name; el.dataset.idx = idx;
+    el.addEventListener('pointerdown', onHandlePointerDown);
+    svg.appendChild(el); return el;
+  };
+  addHandle(c.peak,  'peak');
+  addHandle(c.decay, 'decay');
+  addHandle(c.sust,  'sust');
+  addHandle(c.end,   'end');
+  const addLabel = (x,y,text,opts={}) => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg','text');
+    el.setAttribute('x',x); el.setAttribute('y',y);
+    el.setAttribute('class','adsr-pointlabel editable');
+    el.textContent=text;
+    el.dataset.editKind = opts.kind || '';
+    el.dataset.value = opts.value ?? '';
+    el.dataset.idx = idx;
+    svg.appendChild(el); return el;
+  };
+  const rightEdge = w - mR;
+  const lblLeft = (x, wEst) => (x + wEst > rightEdge) ? x - wEst : x+2;
+  addLabel(c.peak.x-14,  c.peak.y-7,  round2(a.aMs)+'ms',         {kind:'aTime',  value:a.aMs});
+  addLabel(lblLeft(c.peak.x+2, 22), c.peak.y-7, fmtDb(a.aLevel),  {kind:'aLevel', value:a.aLevel});
+  addLabel(c.decay.x-14, c.decay.y+14, round2(a.dMs)+'ms',        {kind:'dTime',  value:a.dMs});
+  addLabel(c.decay.x+2,  c.decay.y+14, fmtDb(a.dLevel),           {kind:'dLevel', value:a.dLevel});
+  addLabel(c.sust.x-16,  c.sust.y+14,  round2(a.sMs)+'ms',        {kind:'sTime',  value:a.sMs});
+  const rLblX = Math.min(c.end.x-18, rightEdge-34);
+  addLabel(rLblX, c.end.y-5, round2(a.rMs)+'ms', {kind:'rTime', value:a.rMs});
+}
+function fmtDb(amp){ if(amp<=0.001) return '-inf'; return round2(20*Math.log10(amp))+'dB'; }
+function dbStrToAmp(str){
+  const t = String(str).trim().toLowerCase().replace(/db/g,'').trim();
+  if(t==='-inf'||t==='') return 0;
+  const v = parseFloat(t);
+  return Number.isNaN(v) ? null : dbToGain(v);
+}
+function msStrToMs(str){
+  const t = String(str).trim().toLowerCase().replace(/ms/g,'').replace(/s$/,'').trim();
+  const v = parseFloat(t);
+  return Number.isNaN(v) ? null : Math.max(1, v);
+}
+function bindAdsrLabels(idx){
+  const wrap = document.getElementById(`sg${idx}-adsr-svg`).parentElement;
+  wrap.addEventListener('click', (e)=>{
+    const t = e.target;
+    if(!(t instanceof SVGTextElement)) return;
+    if(!t.dataset.editKind) return;
+    startLabelEdit(t);
+  });
+}
+function startLabelEdit(labelEl){
+  const rect = labelEl.getBoundingClientRect();
+  const kind = labelEl.dataset.editKind;
+  const idx = parseInt(labelEl.dataset.idx);
+  const input = document.createElement('input');
+  input.type='text';
+  input.value = labelEl.textContent;
+  input.className='adsr-editbox';
+  input.style.left = (rect.left+window.scrollX-4)+'px';
+  input.style.top  = (rect.top+window.scrollY-2)+'px';
+  document.body.appendChild(input);
+  input.focus(); input.select();
+  function commit(){ const raw=input.value; input.remove(); applyLabelEdit(idx, kind, raw); }
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', e=>{
+    if(e.key==='Enter'){ e.preventDefault(); commit(); }
+    else if(e.key==='Escape'){ e.preventDefault(); input.remove(); }
+  });
+}
+function applyLabelEdit(idx, kind, raw){
+  const a = sg(idx).adsr;
+  let v;
+  switch(kind){
+    case 'aTime':  v=msStrToMs(raw); if(v!==null) a.aMs = round2(clamp(v,1,30000)); break;
+    case 'dTime':  v=msStrToMs(raw); if(v!==null) a.dMs = round2(clamp(v,1,30000)); break;
+    case 'sTime':  v=msStrToMs(raw); if(v!==null) a.sMs = round2(clamp(v,1,60000)); break;
+    case 'rTime':  v=msStrToMs(raw); if(v!==null) a.rMs = round2(clamp(v,1,30000)); break;
+    case 'aLevel': v=dbStrToAmp(raw); if(v!==null) a.aLevel = clamp(v,0,1); break;
+    case 'dLevel': v=dbStrToAmp(raw); if(v!==null) a.dLevel = clamp(v,0, a.aLevel); break;
+  }
+  applyAdsrToEngine(idx);
+  drawAdsr(idx);
+}
+function applyAdsrToEngine(idx){
+  const s = sg(idx); if(!s.env) return;
+  s.env.attack  = s.adsr.aMs/1000;
+  s.env.decay   = s.adsr.dMs/1000;
+  s.env.sustain = s.adsr.dLevel;
+  s.env.release = s.adsr.rMs/1000;
+  applyGainToSg(idx);
+}
+function resetAdsrDefaults(idx){
+  sg(idx).adsr = {...ADSR_DEFAULTS};
+  applyAdsrToEngine(idx);
+  drawAdsr(idx);
+}
+
+let dragState = null;
+function svgPoint(svg, evt){
+  const pt = svg.createSVGPoint(); pt.x = evt.clientX; pt.y = evt.clientY;
+  return pt.matrixTransform(svg.getScreenCTM().inverse());
+}
+function onHandlePointerDown(e){
+  e.preventDefault();
+  const idx = parseInt(e.target.dataset.idx);
+  const name = e.target.dataset.name;
+  e.target.classList.add('dragging');
+  e.target.setPointerCapture(e.pointerId);
+  dragState = { idx, name, pointerId:e.pointerId, el:e.target, svg: e.target.closest('svg') };
+  window.addEventListener('pointermove', onHandlePointerMove);
+  window.addEventListener('pointerup',   onHandlePointerUp);
+}
+function onHandlePointerMove(e){
+  if(!dragState) return;
+  const p = svgPoint(dragState.svg, e);
+  const {w,h,mL,mR,mT,mB} = ADSR_VIEW;
+  const plotW = w-mL-mR, plotH = h-mT-mB;
+  const viewMax = adsrViewMaxMs(dragState.idx);
+  const xRaw = p.x - mL;
+  const ms = clamp((xRaw/plotW) * viewMax, 0, 60000);
+  const yClamp = clamp(p.y, mT, h-mB);
+  const amp = 1 - (yClamp-mT)/plotH;
+  const a = sg(dragState.idx).adsr;
+  if(dragState.name==='peak'){
+    a.aMs = round2(clamp(ms,1,30000));
+    a.aLevel = clamp(amp,0,1);
+    if(a.dLevel > a.aLevel) a.dLevel = a.aLevel;
+  } else if(dragState.name==='decay'){
+    a.dMs = round2(clamp(ms - a.aMs, 1, 30000));
+    a.dLevel = clamp(amp, 0, a.aLevel);
+  } else if(dragState.name==='sust'){
+    a.sMs = round2(clamp(ms - a.aMs - a.dMs, 1, 60000));
+  } else if(dragState.name==='end'){
+    a.rMs = round2(clamp(ms - a.aMs - a.dMs - a.sMs, 1, 30000));
+  }
+  applyAdsrToEngine(dragState.idx);
+  drawAdsr(dragState.idx);
+}
+function onHandlePointerUp(e){
+  if(!dragState) return;
+  try { dragState.el.releasePointerCapture(dragState.pointerId); } catch{}
+  dragState.el.classList.remove('dragging');
+  dragState=null;
+  window.removeEventListener('pointermove', onHandlePointerMove);
+  window.removeEventListener('pointerup',   onHandlePointerUp);
+}
+
+/* ══════════ METERS ══════════ */
+function rmsFromAnalyser(an){
+  const buf = new Float32Array(an.fftSize);
+  an.getFloatTimeDomainData(buf);
+  let s = 0;
+  for(let i=0;i<buf.length;i++) s += buf[i]*buf[i];
+  return Math.sqrt(s/buf.length);
+}
+function rmsToDb(rms){ return rms>1e-6 ? 20*Math.log10(rms) : -Infinity; }
+function dbToNorm(db){ if(db===-Infinity || db<-60) return 0; return clamp((db + 60)/66, 0, 1); }
+
+function startMeterLoop(){
+  const pk = { outL:0, outR:0 };
+  function tick(){
+    if(outAnL && outAnR){
+      const lN = dbToNorm(rmsToDb(rmsFromAnalyser(outAnL)));
+      const rN = dbToNorm(rmsToDb(rmsFromAnalyser(outAnR)));
+      pk.outL = Math.max(pk.outL*0.992, lN);
+      pk.outR = Math.max(pk.outR*0.992, rN);
+      setMeterBars('out-level-l','out-pk-l', lN, pk.outL);
+      setMeterBars('out-level-r','out-pk-r', rN, pk.outR);
+    }
+    for (const s of sigGens) {
+      if(!s.anL || !s.anR) continue;
+      const lN = dbToNorm(rmsToDb(rmsFromAnalyser(s.anL)));
+      const rN = dbToNorm(rmsToDb(rmsFromAnalyser(s.anR)));
+      const ml = document.getElementById(`sg${s.idx}-meter-l`);
+      const mr = document.getElementById(`sg${s.idx}-meter-r`);
+      if(ml) ml.style.width = (lN*100).toFixed(1)+'%';
+      if(mr) mr.style.width = (rN*100).toFixed(1)+'%';
+    }
+    requestAnimationFrame(tick);
+  }
+  tick();
+}
+function setMeterBars(idLevel, idPeak, lev, pk){
+  const L = document.getElementById(idLevel);
+  const P = document.getElementById(idPeak);
+  if(L) L.style.height = (lev*100).toFixed(1)+'%';
+  if(P) P.style.bottom = (pk*100).toFixed(1)+'%';
+}
+
+/* ══════════ LATENCY ══════════ */
+function startLatencyReadout(){
+  const update = () => {
+    if(!rawCtx) return;
+    const base = (rawCtx.baseLatency||0)*1000;
+    const out  = (rawCtx.outputLatency||0)*1000;
+    const b = document.getElementById('out-latency-base');
+    const o = document.getElementById('out-latency-out');
+    const t = document.getElementById('out-latency-total');
+    if(b) b.textContent = `base ${round2(base)}ms`;
+    if(o) o.textContent = `out ${round2(out)}ms`;
+    if(t) t.textContent = `RT ~${round2(base+out)}ms · ${rawCtx.sampleRate}Hz`;
+  };
+  update();
+  setInterval(update, 2000);
+}
+
+/* ══════════ RECORDING ══════════ */
+function toggleRecord(){
+  if(!mediaStreamDest){ document.getElementById('rec-status').textContent='init audio first'; return; }
+  if(recordingMethod) stopRecord(); else startRecord();
+}
+function toggleRecFormat(){
+  if(recordingMethod) return;
+  recFormat = (recFormat === 'webm') ? 'wav' : 'webm';
+  const btn = document.getElementById('rec-fmt');
+  btn.textContent = recFormat.toUpperCase();
+  btn.classList.toggle('wav-mode', recFormat === 'wav');
+}
+function startRecord(){
+  recordChunks = []; pcmCapL = []; pcmCapR = [];
+  recordSoftWarned = false;
+  let ok = false;
+  try {
+    if(recFormat === 'wav') ok = startWavCapture();
+    else ok = startWebmCapture();
+  } catch(err) { console.error(err); document.getElementById('rec-status').textContent='startRec err: '+err.message; return; }
+  if(!ok) return;
+  recordingMethod = recFormat;
+  recordStartTime = Date.now();
+  const btn = document.getElementById('rec-btn');
+  btn.classList.add('recording');
+  btn.textContent = '■ STOP';
+  recordTimerId = setInterval(updateRecordStatus, 500);
+  updateRecordStatus();
+}
+function stopRecord(){
+  if(!recordingMethod) return;
+  try {
+    if(recordingMethod === 'wav') stopWavCaptureAndDownload();
+    else stopWebmCaptureAndDownload();
+  } catch(err) { console.error(err); document.getElementById('rec-status').textContent='stop err: '+err.message; }
+  if(recordTimerId){ clearInterval(recordTimerId); recordTimerId = null; }
+  const btn = document.getElementById('rec-btn');
+  btn.classList.remove('recording');
+  btn.textContent = '● REC';
+  recordingMethod = null;
+}
+function updateRecordStatus(){
+  const ms = Date.now() - recordStartTime;
+  const stEl = document.getElementById('rec-status');
+  if(ms >= REC_HARD_CAP_MS){ stopRecord(); if(stEl) stEl.textContent = 'auto-stop (60min cap)'; return; }
+  const totalSec = Math.floor(ms/1000);
+  const m = Math.floor(totalSec/60);
+  const s = totalSec % 60;
+  const time = m + ':' + (s<10?'0':'') + s;
+  let suffix = '';
+  if(recordingMethod === 'wav' && pcmCaptureNode) suffix = ' · ' + (pcmCaptureNode.__chunks||0) + 'ch';
+  if(ms >= REC_SOFT_CAP_MS && !recordSoftWarned){
+    recordSoftWarned = true;
+    if(stEl) stEl.textContent = '⚠ '+time+' (cap 60m)' + suffix;
+  } else if(stEl) stEl.textContent = (recordSoftWarned?'⚠ ':'● ') + time + suffix;
+}
+function startWebmCapture(){
+  const candidates = ['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg;codecs=opus'];
+  const mime = candidates.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t));
+  try {
+    const opts = mime ? {mimeType:mime, audioBitsPerSecond: REC_OPUS_BITRATE} : {audioBitsPerSecond: REC_OPUS_BITRATE};
+    mediaRecorder = new MediaRecorder(mediaStreamDest.stream, opts);
+  } catch(e){ console.error(e); document.getElementById('rec-status').textContent='webm err: '+e.message; return false; }
+  mediaRecorder.ondataavailable = e => { if(e.data && e.data.size > 0) recordChunks.push(e.data); };
+  mediaRecorder.onstop = () => {};
+  mediaRecorder.start(1000);
+  return true;
+}
+function stopWebmCaptureAndDownload(){
+  if(!mediaRecorder) return;
+  mediaRecorder.onstop = () => {
+    const stEl = document.getElementById('rec-status');
+    if(recordChunks.length === 0){ if(stEl) stEl.textContent = 'no data'; return; }
+    const mime = mediaRecorder.mimeType || 'audio/webm';
+    const ext = mime.includes('mp4') ? '.m4a' : mime.includes('ogg') ? '.ogg' : '.webm';
+    const blob = new Blob(recordChunks, {type: mime});
+    recordChunks = [];
+    triggerDownload(blob, `lfo-adsr-test-${recordTimestamp()}${ext}`);
+    if(stEl) stEl.textContent = `saved ${(blob.size/1024/1024).toFixed(1)}MB`;
+  };
+  try { mediaRecorder.stop(); } catch(e) { console.warn('stop:', e); }
+}
+function startWavCapture(){
+  if(!rawCtx) return false;
+  try {
+    pcmCaptureNode = rawCtx.createScriptProcessor(4096, 2, 2);
+    pcmCaptureNode.__chunks = 0;
+    pcmCaptureNode.onaudioprocess = (e) => {
+      pcmCaptureNode.__chunks++;
+      pcmCapL.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+      pcmCapR.push(new Float32Array(e.inputBuffer.getChannelData(1)));
+      e.outputBuffer.getChannelData(0).set(e.inputBuffer.getChannelData(0));
+      e.outputBuffer.getChannelData(1).set(e.inputBuffer.getChannelData(1));
+    };
+    const tapBridge = rawCtx.createGain();
+    tapBridge.channelCount = 2; tapBridge.channelCountMode = 'explicit';
+    recordTap.connect(tapBridge);
+    tapBridge.connect(pcmCaptureNode);
+    const muted = rawCtx.createGain(); muted.gain.value = 0;
+    pcmCaptureNode.connect(muted); muted.connect(rawCtx.destination);
+    pcmCaptureNode.__tapBridge = tapBridge;
+    pcmCaptureNode.__mutedSink = muted;
+    return true;
+  } catch(err) {
+    console.error('startWavCapture:', err);
+    document.getElementById('rec-status').textContent = 'WAV err: '+(err.message||err);
+    pcmCaptureNode = null; return false;
+  }
+}
+function stopWavCaptureAndDownload(){
+  if(!pcmCaptureNode) return;
+  const stEl = document.getElementById('rec-status');
+  const finalChunks = pcmCaptureNode.__chunks || 0;
+  try { pcmCaptureNode.disconnect(); } catch{}
+  if(pcmCaptureNode.__mutedSink) try { pcmCaptureNode.__mutedSink.disconnect(); } catch{}
+  if(pcmCaptureNode.__tapBridge) try { pcmCaptureNode.__tapBridge.disconnect(); } catch{}
+  pcmCaptureNode.onaudioprocess = null;
+  pcmCaptureNode = null;
+  if(pcmCapL.length === 0){ if(stEl) stEl.textContent = `no data (chunks=${finalChunks})`; return; }
+  const blob = encodeWavInt16PCM(pcmCapL, pcmCapR, rawCtx.sampleRate);
+  pcmCapL = []; pcmCapR = [];
+  triggerDownload(blob, `lfo-adsr-test-${recordTimestamp()}.wav`);
+  if(stEl) stEl.textContent = `saved ${(blob.size/1024/1024).toFixed(1)}MB`;
+}
+function encodeWavInt16PCM(chunksL, chunksR, sampleRate){
+  let total = 0;
+  for(let i=0;i<chunksL.length;i++) total += chunksL[i].length;
+  const dataSize = total * 2 * 2;
+  const buf = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buf);
+  const writeStr = (off,s) => { for(let i=0;i<s.length;i++) view.setUint8(off+i, s.charCodeAt(i)); };
+  writeStr(0,'RIFF'); view.setUint32(4, 36+dataSize, true);
+  writeStr(8,'WAVE');
+  writeStr(12,'fmt '); view.setUint32(16,16,true);
+  view.setUint16(20,1,true); view.setUint16(22,2,true);
+  view.setUint32(24,sampleRate,true); view.setUint32(28,sampleRate*2*2,true);
+  view.setUint16(32,4,true); view.setUint16(34,16,true);
+  writeStr(36,'data'); view.setUint32(40,dataSize,true);
+  let off = 44;
+  for(let c=0;c<chunksL.length;c++){
+    const L=chunksL[c], R=chunksR[c];
+    for(let i=0;i<L.length;i++){
+      let l = Math.max(-1, Math.min(1, L[i]));
+      let r = Math.max(-1, Math.min(1, R[i]));
+      view.setInt16(off, l<0?l*0x8000:l*0x7fff, true); off+=2;
+      view.setInt16(off, r<0?r*0x8000:r*0x7fff, true); off+=2;
+    }
+  }
+  return new Blob([buf], {type:'audio/wav'});
+}
+function triggerDownload(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download=filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 5000);
+}
+function recordTimestamp(){
+  const d = new Date();
+  const pad = n => (n<10?'0':'')+n;
+  return d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'-'+pad(d.getHours())+pad(d.getMinutes())+pad(d.getSeconds());
+}
+
+/* ══════════ PRESETS ══════════ */
+function collectState(fx){
+  if(fx.startsWith('sg')){
+    const idx = parseInt(fx.slice(2));
+    const s = sg(idx);
+    return { mode:s.mode, wave:s.wave, freq:s.freqHz, gain:s.gainDb, pan:s.pan, pulse:s.pulseMs, adsr:{...s.adsr} };
+  }
+  if(fx.startsWith('lfo')){
+    const idx = parseInt(fx.slice(3));
+    const L = lfo(idx);
+    return {
+      rate:L.rateHz, shape:L.shape,
+      target1: L.targets[0].paramName==='off' ? 'off' : `${L.targets[0].sigIdx}:${L.targets[0].paramName}`,
+      target2: L.targets[1].paramName==='off' ? 'off' : `${L.targets[1].sigIdx}:${L.targets[1].paramName}`,
+      ranges: JSON.parse(JSON.stringify(L.rangesPerKey)),
+    };
+  }
+}
+function applyState(fx, state){
+  if(fx.startsWith('sg')){
+    const idx = parseInt(fx.slice(2));
+    setSigGenMode(idx, state.mode || 'steady');
+    document.getElementById(`sg${idx}-wave`).value = state.wave; setSgWave(idx, state.wave);
+    setSgFreqHz(idx, state.freq);
+    setSgGainDb(idx, state.gain);
+    setSgPan(idx, state.pan);
+    document.getElementById(`sg${idx}-pulse-sl`).value = state.pulse; setSgPulse(idx, state.pulse);
+    if(state.adsr){ sg(idx).adsr = {...ADSR_DEFAULTS, ...state.adsr}; applyAdsrToEngine(idx); drawAdsr(idx); }
+  }
+  if(fx.startsWith('lfo')){
+    const idx = parseInt(fx.slice(3));
+    setLfoRateHz(idx, state.rate);
+    document.getElementById(`lfo${idx}-shape`).value = state.shape; setLfoShape(idx, state.shape);
+    if(state.ranges) Object.assign(lfo(idx).rangesPerKey, state.ranges);
+    setLfoTarget(idx, 1, state.target1 || '1:freq');
+    setLfoTarget(idx, 2, state.target2 || 'off');
+  }
+}
+function handlePreset(evt, btn){
+  const fx = btn.dataset.fx;
+  const slot = btn.dataset.slot;
+  const key = `${fx}-${slot}`;
+  if(evt && evt.shiftKey){
+    presets[key] = collectState(fx);
+    savePresets();
+    btn.classList.add('saved');
+    return;
+  }
+  if(presets[key]) applyState(fx, presets[key]);
+}
+function restorePresetUi(){
+  document.querySelectorAll('.head-preset-slot').forEach(btn=>{
+    const key = `${btn.dataset.fx}-${btn.dataset.slot}`;
+    if(presets[key]) btn.classList.add('saved');
+  });
+}
+
+/* ══════════ EDITABLE VALUES ══════════ */
+function makeEditable(el, parseFn, applyFn){
+  if(!el || el.__editableBound) return; el.__editableBound=true;
+  el.addEventListener('click', ()=>{
+    const rect = el.getBoundingClientRect();
+    const input = document.createElement('input');
+    input.type='text';
+    input.value = el.dataset.value ?? el.textContent.trim();
+    input.className='adsr-editbox';
+    input.style.left = (rect.left+window.scrollX)+'px';
+    input.style.top  = (rect.top+window.scrollY-1)+'px';
+    document.body.appendChild(input);
+    input.focus(); input.select();
+    function commit(){
+      const parsed = parseFn(input.value);
+      if(parsed!==null && parsed!==undefined && !Number.isNaN(parsed)) applyFn(parsed);
+      input.remove();
+    }
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', e=>{
+      if(e.key==='Enter'){ e.preventDefault(); commit(); }
+      else if(e.key==='Escape'){ e.preventDefault(); input.remove(); }
+    });
+  });
+}
+function bindEditables(){
+  for (let i=1; i<=2; i++) {
+    makeEditable(document.getElementById(`sg${i}-freq-val`),
+      v => parseFloat(v.replace(/[^\d.\-]/g,'')),
+      v => setSgFreqHz(i, v));
+    makeEditable(document.getElementById(`sg${i}-gain-val`),
+      v => parseFloat(v.replace(/[^\d.\-]/g,'')),
+      v => setSgGainDb(i, v));
+    makeEditable(document.getElementById(`sg${i}-pan-val`),
+      v => { const s=String(v).trim().toUpperCase(); if(s==='C')return 0;
+             if(s.startsWith('L')) return -parseFloat(s.slice(1))/100;
+             if(s.startsWith('R')) return parseFloat(s.slice(1))/100;
+             return parseFloat(s); },
+      v => setSgPan(i, v));
+    makeEditable(document.getElementById(`sg${i}-pulse-val`),
+      v => parseFloat(v.replace(/[^\d.\-]/g,'')),
+      v => { document.getElementById(`sg${i}-pulse-sl`).value = v; setSgPulse(i, v); });
+  }
+  for (let i=1; i<=NUM_LFOS; i++) {
+    makeEditable(document.getElementById(`lfo${i}-rate-val`),
+      v => parseFloat(v.replace(/[^\d.\-]/g,'')),
+      v => setLfoRateHz(i, v));
+    [1,2].forEach(slot => {
+      makeEditable(document.getElementById(`lfo${i}-min${slot}-val`),
+        v => { const t=lfo(i).targets[slot-1]; if(t.paramName==='off') return null; return TARGETS[t.paramName].parse(v); },
+        v => { if(!Number.isNaN(v)) setLfoMinVal(i, slot, v); });
+      makeEditable(document.getElementById(`lfo${i}-max${slot}-val`),
+        v => { const t=lfo(i).targets[slot-1]; if(t.paramName==='off') return null; return TARGETS[t.paramName].parse(v); },
+        v => { if(!Number.isNaN(v)) setLfoMaxVal(i, slot, v); });
+    });
+  }
+  makeEditable(document.getElementById('output-gain-val'),
+    v => parseFloat(v.replace(/[^\d.\-]/g,'')),
+    v => { document.getElementById('output-gain-db').value = v; setOutputGainDb(v); });
+}
+</script>
+</body>
+</html>

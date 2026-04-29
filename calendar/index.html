@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>calendar — chriso.org</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root {
+    --bg: #081818;
+    --paper: #ede3c8;
+    --paper-dim: rgba(237,227,200,0.55);
+    --paper-ghost: rgba(237,227,200,0.28);
+    --rose: #e07394;
+    --sage: #84baa2;
+    --periwinkle: #8e92d6;
+    --gold: #d9b973;
+    --rule: rgba(237,227,200,0.14);
+  }
+  body {
+    background: var(--bg);
+    color: var(--paper);
+    font-family: 'Courier New', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+    padding: 64px 6vw 120px;
+  }
+
+  a { color: inherit; text-decoration: none; }
+
+  #back {
+    position: fixed; top: 24px; left: 28px;
+    font-size: .72rem; letter-spacing: .14em;
+    color: #7a7468; transition: color .25s;
+    z-index: 10;
+  }
+  #back:hover { color: #dccfae; }
+
+  header.page-head {
+    max-width: 960px; margin: 0 auto 48px;
+  }
+  header.page-head h1 {
+    font-family: 'Courier New', monospace;
+    font-weight: 900;
+    font-size: clamp(36px, 6vw, 72px);
+    color: var(--paper);
+    letter-spacing: 0.02em;
+  }
+  header.page-head .subtitle {
+    margin-top: 10px;
+    font-size: .78rem;
+    letter-spacing: .18em;
+    color: var(--paper-dim);
+    text-transform: lowercase;
+  }
+  header.page-head .lead {
+    margin-top: 26px;
+    max-width: 640px;
+    font-size: 0.92rem;
+    line-height: 1.7;
+    color: var(--paper-dim);
+  }
+
+  section.events {
+    max-width: 960px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  .event {
+    position: relative;
+    border-top: 1px solid var(--rule);
+    padding: 26px 28px 26px 44px;
+    transition: background 0.35s ease;
+  }
+  .event::before {
+    content: '';
+    position: absolute;
+    left: 14px; top: 32px;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--rose);
+    box-shadow: 0 0 12px rgba(224,115,148,0.45);
+  }
+  .event.performing::before {
+    background: var(--gold);
+    box-shadow: 0 0 12px rgba(217,185,115,0.55);
+  }
+  .event:hover { background: rgba(237,227,200,0.035); }
+
+  .event .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 18px;
+    align-items: center;
+    font-size: 0.7rem;
+    letter-spacing: 0.18em;
+    color: var(--paper-dim);
+    text-transform: lowercase;
+  }
+  .event .meta .date {
+    color: var(--paper);
+    letter-spacing: .12em;
+  }
+  .event .loctag {
+    padding: 2px 8px;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    font-size: 0.62rem;
+  }
+  .event .badge {
+    padding: 2px 8px;
+    border-radius: 2px;
+    font-size: 0.62rem;
+    letter-spacing: .2em;
+    font-weight: 700;
+  }
+  .badge.field-trip {
+    background: rgba(132,186,162,0.13);
+    color: var(--sage);
+    border: 1px solid rgba(132,186,162,0.4);
+  }
+  .badge.free-under-18 {
+    background: rgba(217,185,115,0.13);
+    color: var(--gold);
+    border: 1px solid rgba(217,185,115,0.4);
+  }
+  .badge.performing {
+    background: rgba(217,185,115,0.13);
+    color: var(--gold);
+    border: 1px solid rgba(217,185,115,0.4);
+  }
+  .badge.featured {
+    background: rgba(224,115,148,0.13);
+    color: var(--rose);
+    border: 1px solid rgba(224,115,148,0.4);
+  }
+
+  .event h2 {
+    margin-top: 10px;
+    font-family: 'Courier New', monospace;
+    font-weight: 700;
+    font-size: clamp(18px, 2.4vw, 26px);
+    line-height: 1.25;
+    color: #f2d8dd;
+    letter-spacing: 0.01em;
+  }
+  .event.performing h2 {
+    color: var(--paper);
+  }
+  .event .venue {
+    margin-top: 6px;
+    font-size: 0.86rem;
+    color: var(--paper-dim);
+  }
+  .event .detail {
+    margin-top: 10px;
+    font-size: 0.76rem;
+    letter-spacing: 0.08em;
+    color: var(--paper-dim);
+    display: flex; flex-wrap: wrap; gap: 4px 18px;
+  }
+  .event .detail .k { color: rgba(237,227,200,0.35); margin-right: 4px; }
+  .event .genres {
+    margin-top: 10px;
+    display: flex; flex-wrap: wrap; gap: 6px;
+  }
+  .event .genre {
+    font-size: 0.62rem;
+    letter-spacing: 0.14em;
+    padding: 2px 8px;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    color: var(--paper-dim);
+  }
+  .event .notes {
+    margin-top: 14px;
+    max-width: 640px;
+    font-size: 0.84rem;
+    line-height: 1.65;
+    color: var(--paper-dim);
+  }
+  .event .links {
+    display: flex; gap: 22px; flex-wrap: wrap;
+    margin-top: 14px;
+  }
+  .event .tix,
+  .event .info {
+    font-size: 0.74rem;
+    letter-spacing: 0.16em;
+    border-bottom: 1px solid var(--paper-ghost);
+    padding-bottom: 2px;
+    transition: color 0.25s, border-color 0.25s;
+  }
+  .event .tix:hover,
+  .event .info:hover {
+    color: #f2d8dd;
+    border-color: var(--rose);
+  }
+
+  .legend {
+    max-width: 960px;
+    margin: 60px auto 0;
+    padding-top: 24px;
+    border-top: 1px solid var(--rule);
+    display: flex; flex-wrap: wrap; gap: 28px 40px;
+    font-size: 0.7rem;
+    letter-spacing: 0.14em;
+    color: var(--paper-dim);
+    text-transform: lowercase;
+  }
+  .legend .swatch {
+    display: inline-block;
+    width: 10px; height: 10px; border-radius: 50%;
+    margin-right: 8px; vertical-align: middle;
+  }
+  .legend .sw-rec    { background: var(--rose); box-shadow: 0 0 10px rgba(224,115,148,0.55); }
+  .legend .sw-perf   { background: var(--gold); box-shadow: 0 0 10px rgba(217,185,115,0.55); }
+  .legend .sw-ft     { background: var(--sage); box-shadow: 0 0 10px rgba(132,186,162,0.55); }
+
+  .placeholder-banner {
+    max-width: 960px;
+    margin: 0 auto 36px;
+    padding: 12px 18px;
+    border: 1px dashed rgba(237,227,200,0.18);
+    font-size: 0.74rem;
+    letter-spacing: 0.1em;
+    color: rgba(237,227,200,0.5);
+    text-transform: lowercase;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+<a id="back" href="/glitchpage/">← chriso.org</a>
+
+<header class="page-head">
+  <h1>calendar</h1>
+  <div class="subtitle">curated concerts · performances · festivals · camps · workshops</div>
+  <p class="lead">
+    A running, editorially curated list of live performance worth the trip — for students, families, friends.
+    Filters for age, price, and distance-from-Vashon, plus a field-trip flag for events Christopher is organizing a cohort around. Work in progress — backend and filter UI coming.
+  </p>
+</header>
+
+<div class="placeholder-banner">
+  seed data from the brainstorm handoff. platform (notion / supabase / pocketbase / custom) not yet chosen — schema and display are placeholder until that call is made.
+</div>
+
+<section class="events" id="events"></section>
+
+<div class="legend">
+  <span><span class="swatch sw-rec"></span>recommended</span>
+  <span><span class="swatch sw-perf"></span>christopher performing</span>
+  <span><span class="swatch sw-ft"></span>field-trip eligible</span>
+</div>
+
+<script>
+(async () => {
+  // Load manually-seeded events and (when present) live-GCal-synced events.
+  // live.json is written by calendar/sync.php; if it hasn't been run yet
+  // or the fetch failed, we silently skip it.
+  const loadJson = async (url) => {
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (_) { return null; }
+  };
+  const [manual, live] = await Promise.all([
+    loadJson('events.json'),
+    loadJson('live.json'),
+  ]);
+  const all = []
+    .concat((manual && manual.events) || [])
+    .concat((live   && live.events)   || []);
+
+  // De-dupe by id (live has precedence — keeps the synced copy if the
+  // same event appears in both sources).
+  const byId = new Map();
+  for (const ev of all) {
+    if (!ev) continue;
+    if (ev.id && byId.has(ev.id) && ev._source !== 'gcal') continue;
+    byId.set(ev.id || JSON.stringify([ev.title, ev.date_start]), ev);
+  }
+  const merged = [...byId.values()];
+
+  // Partition: upcoming (has date_start, >= today) vs TBA (null date).
+  // Past events fall off silently — not shown for now.
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const dated = [], tba = [];
+  for (const ev of merged) {
+    if (!ev.date_start) { tba.push(ev); continue; }
+    if (new Date(ev.date_end || ev.date_start) >= today) dated.push(ev);
+  }
+  dated.sort((a, b) => new Date(a.date_start) - new Date(b.date_start));
+  const events = [...dated, ...tba];   // TBAs rendered at the bottom
+
+  const host = document.getElementById('events');
+
+  // HTML-escape any string that will be interpolated into innerHTML.
+  // Calendar data is ultimately sourced from Google Calendar event
+  // titles/descriptions, which anyone who can edit the calendar
+  // (i.e. Christopher, or anyone he grants access to) can set to
+  // arbitrary text — escape defensively to prevent a crafted event
+  // from executing script on visitors.
+  const escapeHTML = s => String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+  // Only accept http(s) URLs for any <a href>. Refuses javascript:,
+  // data:, file:, etc. that could slip in through ICS or a hand-edit
+  // of events.json.
+  const safeHref = u => {
+    const s = String(u ?? '');
+    return /^https?:\/\//i.test(s) ? s : null;
+  };
+
+  const fmtRange = (startIso, endIso) => {
+    if (!startIso) return 'date tba';
+    const s = new Date(startIso);
+    const optsLong = { weekday:'short', month:'short', day:'numeric', year:'numeric' };
+    const optsShort = { month:'short', day:'numeric' };
+    const sStr = s.toLocaleDateString('en-US', optsLong);
+    if (!endIso) {
+      const timeStr = s.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+      return `${sStr} · ${timeStr}`;
+    }
+    const e = new Date(endIso);
+    const sameYear = s.getFullYear() === e.getFullYear();
+    const sameMonth = sameYear && s.getMonth() === e.getMonth();
+    if (sameMonth && (e - s) < 1000 * 60 * 60 * 36) {
+      // Two-night stand same month
+      return `${sStr} — ${e.toLocaleDateString('en-US', optsShort)}`;
+    }
+    return `${sStr} — ${e.toLocaleDateString('en-US', sameYear ? optsShort : optsLong)}`;
+  };
+
+  const priceStr = ev => {
+    if (ev.free_under_18 && (ev.price_min === 0 || ev.price_min == null)) return 'under-18 free';
+    if (ev.price_min == null && ev.price_max == null) return 'price varies';
+    if (ev.price_min === 0 && !ev.price_max) return 'free';
+    if (ev.price_min != null && ev.price_max != null) return `$${ev.price_min}–$${ev.price_max}`;
+    if (ev.price_min != null) return `from $${ev.price_min}`;
+    return '';
+  };
+
+  for (const ev of events) {
+    const el = document.createElement('article');
+    el.className = 'event' + (ev.christopher_performing ? ' performing' : '');
+
+    // Meta row: category badge(s) + date + location + status badges
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    const badges = [];
+    if (ev.christopher_performing) badges.push('<span class="badge performing">performing</span>');
+    if (ev.field_trip)             badges.push('<span class="badge field-trip">field trip</span>');
+    if (ev.free_under_18)          badges.push('<span class="badge free-under-18">under-18 free</span>');
+    if (ev.featured)               badges.push('<span class="badge featured">featured</span>');
+    meta.innerHTML = `
+      <span class="date">${escapeHTML(fmtRange(ev.date_start, ev.date_end))}</span>
+      <span class="loctag">${escapeHTML(ev.distance_zone || '')}</span>
+      ${badges.join('')}
+    `;
+    el.appendChild(meta);
+
+    const h2 = document.createElement('h2');
+    h2.textContent = ev.title;
+    el.appendChild(h2);
+
+    const venue = document.createElement('div');
+    venue.className = 'venue';
+    venue.textContent = [ev.venue, ev.city].filter(Boolean).join(' · ');
+    el.appendChild(venue);
+
+    // Detail row: price, age notes
+    const detailBits = [];
+    const p = priceStr(ev);
+    if (p) detailBits.push(`<span><span class="k">price</span>${escapeHTML(p)}</span>`);
+    if (ev.age_notes) detailBits.push(`<span><span class="k">ages</span>${escapeHTML(ev.age_notes)}</span>`);
+    else if (ev.age_min != null) detailBits.push(`<span><span class="k">ages</span>${escapeHTML(ev.age_min + '+')}</span>`);
+    if (detailBits.length) {
+      const detail = document.createElement('div');
+      detail.className = 'detail';
+      detail.innerHTML = detailBits.join('');
+      el.appendChild(detail);
+    }
+
+    // Genre pills
+    if (Array.isArray(ev.genres) && ev.genres.length) {
+      const g = document.createElement('div');
+      g.className = 'genres';
+      g.innerHTML = ev.genres.map(x => `<span class="genre">${escapeHTML(x)}</span>`).join('');
+      el.appendChild(g);
+    }
+
+    if (ev.notes) {
+      const notes = document.createElement('div');
+      notes.className = 'notes';
+      notes.textContent = ev.notes;
+      el.appendChild(notes);
+    }
+
+    // Links — only accept http(s) schemes (see safeHref above).
+    const ticketsHref = safeHref(ev.tickets_url);
+    const infoHref    = safeHref(ev.info_url);
+    if (ticketsHref || infoHref) {
+      const links = document.createElement('div');
+      links.className = 'links';
+      if (ticketsHref) {
+        const a = document.createElement('a');
+        a.className = 'tix'; a.href = ticketsHref;
+        a.target = '_blank'; a.rel = 'noopener';
+        a.textContent = 'tickets ↗';
+        links.appendChild(a);
+      }
+      if (infoHref) {
+        const a = document.createElement('a');
+        a.className = 'info'; a.href = infoHref;
+        a.target = '_blank'; a.rel = 'noopener';
+        a.textContent = 'info ↗';
+        links.appendChild(a);
+      }
+      el.appendChild(links);
+    }
+
+    host.appendChild(el);
+  }
+})();
+</script>
+</body>
+</html>
