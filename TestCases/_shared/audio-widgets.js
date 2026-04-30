@@ -328,7 +328,7 @@
   }
 
   /* ── Helpers ──────────────────────────────────────────────────────────── */
-  // Standard mic constraints (DSP forced off, used everywhere in tellofone).
+  // Standard mic constraints (DSP forced off, used everywhere in tellofoam).
   function micConstraints(deviceId, channelCount = 1) {
     const c = {
       sampleRate: { ideal: 48000 },

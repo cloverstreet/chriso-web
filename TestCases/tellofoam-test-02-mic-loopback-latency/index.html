@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Tellofone TC#02 — Mic Loopback + Round-Trip Latency Probe</title>
+<title>TelloFoam TC#02 — Mic Loopback + Round-Trip Latency Probe</title>
 <link rel="stylesheet" href="../_shared/audio-widgets.css">
 <style>
   .probe-status {
@@ -25,7 +25,7 @@
 </head>
 <body>
 
-<div class="title">Tellofone TC#02 · Mic Loopback + Round-Trip Latency Probe</div>
+<div class="title">TelloFoam TC#02 · Mic Loopback + Round-Trip Latency Probe</div>
 <div class="subtitle">verify monitor path · measure your local audio i/o floor</div>
 
 <div class="warn">⚠ Headphones for Monitor mode · speakers (no headphones) for Probe mode — different rules per panel.</div>
@@ -103,7 +103,7 @@
           <br><br>
           <strong style="color:var(--red)">Probe mode</strong> — speakers on, headphones off. Click <em>Run Probe</em>. A 4 kHz click fires; the worklet captures the mic for 0.5 s and finds the click in the returned audio. Round-trip = (click index ÷ sample rate). Subtract acoustic propagation (3.4 ms / m × distance) to isolate the electrical path through your machine.
           <br><br>
-          What "electrical" tells you: the floor your hardware adds — driver buffers, ADC, DAC, OS scheduling. This is the irreducible piece tellofone has to add network latency on top of. Tighter floor = better madrigal odds.
+          What "electrical" tells you: the floor your hardware adds — driver buffers, ADC, DAC, OS scheduling. This is the irreducible piece tellofoam has to add network latency on top of. Tighter floor = better madrigal odds.
           <br><br>
           Fireface at small buffer sizes (32-64 samples) should land electrical near 5-15 ms. Built-in macbook mic at default buffer often hits 30-50 ms.
         </div>

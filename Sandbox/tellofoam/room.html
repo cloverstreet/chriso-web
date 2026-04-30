@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Tellofone — Room</title>
+<title>TelloFoam — Room</title>
 <link rel="stylesheet" href="../../TestCases/_shared/audio-widgets.css">
 <style>
   body { padding: 24px 16px; }
@@ -39,7 +39,7 @@
 <body>
 
 <div class="topbar">
-  <span class="name">Tellofone Room</span>
+  <span class="name">TelloFoam Room</span>
   <span class="role" id="roleBadge">guest</span>
   <span class="spacer"></span>
   <span class="lbl">You</span><span class="val" id="meName">—</span>
@@ -125,7 +125,7 @@ const params = new URLSearchParams(location.search);
 const IS_HOST = params.get('host') === '1';
 const MY_NAME = (params.get('name') || (IS_HOST ? 'Host' : 'Guest')).slice(0, 24);
 const MY_CODE = params.get('code') || '';
-const HOST_PEER_ID = 'tellofone-room-host';
+const HOST_PEER_ID = 'tellofoam-room-host';
 
 // Host-side invite code list — edit here, redeploy. Hardcoded for v0.
 // Each code: { uses: N (max times the code can be used), expires: ISO string or null }

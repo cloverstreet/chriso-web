@@ -1,6 +1,6 @@
 <?php
 /**
- * tellofone — invite request handler
+ * tellofoam — invite request handler
  *
  * Receives a POST from index.html when someone clicks "Request an invite",
  * emails the request to cloverstreet@gmail.com, and returns JSON status.
@@ -92,11 +92,11 @@ if ($fh) {
 
 // Compose and send
 $to      = 'cloverstreet@gmail.com';
-$subject = 'Tellofone invite request — ' . $requestId;
+$subject = 'TelloFoam invite request — ' . $requestId;
 $ua      = $_SERVER['HTTP_USER_AGENT'] ?? '';
 $ts      = date('c', $now);
 
-$body = "Tellofone invite request\n";
+$body = "TelloFoam invite request\n";
 $body .= "------------------------\n";
 $body .= "Name:       " . $name . "\n";
 $body .= "Request ID: " . $requestId . "\n";
@@ -110,9 +110,9 @@ $body .= "\n";
 $body .= "Reply with a code from the HOST_CODES list in room.html, or add\n";
 $body .= "a new entry there and redeploy.\n";
 
-$headers = "From: tellofone@chriso.org\r\n"
-         . "Reply-To: tellofone@chriso.org\r\n"
-         . "X-Mailer: tellofone-request-invite/1.0\r\n";
+$headers = "From: tellofoam@chriso.org\r\n"
+         . "Reply-To: tellofoam@chriso.org\r\n"
+         . "X-Mailer: tellofoam-request-invite/1.0\r\n";
 
 $ok = @mail($to, $subject, $body, $headers);
 

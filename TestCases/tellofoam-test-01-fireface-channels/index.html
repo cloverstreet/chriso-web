@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Tellofone TC#01 — Fireface Channel Selector</title>
+<title>TelloFoam TC#01 — Fireface Channel Selector</title>
 <link rel="stylesheet" href="../_shared/audio-widgets.css">
 <style>
   /* TC#01-specific tweaks: per-channel input rack */
@@ -44,7 +44,7 @@
 </head>
 <body>
 
-<div class="title">Tellofone TC#01 · Fireface Channel Selector</div>
+<div class="title">TelloFoam TC#01 · Fireface Channel Selector</div>
 <div class="subtitle">verify per-channel mic capture · web audio + getusermedia · all dsp off</div>
 
 <div class="warn">⚠ Wear headphones before arming any channel — open speakers + live mic = feedback.</div>
@@ -112,7 +112,7 @@
           3. Click <em>Open Stream</em>. Note: <em>Chrome caps audio input at 2 channels</em> regardless of device. To get inputs 9-12 (or wherever your mics are) into the browser, route them in TotalMix FX → "Software Playback 1-2" so they appear as the first 2 channels.<br>
           4. The rack to the right shows one strip per channel: meter + gain in dB + ARM button.<br>
           5. ARMing a channel routes it through its gain into the master monitor sum. Output Routing picks where that sum goes — pick your output device, then which physical channel pair (output side has no 2-ch cap).<br>
-          6. <em>Base + Output latency</em> is the browser audio pipeline floor. Total tellofone latency = this ×2 + WebRTC jitter buffer + network RTT.
+          6. <em>Base + Output latency</em> is the browser audio pipeline floor. Total tellofoam latency = this ×2 + WebRTC jitter buffer + network RTT.
         </div>
       </div>
     </div>

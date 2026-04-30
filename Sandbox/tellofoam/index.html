@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Tellofone</title>
+<title>TelloFoam</title>
 <link rel="stylesheet" href="../../TestCases/_shared/audio-widgets.css">
 <style>
   body { padding: 60px 16px; }
@@ -46,7 +46,7 @@
 <body>
 
 <div class="hero">
-  <div class="hero-title">Tellofone</div>
+  <div class="hero-title">TelloFoam</div>
   <div class="hero-sub">an audio room · invite-only · bring headphones</div>
 </div>
 
@@ -92,7 +92,7 @@
   </div>
 </div>
 
-<div class="foot">v0.2 · chriso.org/Sandbox/tellofone</div>
+<div class="foot">v0.2 · chriso.org/Sandbox/tellofoam</div>
 
 <script>
 'use strict';
@@ -117,10 +117,10 @@ $('joinBtn').addEventListener('click', () => {
 });
 
 // Restore last-used name
-const last = localStorage.getItem('tellofone.lastName');
+const last = localStorage.getItem('tellofoam.lastName');
 if (last) $('name').value = last;
 $('name').addEventListener('change', () => {
-  localStorage.setItem('tellofone.lastName', $('name').value.trim());
+  localStorage.setItem('tellofoam.lastName', $('name').value.trim());
 });
 
 // ── Request invite (in-page, no mailto) ───────────────
@@ -194,7 +194,7 @@ document.querySelector('.hero-title').addEventListener('click', () => {
   if (now - lastClick > 2000) titleClicks = 0;
   lastClick = now; titleClicks++;
   if (titleClicks >= 5) {
-    if (confirm('Open as host? You will claim the tellofone-room-host PeerJS ID.')) {
+    if (confirm('Open as host? You will claim the tellofoam-room-host PeerJS ID.')) {
       window.location.href = 'room.html?host=1';
     }
     titleClicks = 0;
