@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>hello worl</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -12,6 +12,11 @@
     width: 100vw;
     height: 100vh;
     overflow: hidden;
+    /* Touch: drag drives the audio engine; never let it scroll/zoom the page. */
+    touch-action: none;
+    overscroll-behavior: none;
+    -webkit-user-select: none;
+    user-select: none;
   }
 
   canvas {
@@ -103,7 +108,10 @@ wireNavAudio();
 let navVisible  = false;
 let navTimeout  = null;
 
-document.addEventListener('mousemove', e => {
+// pointermove fires for mouse, pen, AND touch (while finger is down).
+// Replacing mousemove with pointermove makes the lower-third nav reveal
+// work on phones — finger drag in lower third unhides the nav.
+document.addEventListener('pointermove', e => {
   const inLower = e.clientY > window.innerHeight * 0.67;
   if (inLower && !navVisible) {
     navVisible = true;
@@ -211,7 +219,10 @@ window.addEventListener('resize', resize);
 let mx = 0, my = 0, lx = 0, ly = 0;
 let energy = 0, peak = 0;
 
-document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
+// pointermove drives the audio engine's velocity tracking. On touch this
+// only fires while a finger is down — which is exactly the behaviour we
+// want: drag-to-play, lift-to-let-it-decay.
+document.addEventListener('pointermove', e => { mx = e.clientX; my = e.clientY; });
 
 
 // (per-letter channel state lives on `letters[]`, defined above)
@@ -801,9 +812,12 @@ function playClickTransition() {
 // Wire up nav links
 function wireNavAudio() {
   nav.querySelectorAll('a').forEach(a => {
-    a.addEventListener('mouseenter', startHoverTone);
-    a.addEventListener('mousemove',  updateHoverFreqs);
-    a.addEventListener('mouseleave', stopHoverTone);
+    // pointerenter/leave fire for mouse hover AND for finger-touching the
+    // link area. updateHoverFreqs runs on pointermove so the touch-drag
+    // experience matches the mouse-hover experience.
+    a.addEventListener('pointerenter', startHoverTone);
+    a.addEventListener('pointermove',  updateHoverFreqs);
+    a.addEventListener('pointerleave', stopHoverTone);
     a.addEventListener('click', e => {
       e.preventDefault();
       playClickTransition();
@@ -874,16 +888,19 @@ function updateAudio(dt, rawSpeed) {
   masterGain.gain.setTargetAtTime(0.22 * fadeMul, now, 0.1);
 }
 
-// Start audio on first user interaction (browser autoplay policy)
+// Start audio on first user interaction (browser autoplay policy).
+// pointerdown / pointermove cover mouse, pen, and touch — so a finger
+// tap or drag on a phone unlocks the audio context the same way a mouse
+// click or move does on desktop.
 function tryStartAudio() {
   initAudio();
-  document.removeEventListener('mousemove', tryStartAudio);
-  document.removeEventListener('mousedown', tryStartAudio);
-  document.removeEventListener('keydown',   tryStartAudio);
+  document.removeEventListener('pointermove', tryStartAudio);
+  document.removeEventListener('pointerdown', tryStartAudio);
+  document.removeEventListener('keydown',     tryStartAudio);
 }
-document.addEventListener('mousemove', tryStartAudio);
-document.addEventListener('mousedown', tryStartAudio);
-document.addEventListener('keydown',   tryStartAudio);
+document.addEventListener('pointermove', tryStartAudio);
+document.addEventListener('pointerdown', tryStartAudio);
+document.addEventListener('keydown',     tryStartAudio);
 
 
 // ══════════════════════════════════════════════════════════════════════
