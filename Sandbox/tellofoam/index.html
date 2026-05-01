@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
 <title>TelloFoam</title>
 <link rel="stylesheet" href="../../TestCases/_shared/audio-widgets.css">
 <style>
-  body { padding: 60px 16px; }
+  body { padding: 32px 16px 80px; touch-action: manipulation; }
   .hero { text-align:center; padding-bottom:8px; }
   .hero-title {
     font-family:'Courier New',monospace;
@@ -17,15 +17,63 @@
     font-size:.62rem; color:var(--text-muted); letter-spacing:.24em;
     text-transform:uppercase; margin-top:6px;
   }
-  .module { width: 360px; }
-  .req-link {
-    font-size:.62rem; color:var(--text-2nd); letter-spacing:.1em;
-    text-align:center; padding:6px 0;
+  .host-badge {
+    display:inline-block; margin-left:10px;
+    font-size:.58rem; color:var(--green);
+    border:1px solid var(--green); padding:2px 6px;
+    letter-spacing:.18em; text-transform:uppercase;
+    vertical-align:middle;
   }
+
+  /* ── Stepper ──────────────────────────────────────────── */
+  .steps { width: 420px; max-width: 100%; display:flex; flex-direction:column; gap:8px; }
+
+  .step {
+    background:var(--bg-module); border:1px solid var(--border);
+    transition: border-color .2s, opacity .2s;
+    overflow:hidden;
+  }
+  .step-head {
+    display:flex; align-items:center; gap:8px;
+    padding:8px 12px; border-bottom:1px solid var(--border-dim);
+    cursor:default;
+  }
+  .step-num {
+    width:20px; height:20px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    border:1px solid var(--border-mute); color:var(--text-muted);
+    font-size:.62rem; letter-spacing:.06em;
+    border-radius:50%;
+  }
+  .step-title { font-size:.72rem; color:#bbb; letter-spacing:.16em; text-transform:uppercase; flex:1; }
+  .step-summary { font-size:.6rem; color:var(--text-dim); letter-spacing:.06em; }
+  .step-body { padding: 10px 12px 12px; display:flex; flex-direction:column; gap:7px; }
+
+  .step.active                        { border-color: var(--amber); }
+  .step.active .step-num              { border-color: var(--amber); color: var(--amber); }
+  .step.done                          { opacity:.85; }
+  .step.done .step-num                { border-color: var(--green); color: var(--green); background: rgba(42,154,42,0.15); }
+  .step.done .step-num::before        { content: "✓"; }
+  .step.done .step-num                { font-size: 0; }
+  .step.done .step-num::before        { font-size: .72rem; }
+  .step.done .step-body               { display:none; }
+  .step.locked                        { opacity:.4; pointer-events:none; }
+  .step.locked .step-body             { display:none; }
+
+  .step.done .step-edit {
+    display:inline-block; margin-left:auto;
+    font-size:.55rem; color:var(--amber); cursor:pointer;
+    letter-spacing:.1em; text-transform:uppercase;
+  }
+  .step.done .step-edit:hover { color:var(--amber-bright); text-decoration:underline; }
+  .step:not(.done) .step-edit { display:none; }
+
+  /* ── Form bits ──────────────────────────────────────────── */
+  .req-link { font-size:.62rem; color:var(--text-2nd); letter-spacing:.1em; text-align:center; padding:6px 0; }
   .req-link a { color:var(--amber); text-decoration:none; cursor:pointer; }
   .req-link a:hover { color:var(--amber-bright); text-decoration:underline; }
 
-  .request-form { display:none; }
+  .request-form { display:none; padding-top:6px; border-top:1px dashed var(--border-dim); }
   .request-form.open { display:flex; flex-direction:column; gap:7px; }
   textarea {
     font-family:'Courier New',monospace; font-size:.62rem; color:var(--text-2nd);
@@ -33,50 +81,119 @@
     width:100%; outline:none; resize:vertical; min-height:60px;
   }
   textarea:focus { border-color:var(--amber); }
-  /* honeypot — invisible to humans, attractive to bots */
   .hp-field { position:absolute; left:-9999px; width:1px; height:1px; opacity:0; }
   .request-status { font-size:.62rem; padding:6px; text-align:center; letter-spacing:.08em; }
-  .request-status.ok   { color:var(--green); border:1px solid var(--green); }
-  .request-status.err  { color:var(--red);   border:1px solid var(--red); }
+  .request-status.ok  { color:var(--green); border:1px solid var(--green); }
+  .request-status.err { color:var(--red);   border:1px solid var(--red); }
+
+  .enter-room-btn {
+    font-size:.84rem; padding:14px 16px; letter-spacing:.18em;
+    background:var(--bg-module); border-color:var(--green); color:var(--green);
+  }
+  .enter-room-btn:hover:not(:disabled) {
+    background:rgba(42,154,42,0.1); color:var(--green); border-color:var(--green);
+    box-shadow:0 0 8px #2a9a2a44;
+  }
 
   .docs { font-size:.62rem; line-height:1.7; color:var(--text-2nd); padding:8px 4px; }
   .docs em { color:var(--amber); font-style:normal; }
+
+  .row { align-items:flex-start; }
 </style>
 </head>
 <body>
 
 <div class="hero">
-  <div class="hero-title">TelloFoam</div>
+  <div class="hero-title">TelloFoam<span class="host-badge" id="hostBadge" style="display:none">host</span></div>
   <div class="hero-sub">an audio room · invite-only · bring headphones</div>
 </div>
 
 <div class="row">
-  <div class="module">
-    <div class="mod-head">Join</div>
-    <div class="mod-body">
-      <div class="lbl">Your name</div>
-      <input type="text" id="name" placeholder="how others see you" autocomplete="given-name" maxlength="24">
-      <div class="lbl">Invite code</div>
-      <input type="text" id="code" placeholder="from Christophero" autocomplete="off" maxlength="24">
-      <button id="joinBtn">Join the Room</button>
-      <div class="req-link" id="requestPrompt">
-        Don't have a code? <a id="requestToggle">Request one</a>
-      </div>
+  <div class="steps">
 
-      <!-- In-page request form (no mailto: — keeps everything on this tab) -->
-      <div class="request-form" id="requestForm">
-        <div class="lbl">Tell Christophero why / when</div>
-        <textarea id="context" placeholder="Optional. e.g. 'rehearsal Tuesday 7pm with the trio' or 'just want to try it'" maxlength="1000"></textarea>
-        <!-- honeypot — leave empty, hidden field bots tend to fill -->
-        <input type="text" name="website" id="hp" class="hp-field" tabindex="-1" autocomplete="off">
-        <button id="sendRequestBtn">Send Request</button>
-        <div class="request-status" id="requestStatus" style="display:none"></div>
-        <div class="req-link"><a id="requestCancel">cancel</a></div>
+    <!-- ── Step 1 ───────────────────────────────────────── -->
+    <div class="step active" data-step="1">
+      <div class="step-head">
+        <div class="step-num">1</div>
+        <div class="step-title">Who are you</div>
+        <span class="step-summary" id="s1Summary"></span>
+        <span class="step-edit" data-edit="1">edit</span>
+      </div>
+      <div class="step-body">
+        <div class="lbl">Your name</div>
+        <input type="text" id="name" placeholder="how others see you" autocomplete="given-name" maxlength="24">
+        <div class="lbl" id="codeLbl">Invite code</div>
+        <input type="text" id="code" placeholder="from Christophero" autocomplete="off" maxlength="24">
+        <button id="step1NextBtn">Next</button>
+        <div class="req-link" id="requestPrompt">
+          Don't have a code? <a id="requestToggle">Request one</a>
+        </div>
+        <div class="request-form" id="requestForm">
+          <div class="lbl">Tell Christophero why / when</div>
+          <textarea id="context" placeholder="Optional. e.g. 'rehearsal Tuesday 7pm with the trio'" maxlength="1000"></textarea>
+          <input type="text" name="website" id="hp" class="hp-field" tabindex="-1" autocomplete="off">
+          <button id="sendRequestBtn">Send Request</button>
+          <div class="request-status" id="requestStatus" style="display:none"></div>
+          <div class="req-link"><a id="requestCancel">cancel</a></div>
+        </div>
       </div>
     </div>
+
+    <!-- ── Step 2 ───────────────────────────────────────── -->
+    <div class="step locked" data-step="2">
+      <div class="step-head">
+        <div class="step-num">2</div>
+        <div class="step-title">Audio devices</div>
+        <span class="step-summary" id="s2Summary"></span>
+        <span class="step-edit" data-edit="2">edit</span>
+      </div>
+      <div class="step-body">
+        <button id="permBtn">Grant Mic Access</button>
+        <div class="lbl">Input device</div>
+        <select id="deviceSel" disabled><option>—</option></select>
+        <div class="lbl">Output device</div>
+        <select id="outDeviceSel" disabled><option>—</option></select>
+        <div class="lbl">Output channel pair</div>
+        <select id="outChannelSel" disabled><option>Ch 1-2</option></select>
+        <button id="step2NextBtn" disabled>Next</button>
+      </div>
+    </div>
+
+    <!-- ── Step 3 ───────────────────────────────────────── -->
+    <div class="step locked" data-step="3">
+      <div class="step-head">
+        <div class="step-num">3</div>
+        <div class="step-title">Mic test</div>
+        <span class="step-summary" id="s3Summary"></span>
+        <span class="step-edit" data-edit="3">edit</span>
+      </div>
+      <div class="step-body">
+        <div class="docs" style="padding:0">Speak. The bar should jump. Drag the blue thumb to set your mic level.</div>
+        <div id="testMeterMount"></div>
+        <button id="monitorBtn" class="danger" disabled>Monitor: OFF</button>
+        <div class="docs" style="padding:0; font-size:.56rem;">Monitor sends your mic to your <em>own</em> output. Headphones only — speakers will feed back.</div>
+        <div class="kv"><span class="lbl">Sample rate</span><span class="val" id="vSR">—</span></div>
+        <div class="kv"><span class="lbl">Audio floor</span><span class="val" id="vFloor">—</span></div>
+        <button id="step3NextBtn" disabled>Next</button>
+      </div>
+    </div>
+
+    <!-- ── Step 4 ───────────────────────────────────────── -->
+    <div class="step locked" data-step="4">
+      <div class="step-head">
+        <div class="step-num">4</div>
+        <div class="step-title">Enter</div>
+        <span class="step-summary"></span>
+      </div>
+      <div class="step-body">
+        <div class="docs" style="padding:0">Everything's set. Click below to join the room.</div>
+        <button id="enterRoomBtn" class="enter-room-btn">Enter the Room</button>
+      </div>
+    </div>
+
   </div>
 
-  <div class="module">
+  <div class="module" style="width:340px">
     <div class="mod-head">What this is</div>
     <div class="mod-body">
       <div class="docs">
@@ -92,64 +209,121 @@
   </div>
 </div>
 
-<div class="foot">v0.2 · chriso.org/Sandbox/tellofoam</div>
+<div class="foot">v0.3 · chriso.org/Sandbox/tellofoam · multi-step entry</div>
 
+<script src="../../TestCases/_shared/audio-widgets.js"></script>
 <script>
 'use strict';
+const W = window.AudioWidgets;
 const $ = id => document.getElementById(id);
 
-// Generate a request ID once per page load (for tracking by Christophero)
+// Generate a request ID once per page load
 const reqId = (Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 6))
   .toUpperCase();
 
-// ── Join flow ─────────────────────────────────────────
-$('joinBtn').addEventListener('click', () => {
-  const name = $('name').value.trim();
-  const code = $('code').value.trim();
-  if (!name) { alert('Enter your name.'); $('name').focus(); return; }
-  if (!code) { alert('Enter an invite code, or request one.'); $('code').focus(); return; }
-  const url = 'room.html?code=' + encodeURIComponent(code) + '&name=' + encodeURIComponent(name);
-  window.location.href = url;
+// ── State ──────────────────────────────────────────────
+let isHost = sessionStorage.getItem('tf.isHost') === '1';
+let permissionGranted = false;
+let testStream = null;
+let testCtx = null;
+let testMicSource = null, testMicGain = null;
+let testMonGain = null;
+let testMeter = null;
+let monitoring = false;
+
+// ── Step navigation ────────────────────────────────────
+function goToStep(n) {
+  document.querySelectorAll('.step').forEach(el => {
+    const s = parseInt(el.dataset.step);
+    el.classList.remove('active', 'done', 'locked');
+    if (s < n)      el.classList.add('done');
+    else if (s === n) el.classList.add('active');
+    else            el.classList.add('locked');
+  });
+  // Scroll the active step into view (helpful on mobile)
+  const active = document.querySelector('.step.active');
+  if (active) active.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+document.querySelectorAll('.step-edit').forEach(el => {
+  el.addEventListener('click', () => {
+    goToStep(parseInt(el.dataset.edit));
+  });
 });
 
-['name','code'].forEach(id => {
-  $(id).addEventListener('keydown', e => { if (e.key === 'Enter') $('joinBtn').click(); });
+// ── Step 1: Identity ───────────────────────────────────
+applyHostMode();
+
+function applyHostMode() {
+  if (!isHost) return;
+  $('hostBadge').style.display = 'inline-block';
+  $('codeLbl').textContent = 'Invite code (skipped — host)';
+  $('code').value = '(host)';
+  $('code').disabled = true;
+  $('requestPrompt').style.display = 'none';
+}
+
+// Title 5-click → host unlock (guest path can become host)
+let titleClicks = 0, lastClick = 0;
+document.querySelector('.hero-title').addEventListener('click', () => {
+  const now = Date.now();
+  if (now - lastClick > 2000) titleClicks = 0;
+  lastClick = now; titleClicks++;
+  if (titleClicks >= 5 && !isHost) {
+    if (confirm('Open as host? You will claim the tellofoam-room-host PeerJS ID.')) {
+      isHost = true;
+      sessionStorage.setItem('tf.isHost', '1');
+      applyHostMode();
+    }
+    titleClicks = 0;
+  }
 });
 
-// Restore last-used name
+// Restore previously-entered name
 const last = localStorage.getItem('tellofoam.lastName');
 if (last) $('name').value = last;
 $('name').addEventListener('change', () => {
   localStorage.setItem('tellofoam.lastName', $('name').value.trim());
 });
 
-// ── Request invite (in-page, no mailto) ───────────────
+['name','code'].forEach(id => {
+  $(id).addEventListener('keydown', e => { if (e.key === 'Enter') $('step1NextBtn').click(); });
+});
+
+$('step1NextBtn').addEventListener('click', () => {
+  const name = $('name').value.trim();
+  const code = isHost ? '(host)' : $('code').value.trim();
+  if (!name) { alert('Enter your name.'); $('name').focus(); return; }
+  if (!isHost && !code) { alert('Enter an invite code, or request one.'); $('code').focus(); return; }
+  sessionStorage.setItem('tf.name', name);
+  sessionStorage.setItem('tf.code', code);
+  $('s1Summary').textContent = isHost ? `${name} (host)` : `${name} · ${code}`;
+  goToStep(2);
+});
+
+// ── Step 1 follow-up: invite-request form ──────────────
 $('requestToggle').addEventListener('click', e => {
   e.preventDefault();
   $('requestForm').classList.add('open');
   $('requestPrompt').style.display = 'none';
   $('context').focus();
 });
-
 $('requestCancel').addEventListener('click', e => {
   e.preventDefault();
   $('requestForm').classList.remove('open');
   $('requestPrompt').style.display = '';
   $('requestStatus').style.display = 'none';
 });
-
 $('sendRequestBtn').addEventListener('click', async () => {
   const name = $('name').value.trim();
   const context = $('context').value.trim();
   const honeypot = $('hp').value;
   if (!name) {
     showRequestStatus('Enter your name above first.', 'err');
-    $('name').focus();
-    return;
+    $('name').focus(); return;
   }
   $('sendRequestBtn').disabled = true;
   $('sendRequestBtn').textContent = 'Sending…';
-  showRequestStatus('', 'ok');
   $('requestStatus').style.display = 'none';
 
   try {
@@ -162,11 +336,10 @@ $('sendRequestBtn').addEventListener('click', async () => {
     if (res.ok && data.ok) {
       showRequestStatus(
         'Sent. Christophero has request ID ' + (data.requestId || reqId) + '. ' +
-        'When he replies with a code, paste it above and join.',
+        'When he replies with a code, paste it above and continue.',
         'ok'
       );
       $('sendRequestBtn').textContent = '✓ Sent';
-      // Don't re-enable — successful send is one-shot
     } else {
       const msg = (data && data.error) ? data.error : 'Request failed (HTTP ' + res.status + ')';
       showRequestStatus(msg, 'err');
@@ -179,7 +352,6 @@ $('sendRequestBtn').addEventListener('click', async () => {
     $('sendRequestBtn').textContent = 'Send Request';
   }
 });
-
 function showRequestStatus(text, kind) {
   const el = $('requestStatus');
   el.textContent = text;
@@ -187,19 +359,171 @@ function showRequestStatus(text, kind) {
   el.style.display = text ? 'block' : 'none';
 }
 
-// ── Hidden host unlock: 5x click on title within 2s ──
-let titleClicks = 0, lastClick = 0;
-document.querySelector('.hero-title').addEventListener('click', () => {
-  const now = Date.now();
-  if (now - lastClick > 2000) titleClicks = 0;
-  lastClick = now; titleClicks++;
-  if (titleClicks >= 5) {
-    if (confirm('Open as host? You will claim the tellofoam-room-host PeerJS ID.')) {
-      window.location.href = 'room.html?host=1';
+// ── Step 2: Audio devices ──────────────────────────────
+$('permBtn').addEventListener('click', async () => {
+  try {
+    const tmp = await navigator.mediaDevices.getUserMedia({ audio: true });
+    tmp.getTracks().forEach(t => t.stop());
+    permissionGranted = true;
+    $('permBtn').classList.add('active');
+    $('permBtn').textContent = '✓ Mic Access Granted';
+    await populateDevices();
+    $('deviceSel').disabled = false;
+    $('outDeviceSel').disabled = false;
+    $('outChannelSel').disabled = false;
+    refreshStep2NextEligibility();
+  } catch (e) { alert('Mic access denied: ' + e.message); }
+});
+
+async function populateDevices() {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const inputs  = devices.filter(d => d.kind === 'audioinput');
+  const outputs = devices.filter(d => d.kind === 'audiooutput');
+
+  const inSel = $('deviceSel');
+  inSel.innerHTML = '';
+  inputs.forEach((d, i) => {
+    const opt = document.createElement('option');
+    opt.value = W.deviceIdValue(d);
+    opt.textContent = W.formatDeviceLabel(d, i, 'Input');
+    inSel.appendChild(opt);
+  });
+
+  const outSel = $('outDeviceSel');
+  outSel.innerHTML = '';
+  outputs.forEach((d, i) => {
+    const opt = document.createElement('option');
+    opt.value = W.deviceIdValue(d);
+    opt.textContent = W.formatDeviceLabel(d, i, 'Output');
+    outSel.appendChild(opt);
+  });
+
+  // Restore previously-saved device choices if still available
+  const savedIn  = sessionStorage.getItem('tf.inputDeviceId');
+  const savedOut = sessionStorage.getItem('tf.outputDeviceId');
+  if (savedIn  !== null && [...inSel.options].some(o => o.value === savedIn))  inSel.value = savedIn;
+  if (savedOut !== null && [...outSel.options].some(o => o.value === savedOut)) outSel.value = savedOut;
+
+  // Channel pairs need an audio context to know maxChannelCount; build a temporary one
+  try {
+    const probe = new AudioContext();
+    if (outSel.value && probe.setSinkId) await probe.setSinkId(outSel.value);
+    const maxCh = probe.destination.maxChannelCount || 2;
+    W.populateChannelPairs($('outChannelSel'), maxCh);
+    const savedPair = sessionStorage.getItem('tf.outputChannelPair');
+    if (savedPair && [...$('outChannelSel').options].some(o => o.value === savedPair)) {
+      $('outChannelSel').value = savedPair;
     }
-    titleClicks = 0;
+    probe.close();
+  } catch (e) { console.warn('channel pair probe failed:', e); }
+}
+
+['deviceSel','outDeviceSel','outChannelSel'].forEach(id => {
+  $(id).addEventListener('change', refreshStep2NextEligibility);
+});
+$('outDeviceSel').addEventListener('change', async () => {
+  // Repopulate channel pairs based on new device
+  try {
+    const probe = new AudioContext();
+    if ($('outDeviceSel').value && probe.setSinkId) await probe.setSinkId($('outDeviceSel').value);
+    W.populateChannelPairs($('outChannelSel'), probe.destination.maxChannelCount || 2);
+    probe.close();
+  } catch (e) { console.warn(e); }
+});
+
+function refreshStep2NextEligibility() {
+  $('step2NextBtn').disabled = !(permissionGranted && $('deviceSel').value !== undefined && $('outDeviceSel').value !== undefined);
+}
+
+$('step2NextBtn').addEventListener('click', () => {
+  sessionStorage.setItem('tf.inputDeviceId',     $('deviceSel').value);
+  sessionStorage.setItem('tf.outputDeviceId',    $('outDeviceSel').value);
+  sessionStorage.setItem('tf.outputChannelPair', $('outChannelSel').value);
+  $('s2Summary').textContent = compactDeviceLabel($('deviceSel')) + ' → ' + compactDeviceLabel($('outDeviceSel'));
+  goToStep(3);
+  startMicTest();
+});
+
+function compactDeviceLabel(sel) {
+  if (!sel.selectedOptions.length) return '?';
+  const t = sel.selectedOptions[0].textContent;
+  return t.length > 18 ? t.slice(0, 18) + '…' : t;
+}
+
+// ── Step 3: Mic test ───────────────────────────────────
+async function startMicTest() {
+  if (testStream) stopMicTest();
+  try {
+    testStream = await navigator.mediaDevices.getUserMedia(W.micConstraints($('deviceSel').value, 1));
+  } catch (e) { alert('Mic open failed: ' + e.message); return; }
+
+  testCtx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
+  if ($('outDeviceSel').value && testCtx.setSinkId) {
+    try { await testCtx.setSinkId($('outDeviceSel').value); } catch (e) { console.warn(e); }
+  }
+  testMicSource = testCtx.createMediaStreamSource(testStream);
+  testMicGain   = testCtx.createGain(); testMicGain.gain.value = W.dbToGain(0);
+  testMicSource.connect(testMicGain);
+
+  // Monitor path (off by default)
+  testMonGain = testCtx.createGain(); testMonGain.gain.value = W.dbToGain(-12);
+  testMicGain.connect(testMonGain);
+
+  $('testMeterMount').innerHTML = '';
+  testMeter = new W.MeterStrip($('testMeterMount'), testMicGain, {
+    label: 'YOUR MIC', gainNode: testMicGain,
+    gainMin: -30, gainMax: 12, gainDefault: 0,
+    height: 90, stereo: false,
+  });
+  testMeter.start();
+
+  $('vSR').textContent    = (testCtx.sampleRate || 48000) + ' Hz';
+  $('vFloor').textContent = ((testCtx.baseLatency + testCtx.outputLatency) * 1000).toFixed(2) + ' ms';
+  $('monitorBtn').disabled = false;
+  $('step3NextBtn').disabled = false;
+}
+
+function stopMicTest() {
+  if (testMeter) { testMeter.destroy(); testMeter = null; }
+  if (testStream) testStream.getTracks().forEach(t => t.stop());
+  if (testCtx) testCtx.close();
+  testStream = null; testCtx = null; testMicSource = null; testMicGain = null; testMonGain = null;
+  monitoring = false;
+}
+
+$('monitorBtn').addEventListener('click', () => {
+  if (!testCtx) return;
+  monitoring = !monitoring;
+  if (monitoring) {
+    testMonGain.connect(testCtx.destination);
+    $('monitorBtn').classList.add('active');
+    $('monitorBtn').textContent = 'Monitor: ON';
+  } else {
+    try { testMonGain.disconnect(testCtx.destination); } catch (e) {}
+    $('monitorBtn').classList.remove('active');
+    $('monitorBtn').textContent = 'Monitor: OFF';
   }
 });
+
+$('step3NextBtn').addEventListener('click', () => {
+  $('s3Summary').textContent = 'mic verified · ' + $('vFloor').textContent + ' floor';
+  stopMicTest();  // close test stream — room re-opens with same deviceId
+  goToStep(4);
+});
+
+// ── Step 4: Enter room ─────────────────────────────────
+$('enterRoomBtn').addEventListener('click', () => {
+  const name = sessionStorage.getItem('tf.name') || '';
+  const code = sessionStorage.getItem('tf.code') || '';
+  if (isHost) {
+    window.location.href = 'room.html?host=1&name=' + encodeURIComponent(name);
+  } else {
+    window.location.href = 'room.html?code=' + encodeURIComponent(code) + '&name=' + encodeURIComponent(name);
+  }
+});
+
+// ── Page-level cleanup if user leaves mid-test ─────────
+window.addEventListener('beforeunload', stopMicTest);
 </script>
 </body>
 </html>

@@ -2,25 +2,63 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
 <title>TelloFoam — Room</title>
 <link rel="stylesheet" href="../../TestCases/_shared/audio-widgets.css">
 <style>
-  body { padding: 24px 16px; }
-  .topbar {
-    display:flex; align-items:center; gap:14px; max-width:900px; width:100%;
-    padding:8px 14px; background:var(--bg-module); border:1px solid var(--border);
+  body { padding: 14px 12px 80px; touch-action: manipulation; }
+
+  /* ── Status strip ──────────────────────────────────────── */
+  .strip {
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    width:100%; max-width:980px;
+    padding:7px 12px;
+    background:var(--bg-module); border:1px solid var(--border);
   }
-  .topbar .name {
-    font-size:1rem; color:var(--amber); letter-spacing:.18em; text-transform:uppercase;
+  .strip .room-name {
+    font-size:.8rem; color:var(--amber); letter-spacing:.18em;
+    text-transform:uppercase; user-select:none;
   }
-  .topbar .role {
-    font-size:.6rem; color:var(--text-muted); letter-spacing:.18em; text-transform:uppercase;
-    padding:2px 6px; border:1px solid var(--border-mute);
+  .strip .role {
+    font-size:.55rem; color:var(--text-muted); letter-spacing:.18em;
+    text-transform:uppercase; padding:2px 6px; border:1px solid var(--border-mute);
   }
-  .topbar .role.host { color:var(--green); border-color:var(--green); }
-  .topbar .spacer { flex:1; }
-  .topbar .lbl { white-space:nowrap; }
+  .strip .role.host { color:var(--green); border-color:var(--green); }
+  .strip .me { font-size:.62rem; color:var(--text-2nd); letter-spacing:.06em; }
+  .strip .sep { color:var(--text-faint); }
+  .strip .stat {
+    display:inline-flex; align-items:center; gap:4px;
+    font-size:.58rem; letter-spacing:.08em; color:var(--text-2nd);
+    text-transform:uppercase;
+  }
+  .strip .stat .lbl { font-size:.55rem; color:var(--text-muted); letter-spacing:.12em; }
+  .strip .stat .val { font-size:.62rem; color:var(--text-2nd); }
+  .strip .dot {
+    width:8px; height:8px; border-radius:50%;
+    background:var(--text-faint); border:1px solid var(--border-mute);
+    flex-shrink:0;
+  }
+  .strip .dot.ok    { background:var(--green); border-color:var(--green); box-shadow:0 0 4px #2a9a2a88; }
+  .strip .dot.warn  { background:var(--amber); border-color:var(--amber); }
+  .strip .dot.err   { background:var(--red);   border-color:var(--red); }
+  .strip .spacer { flex:1; min-width: 4px; }
+  .strip button { padding: 4px 10px; font-size:.58rem; }
+  .strip a { text-decoration: none; }
+
+  /* Sub-state line: room-state under the strip */
+  .room-state {
+    width:100%; max-width:980px;
+    padding:5px 12px; font-size:.58rem; color:var(--text-2nd);
+    text-align:left; letter-spacing:.08em; text-transform:uppercase;
+    background:var(--bg-inset); border:1px solid var(--border-dim); border-top:0;
+  }
+  .room-state.connecting { color:var(--amber-bright); }
+  .room-state.connected  { color:var(--green); border-color:var(--border-dim); }
+  .room-state.failed     { color:var(--red); }
+
+  /* ── Layout under strip ────────────────────────────────── */
+  .row { padding-top: 8px; align-items:flex-start; }
+  .module { min-width: 220px; }
 
   .peer-card {
     display:flex; flex-direction:column; gap:6px;
@@ -34,53 +72,47 @@
 
   .docs { font-size:.62rem; line-height:1.7; color:var(--text-2nd); max-width:520px; }
   .docs em { color:var(--amber); font-style:normal; }
+
+  /* Missing-state guard (shown if user hits /room.html without going through entry) */
+  .missing-entry {
+    width:420px; max-width:100%;
+    padding:24px; text-align:center;
+    background:var(--bg-module); border:1px solid var(--amber);
+    color:var(--text-2nd); font-size:.66rem; line-height:1.7;
+  }
+  .missing-entry a { color:var(--amber); }
 </style>
 </head>
 <body>
 
-<div class="topbar">
-  <span class="name">TelloFoam Room</span>
+<div class="strip">
+  <span class="room-name">TelloFoam</span>
   <span class="role" id="roleBadge">guest</span>
+  <span class="me" id="meName">—</span>
+  <span class="sep">·</span>
+  <span class="stat"><span class="lbl">Online</span><span class="dot" id="dotBroker"></span></span>
+  <span class="sep">·</span>
+  <span class="stat"><span class="lbl">Audio</span><span class="dot" id="dotAudio"></span></span>
+  <span class="sep">·</span>
+  <span class="stat"><span class="lbl">Mic</span><span class="dot" id="dotMic"></span></span>
+  <span class="sep">·</span>
+  <span class="stat"><span class="lbl">Peers</span><span class="val" id="peerCount">0</span></span>
+  <span class="sep">·</span>
+  <span class="stat"><span class="lbl">RTT</span><span class="val" id="rttVal">—</span></span>
   <span class="spacer"></span>
-  <span class="lbl">You</span><span class="val" id="meName">—</span>
-  <span class="lbl">·</span>
-  <span class="lbl">Peers</span><span class="val" id="peerCount">0</span>
-  <span class="lbl">·</span>
-  <span class="lbl">RTT</span><span class="val" id="hostRtt">—</span>
+  <button id="muteSelfBtn" class="danger" disabled>Mute</button>
+  <a href="index.html"><button class="danger">Leave</button></a>
 </div>
 
-<div class="state" id="roomState" style="max-width:900px; width:100%">connecting…</div>
+<div class="room-state connecting" id="roomState">initializing…</div>
 
-<div class="row">
+<div class="row" id="mainLayout">
 
   <div class="col">
     <div class="module">
-      <div class="mod-head">Setup</div>
-      <div class="mod-body">
-        <button id="permBtn">1 · Grant Mic Access</button>
-        <div class="lbl">Input Device</div>
-        <select id="deviceSel" disabled><option>—</option></select>
-        <button id="openMicBtn" disabled>2 · Open Mic</button>
-        <div class="lbl">Output Device</div>
-        <select id="outDeviceSel" disabled><option>—</option></select>
-        <div class="lbl">Channel Pair</div>
-        <select id="outChannelSel" disabled><option>Ch 1-2</option></select>
-        <div class="kv"><span class="lbl">Max ch</span><span class="val" id="vMaxCh">—</span></div>
-      </div>
-    </div>
-
-    <div class="module">
       <div class="mod-head">You</div>
       <div class="mod-body">
-        <button id="muteSelfBtn" class="danger" disabled>Mute Self</button>
         <div id="selfMeterMount"></div>
-      </div>
-    </div>
-
-    <div class="module">
-      <div class="mod-head">Leave</div>
-      <div class="mod-body">
-        <a href="index.html" style="text-decoration:none"><button class="danger" style="width:100%">Leave Room</button></a>
       </div>
     </div>
   </div>
@@ -92,26 +124,17 @@
         <div class="peers-empty">no one else here yet</div>
       </div>
     </div>
-
-    <div class="module">
-      <div class="mod-head">Notes</div>
-      <div class="mod-body">
-        <div class="docs">
-          The room is <em>peer-to-peer</em>: audio between you and any other person flows directly, not through a server. PeerJS's public broker handles only the initial handshake.
-          <br><br>
-          The room exists while its host is online. If the host disconnects, everyone gets dropped.
-          <br><br>
-          Per-peer gain: each meter's blue thumb is the level of that person <em>in your ears</em>. Drag up/down. Doesn't affect what others hear.
-          <br><br>
-          <em>Mute Self</em> kills your outbound mic for everyone. Other people's faders only affect what you hear.
-        </div>
-      </div>
-    </div>
   </div>
 
 </div>
 
-<div class="foot">v0.1 · PeerJS broker · Opus codec · all DSP off · ≤5 people recommended</div>
+<!-- Hidden: shown only if entry-state is missing -->
+<div class="missing-entry" id="missingEntry" style="display:none">
+  Looks like you arrived here without going through setup.<br><br>
+  <a href="index.html">→ start at the entrance</a>
+</div>
+
+<div class="foot">v0.3 · slim room · status strip · auto-init from entry · ≤5 people</div>
 
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="../../TestCases/_shared/audio-widgets.js"></script>
@@ -122,41 +145,110 @@ const $ = id => document.getElementById(id);
 
 // ── Mode + identity ───────────────────────────────────
 const params = new URLSearchParams(location.search);
-const IS_HOST = params.get('host') === '1';
-const MY_NAME = (params.get('name') || (IS_HOST ? 'Host' : 'Guest')).slice(0, 24);
-const MY_CODE = params.get('code') || '';
+const IS_HOST = params.get('host') === '1' || sessionStorage.getItem('tf.isHost') === '1';
+const MY_NAME = (params.get('name') || sessionStorage.getItem('tf.name') || (IS_HOST ? 'Host' : 'Guest')).slice(0, 24);
+const MY_CODE = params.get('code') || sessionStorage.getItem('tf.code') || '';
 const HOST_PEER_ID = 'tellofoam-room-host';
 
-// Host-side invite code list — edit here, redeploy. Hardcoded for v0.
-// Each code: { uses: N (max times the code can be used), expires: ISO string or null }
+// Saved device choices from entry. Fall back to system default if missing.
+const SAVED_INPUT  = sessionStorage.getItem('tf.inputDeviceId');     // null = not saved → use default
+const SAVED_OUTPUT = sessionStorage.getItem('tf.outputDeviceId');
+const SAVED_PAIR   = sessionStorage.getItem('tf.outputChannelPair');
+
+// Guard: a guest reaching /room.html without an entry walkthrough is
+// probably bookmarking / pasting URLs. Send them through the entry.
+if (!IS_HOST && (SAVED_INPUT === null || !MY_CODE)) {
+  document.querySelectorAll('.strip, .room-state, .row').forEach(el => el.style.display = 'none');
+  $('missingEntry').style.display = 'block';
+  throw new Error('Missing entry-state — redirected to setup');
+}
+
+// Host-side invite codes — edit + redeploy to add codes.
 const HOST_CODES = {
   'TEST':       { uses: 99, expires: null },
   'MADRIGAL':   { uses: 10, expires: null },
   'TUESDAY':    { uses: 5,  expires: null },
 };
-const codeUsage = new Map();  // code → count (host-side, ephemeral; resets on host reload)
+const codeUsage = new Map();
 
 $('roleBadge').textContent = IS_HOST ? 'host' : 'guest';
 $('roleBadge').classList.toggle('host', IS_HOST);
 $('meName').textContent = MY_NAME;
 
-// ── Audio state ───────────────────────────────────────
+// ── Audio + peer state ─────────────────────────────────
 let peer = null;
 let myStream = null;
 let audioCtx = null;
 let micSource = null, micGain = null, micDest = null;
-let outRouter = null, selfMeter = null;
+let selfMeter = null;
 let muted = false;
-
-const peers = new Map();   // peerId → { name, mediaCall, dataConn, source, gain, meter, cardEl }
-let hostDataConn = null;   // guest-side: data connection to host
+const peers = new Map();
+let hostDataConn = null;
+const pendingCallIds = new Set();
+const pendingIncomingCalls = [];
+let statsTimer = null;
 
 function setRoomState(text, cls) {
   $('roomState').textContent = text;
-  $('roomState').className = 'state ' + (cls || '');
+  $('roomState').className = 'room-state ' + (cls || '');
+}
+function setDot(id, state) {
+  const el = $(id);
+  el.classList.remove('ok','warn','err');
+  if (state) el.classList.add(state);
 }
 
-// ── Peer setup ────────────────────────────────────────
+// ── Boot sequence ──────────────────────────────────────
+(async function boot() {
+  setRoomState('opening audio & mic…', 'connecting');
+  try {
+    await openLocalAudio();
+    setDot('dotAudio', 'ok');
+    setDot('dotMic', 'ok');
+  } catch (e) {
+    setRoomState('audio init failed: ' + e.message, 'failed');
+    setDot('dotAudio', 'err');
+    setDot('dotMic', 'err');
+    return;
+  }
+  setRoomState('connecting to broker…', 'connecting');
+  initPeer();
+})();
+
+async function openLocalAudio() {
+  // Use saved deviceId if present and non-empty, else system default
+  const deviceId = SAVED_INPUT || undefined;
+  let rawStream;
+  try {
+    rawStream = await navigator.mediaDevices.getUserMedia(W.micConstraints(deviceId, 1));
+  } catch (e) {
+    throw new Error('mic open: ' + e.message);
+  }
+
+  audioCtx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
+  if (SAVED_OUTPUT && audioCtx.setSinkId) {
+    try { await audioCtx.setSinkId(SAVED_OUTPUT); } catch (e) { console.warn('setSinkId:', e); }
+  }
+
+  micSource = audioCtx.createMediaStreamSource(rawStream);
+  micGain   = audioCtx.createGain(); micGain.gain.value = W.dbToGain(0);
+  micDest   = audioCtx.createMediaStreamDestination();
+  micSource.connect(micGain).connect(micDest);
+  myStream  = micDest.stream;
+
+  // Self meter
+  $('selfMeterMount').innerHTML = '';
+  selfMeter = new W.MeterStrip($('selfMeterMount'), micGain, {
+    label: 'YOUR MIC', gainNode: micGain,
+    gainMin: -30, gainMax: 12, gainDefault: 0,
+    height: 100, stereo: false,
+  });
+  selfMeter.start();
+
+  $('muteSelfBtn').disabled = false;
+}
+
+// ── PeerJS setup ───────────────────────────────────────
 function initPeer() {
   const opts = {
     config: { iceServers: [
@@ -167,7 +259,7 @@ function initPeer() {
   peer = IS_HOST ? new Peer(HOST_PEER_ID, opts) : new Peer(opts);
 
   peer.on('open', id => {
-    console.log('[room] my peer id =', id);
+    setDot('dotBroker', 'ok');
     if (IS_HOST) {
       setRoomState('host · room open · waiting for guests', 'connected');
     } else {
@@ -176,7 +268,7 @@ function initPeer() {
     }
   });
   peer.on('error', err => {
-    console.error('[room] peer error', err);
+    setDot('dotBroker', 'err');
     if (err.type === 'unavailable-id') {
       setRoomState('host id taken — another host tab is open?', 'failed');
     } else if (err.type === 'peer-unavailable') {
@@ -185,28 +277,19 @@ function initPeer() {
       setRoomState('peer error: ' + err.type, 'failed');
     }
   });
-  peer.on('disconnected', () => setRoomState('disconnected from broker', 'failed'));
-  peer.on('close', () => setRoomState('peer closed', 'failed'));
+  peer.on('disconnected', () => { setDot('dotBroker', 'warn'); setRoomState('disconnected from broker', 'failed'); });
+  peer.on('close',        () => { setDot('dotBroker', 'err');  setRoomState('peer closed', 'failed'); });
 
-  // Incoming data connection (host receives these from joining guests)
   peer.on('connection', dataConn => {
     if (IS_HOST) bindHostSideDataConn(dataConn);
-    // Guests might receive data connections from each other in the future; ignored for now.
   });
 
-  // Incoming media call — answer with our local stream. If mic isn't open
-  // yet, defer the answer until openMic() runs. PeerJS holds the call alive
-  // long enough for a typical "open mic now" interaction. Without this,
-  // peers stay in the roster but never get audio because we silently
-  // dropped their incoming call.
   peer.on('call', mediaCall => {
     if (!myStream) {
-      console.warn('[room] incoming call queued (mic not open):', mediaCall.peer);
       pendingIncomingCalls.push(mediaCall);
-      // Render a card immediately so the user sees who's trying to reach them.
       if (!peers.has(mediaCall.peer)) {
-        const isHost = mediaCall.peer === HOST_PEER_ID;
-        addPeerEntry(mediaCall.peer, isHost ? 'Host' : 'Joining…');
+        const isHostId = mediaCall.peer === HOST_PEER_ID;
+        addPeerEntry(mediaCall.peer, isHostId ? 'Host' : 'Joining…');
       }
       return;
     }
@@ -215,46 +298,32 @@ function initPeer() {
   });
 }
 
-// MediaCalls that arrived before the user opened their mic. Drained by
-// openMic() once myStream exists.
-const pendingIncomingCalls = [];
-
-// ── Guest: connect to host ────────────────────────────
+// ── Guest: connect to host ─────────────────────────────
 function connectToHost() {
   hostDataConn = peer.connect(HOST_PEER_ID, { reliable: true });
   hostDataConn.on('open', () => {
-    console.log('[room] data conn to host open; sending join');
     hostDataConn.send({ type: 'join', code: MY_CODE, name: MY_NAME });
   });
   hostDataConn.on('data', msg => handleGuestSideMessage(msg));
   hostDataConn.on('close', () => {
     setRoomState('host disconnected — room closed', 'failed');
+    setDot('dotBroker', 'warn');
     teardownAllPeers();
   });
-  hostDataConn.on('error', err => {
-    console.error('[room] host data conn error', err);
-    setRoomState('cannot reach host — is the room open?', 'failed');
-  });
+  hostDataConn.on('error', err => setRoomState('cannot reach host — is the room open?', 'failed'));
 }
 
 function handleGuestSideMessage(msg) {
   switch (msg.type) {
     case 'admitted': {
       addPeerEntry(HOST_PEER_ID, msg.hostName || 'Host');
-      callPeer(HOST_PEER_ID);  // call host (queues if mic not open yet)
+      callPeer(HOST_PEER_ID);
       for (const p of (msg.peers || [])) {
         if (p.peerId === peer.id) continue;
         addPeerEntry(p.peerId, p.name);
         callPeer(p.peerId);
       }
-      // If the user hasn't opened their mic yet, our calls were queued by
-      // callPeer(). drainPendingCalls() in openMic() will fire them. Tell the
-      // user that's the next thing they need to do.
-      if (!myStream) {
-        setRoomState('admitted · open your mic to connect', 'connecting');
-      } else {
-        setRoomState('in room', 'connected');
-      }
+      setRoomState(myStream ? 'in room' : 'admitted · waiting on audio…', myStream ? 'connected' : 'connecting');
       break;
     }
     case 'rejected':
@@ -265,28 +334,20 @@ function handleGuestSideMessage(msg) {
       const p = msg.peer;
       if (!peers.has(p.peerId) && p.peerId !== peer.id) {
         addPeerEntry(p.peerId, p.name);
-        // The new peer will call us; we'll bind in peer.on('call').
       }
       break;
     }
     case 'peer-removed':
       removePeerEntry(msg.peerId);
       break;
-    case 'rename':
-      if (peers.has(msg.peerId)) {
-        peers.get(msg.peerId).name = msg.name;
-        renderPeerName(msg.peerId);
-      }
-      break;
   }
 }
 
-// ── Host: handle incoming data conn from a guest ──────
+// ── Host: handle join requests ─────────────────────────
 function bindHostSideDataConn(dataConn) {
   let admitted = false;
   let admittedName = null;
 
-  dataConn.on('open', () => { /* wait for join msg */ });
   dataConn.on('data', msg => {
     if (msg.type === 'join') {
       const ok = validateCode(msg.code);
@@ -298,39 +359,22 @@ function bindHostSideDataConn(dataConn) {
       admitted = true;
       admittedName = (msg.name || 'Guest').slice(0, 24);
 
-      // Snapshot existing peers BEFORE adding this new one
       const existing = [...peers.values()].map(p => ({ peerId: p.peerId, name: p.name }));
-
-      // Add to our roster (but they're not visually a peer until media call lands)
       peers.set(dataConn.peer, {
-        peerId: dataConn.peer,
-        name: admittedName,
-        dataConn,
-        mediaCall: null,
+        peerId: dataConn.peer, name: admittedName,
+        dataConn, mediaCall: null,
         source: null, gain: null, meter: null, cardEl: null,
       });
-
-      dataConn.send({
-        type: 'admitted',
-        hostName: MY_NAME,
-        peers: existing,
-      });
-
-      // Broadcast new peer to existing guests
+      dataConn.send({ type: 'admitted', hostName: MY_NAME, peers: existing });
       broadcastToOthers(dataConn.peer, {
-        type: 'peer-added',
-        peer: { peerId: dataConn.peer, name: admittedName },
+        type: 'peer-added', peer: { peerId: dataConn.peer, name: admittedName },
       });
-
-      // Render in our UI now (the media call will land in a moment)
       addPeerEntry(dataConn.peer, admittedName);
-      console.log('[host] admitted', dataConn.peer, admittedName);
     }
   });
 
   dataConn.on('close', () => {
     if (admitted) {
-      console.log('[host] guest disconnected', dataConn.peer);
       removePeerEntry(dataConn.peer);
       broadcastToOthers(dataConn.peer, { type: 'peer-removed', peerId: dataConn.peer });
     }
@@ -341,7 +385,7 @@ function broadcastToOthers(exceptPeerId, msg) {
   for (const p of peers.values()) {
     if (p.peerId === exceptPeerId) continue;
     if (p.dataConn && p.dataConn.open) {
-      try { p.dataConn.send(msg); } catch (e) { console.warn('broadcast send failed', e); }
+      try { p.dataConn.send(msg); } catch (e) {}
     }
   }
 }
@@ -358,51 +402,31 @@ function validateCode(code) {
   return { ok: true };
 }
 
-// ── Outbound call to a peer ───────────────────────────
-// Calls attempted before the mic is open get queued here and drained from
-// openMic() once myStream exists. Without this, a guest admitted before they
-// click "Open Mic" stays admitted but silently disconnected from everyone.
-const pendingCallIds = new Set();
-
+// ── Outbound call queueing ─────────────────────────────
 function callPeer(peerId) {
   if (!myStream) {
     pendingCallIds.add(peerId);
-    console.warn('[room] callPeer queued (mic not open yet):', peerId);
     return;
   }
   const call = peer.call(peerId, myStream);
   if (!call) return;
   bindMediaCall(call);
 }
-
 function drainPendingCalls() {
   if (!myStream) return;
-
-  // Outbound calls that were queued
   if (pendingCallIds.size > 0) {
-    console.log('[room] draining', pendingCallIds.size, 'queued outbound calls');
     for (const peerId of pendingCallIds) {
       const call = peer.call(peerId, myStream);
       if (call) bindMediaCall(call);
     }
     pendingCallIds.clear();
   }
-
-  // Inbound calls that arrived before our mic was open
   if (pendingIncomingCalls.length > 0) {
-    console.log('[room] answering', pendingIncomingCalls.length, 'queued inbound calls');
     while (pendingIncomingCalls.length) {
       const mediaCall = pendingIncomingCalls.shift();
-      try {
-        mediaCall.answer(myStream);
-        bindMediaCall(mediaCall);
-      } catch (e) {
-        console.warn('[room] failed to answer queued call', mediaCall.peer, e);
-      }
+      try { mediaCall.answer(myStream); bindMediaCall(mediaCall); } catch (e) {}
     }
   }
-
-  // If we were a guest stuck in "open your mic to connect", we're in now.
   if (!IS_HOST) setRoomState('in room', 'connected');
 }
 
@@ -412,11 +436,10 @@ function bindMediaCall(mediaCall) {
     const p = peers.get(mediaCall.peer);
     p.mediaCall = mediaCall;
     attachRemoteAudio(p, remoteStream);
+    if (!statsTimer) startStatsLoop();
   });
   mediaCall.on('close', () => {
-    // The leave event from data layer is authoritative for cleanup; this is fallback.
-    if (peers.has(mediaCall.peer) && !IS_HOST && mediaCall.peer === HOST_PEER_ID) {
-      // Host's call closed → room over for guests
+    if (!IS_HOST && mediaCall.peer === HOST_PEER_ID) {
       setRoomState('host disconnected — room closed', 'failed');
       teardownAllPeers();
     }
@@ -424,16 +447,13 @@ function bindMediaCall(mediaCall) {
 }
 
 function attachRemoteAudio(peerObj, remoteStream) {
-  if (!audioCtx) audioCtx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
-  if (peerObj.source) try { peerObj.source.disconnect(); } catch(e) {}
+  if (!audioCtx) return;
+  if (peerObj.source) try { peerObj.source.disconnect(); } catch (e) {}
   if (peerObj.meter) peerObj.meter.destroy();
 
   peerObj.source = audioCtx.createMediaStreamSource(remoteStream);
-  peerObj.gain = audioCtx.createGain();
-  peerObj.gain.gain.value = W.dbToGain(0);
+  peerObj.gain   = audioCtx.createGain(); peerObj.gain.gain.value = W.dbToGain(0);
   peerObj.source.connect(peerObj.gain);
-
-  // Each peer gets routed through the shared output router so channel pair selection works
   peerObj.gain.connect(audioCtx.destination);
 
   // Chrome remote-stream workaround
@@ -443,7 +463,6 @@ function attachRemoteAudio(peerObj, remoteStream) {
   document.body.appendChild(ghost);
   peerObj.ghostEl = ghost;
 
-  // Mount meter on the card
   const meterMount = peerObj.cardEl.querySelector('[data-meter-mount]');
   meterMount.innerHTML = '';
   peerObj.meter = new W.MeterStrip(meterMount, peerObj.gain, {
@@ -453,8 +472,6 @@ function attachRemoteAudio(peerObj, remoteStream) {
   });
   peerObj.meter.start();
 
-  // Flip the meta line from "connecting" to "connected" so the user can
-  // see when the audio actually started flowing.
   const metaEl = peerObj.cardEl.querySelector('[data-meta]');
   if (metaEl) {
     const role = peerObj.peerId === HOST_PEER_ID ? 'host' : 'guest';
@@ -462,34 +479,21 @@ function attachRemoteAudio(peerObj, remoteStream) {
     metaEl.style.color = 'var(--green)';
   }
 
-  // Update mute button binding (per-peer mute)
   const muteBtn = peerObj.cardEl.querySelector('[data-mute]');
   muteBtn.disabled = false;
   let pMuted = false; let savedDb = 0;
   muteBtn.addEventListener('click', () => {
     pMuted = !pMuted;
-    if (pMuted) {
-      savedDb = W.gainToDb(peerObj.gain.gain.value);
-      peerObj.meter.setGainDb(-60);
-    } else {
-      peerObj.meter.setGainDb(savedDb);
-    }
+    if (pMuted) { savedDb = W.gainToDb(peerObj.gain.gain.value); peerObj.meter.setGainDb(-60); }
+    else        { peerObj.meter.setGainDb(savedDb); }
     muteBtn.textContent = pMuted ? '✓ Muted' : 'Mute';
     muteBtn.classList.toggle('active', pMuted);
   });
 }
 
-// ── Peer roster + UI ──────────────────────────────────
-// addPeerEntry handles three cases:
-//   1. No roster entry yet  → create entry + card (most common path)
-//   2. Entry exists with cardEl already → just rename + return
-//   3. Entry seeded from signaling (host pre-populates dataConn before card
-//      gets built) → build card and ATTACH to the existing entry without
-//      blowing away dataConn/mediaCall fields. Without this third case,
-//      attachRemoteAudio later does cardEl.querySelector(...) and crashes.
+// ── Peer roster + UI ───────────────────────────────────
 function addPeerEntry(peerId, name) {
   let entry = peers.get(peerId);
-
   if (entry && entry.cardEl) {
     entry.name = name;
     renderPeerName(peerId);
@@ -512,12 +516,8 @@ function addPeerEntry(peerId, name) {
   `;
   peersMount.appendChild(card);
 
-  if (entry) {
-    // Case 3: mutate existing entry; do NOT reset dataConn/mediaCall.
-    entry.name   = name;
-    entry.cardEl = card;
-  } else {
-    // Case 1: brand-new entry.
+  if (entry) { entry.name = name; entry.cardEl = card; }
+  else {
     peers.set(peerId, {
       peerId, name,
       dataConn: null, mediaCall: null,
@@ -525,7 +525,6 @@ function addPeerEntry(peerId, name) {
       cardEl: card,
     });
   }
-
   updatePeerCount();
 }
 
@@ -540,136 +539,63 @@ function removePeerEntry(peerId) {
   const p = peers.get(peerId);
   if (!p) return;
   if (p.meter) p.meter.destroy();
-  if (p.source) try { p.source.disconnect(); } catch(e) {}
-  if (p.gain) try { p.gain.disconnect(); } catch(e) {}
+  if (p.source) try { p.source.disconnect(); } catch (e) {}
+  if (p.gain) try { p.gain.disconnect(); } catch (e) {}
   if (p.ghostEl) p.ghostEl.remove();
   if (p.cardEl) p.cardEl.remove();
-  if (p.mediaCall) try { p.mediaCall.close(); } catch(e) {}
-  if (p.dataConn) try { p.dataConn.close(); } catch(e) {}
+  if (p.mediaCall) try { p.mediaCall.close(); } catch (e) {}
+  if (p.dataConn) try { p.dataConn.close(); } catch (e) {}
   peers.delete(peerId);
   updatePeerCount();
-  if (peers.size === 0) {
-    $('peersMount').innerHTML = '<div class="peers-empty">no one else here yet</div>';
-  }
+  if (peers.size === 0) $('peersMount').innerHTML = '<div class="peers-empty">no one else here yet</div>';
 }
 
 function teardownAllPeers() {
   for (const id of [...peers.keys()]) removePeerEntry(id);
 }
+function updatePeerCount() { $('peerCount').textContent = String(peers.size); }
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-function updatePeerCount() {
-  $('peerCount').textContent = String(peers.size);
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-
-// ── Mic + output setup ────────────────────────────────
-$('permBtn').addEventListener('click', async () => {
-  try {
-    const tmp = await navigator.mediaDevices.getUserMedia({audio: true});
-    tmp.getTracks().forEach(t => t.stop());
-    await populateDevices();
-    $('deviceSel').disabled = false;
-    $('openMicBtn').disabled = false;
-    $('permBtn').classList.add('active');
-    $('permBtn').textContent = '✓ Mic Access';
-  } catch (e) { alert('Mic access denied: ' + e.message); }
-});
-
-async function populateDevices() {
-  const devices = await navigator.mediaDevices.enumerateDevices();
-  const inputs  = devices.filter(d => d.kind === 'audioinput');
-  const outputs = devices.filter(d => d.kind === 'audiooutput');
-
-  const inSel = $('deviceSel');
-  inSel.innerHTML = '';
-  inputs.forEach((d, i) => {
-    const opt = document.createElement('option');
-    opt.value = W.deviceIdValue(d);
-    opt.textContent = W.formatDeviceLabel(d, i, 'Input');
-    inSel.appendChild(opt);
-  });
-
-  const outSel = $('outDeviceSel');
-  outSel.innerHTML = '';
-  outputs.forEach((d, i) => {
-    const opt = document.createElement('option');
-    opt.value = W.deviceIdValue(d);
-    opt.textContent = W.formatDeviceLabel(d, i, 'Output');
-    outSel.appendChild(opt);
-  });
-  outSel.disabled = false;
-}
-
-$('openMicBtn').addEventListener('click', openMic);
-
-async function openMic() {
-  const deviceId = $('deviceSel').value;
-  let rawStream;
-  try {
-    rawStream = await navigator.mediaDevices.getUserMedia(W.micConstraints(deviceId, 1));
-  } catch (e) { alert('getUserMedia failed: ' + e.message); return; }
-
-  if (!audioCtx) audioCtx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
-  if ($('outDeviceSel').value && audioCtx.setSinkId) {
-    try { await audioCtx.setSinkId($('outDeviceSel').value); } catch(e) { console.warn('setSinkId:', e); }
-  }
-
-  micSource = audioCtx.createMediaStreamSource(rawStream);
-  micGain   = audioCtx.createGain(); micGain.gain.value = W.dbToGain(0);
-  micDest   = audioCtx.createMediaStreamDestination();
-  micSource.connect(micGain).connect(micDest);
-  myStream  = micDest.stream;
-
-  // Self meter — taps post-gain, slider drives micGain
-  $('selfMeterMount').innerHTML = '';
-  selfMeter = new W.MeterStrip($('selfMeterMount'), micGain, {
-    label: 'YOUR MIC', gainNode: micGain,
-    gainMin: -30, gainMax: 12, gainDefault: 0,
-    height: 100, stereo: false,
-  });
-  selfMeter.start();
-
-  // Channel pair selection (output side has no 2-ch cap)
-  const maxCh = audioCtx.destination.maxChannelCount || 2;
-  W.populateChannelPairs($('outChannelSel'), maxCh);
-  $('outChannelSel').disabled = false;
-  $('vMaxCh').textContent = maxCh + ' ch';
-
-  $('openMicBtn').classList.add('active');
-  $('openMicBtn').textContent = '✓ Mic Open';
-  $('muteSelfBtn').disabled = false;
-
-  // Drain any peer calls that were queued before the mic was open. Most common
-  // path: a guest gets admitted (which fires callPeer for host + existing peers)
-  // before they've clicked "Open Mic". Those calls were queued; now we make them.
-  drainPendingCalls();
-}
-
+// ── Self-mute ──────────────────────────────────────────
 $('muteSelfBtn').addEventListener('click', () => {
   muted = !muted;
   if (myStream) myStream.getAudioTracks().forEach(t => t.enabled = !muted);
-  $('muteSelfBtn').textContent = muted ? '✓ Self Muted' : 'Mute Self';
+  $('muteSelfBtn').textContent = muted ? '✓ Muted' : 'Mute';
   $('muteSelfBtn').classList.toggle('active', muted);
+  if (muted) setDot('dotMic', 'warn'); else setDot('dotMic', 'ok');
 });
 
-$('outDeviceSel').addEventListener('change', async () => {
-  if (!audioCtx || !audioCtx.setSinkId) return;
-  try { await audioCtx.setSinkId($('outDeviceSel').value); }
-  catch (e) { console.warn('setSinkId:', e); }
-});
+// ── Stats loop (RTT) ───────────────────────────────────
+function startStatsLoop() {
+  if (statsTimer) clearInterval(statsTimer);
+  statsTimer = setInterval(async () => {
+    if (peers.size === 0) { $('rttVal').textContent = '—'; return; }
+    let sum = 0, n = 0;
+    for (const p of peers.values()) {
+      if (!p.mediaCall || !p.mediaCall.peerConnection) continue;
+      try {
+        const stats = await p.mediaCall.peerConnection.getStats();
+        stats.forEach(s => {
+          if (s.type === 'candidate-pair' && s.state === 'succeeded' && s.nominated && s.currentRoundTripTime != null) {
+            sum += s.currentRoundTripTime; n++;
+          }
+        });
+      } catch (e) {}
+    }
+    $('rttVal').textContent = n ? (sum / n * 1000).toFixed(0) + 'ms' : '—';
+  }, 2000);
+}
 
-// Channel pair: TODO — once we have multiple peers each with their own gain,
-// channel-pair routing has to compose. v0 punts: each peerGain → destination
-// directly. Pair selector is wired but inert for now. Revisit with a router
-// that aggregates all peer gains → splitter → merger → destination.
+// ── Drain queued calls once the connection comes up ────
+// (Mostly redundant since boot opens audio first now, but kept as a
+// safety net if peer.on('open') fires before our local audio is ready.)
+const drainAfterStreamReady = () => { if (myStream) drainPendingCalls(); };
+setInterval(drainAfterStreamReady, 500);
 
-// ── Boot ──────────────────────────────────────────────
-initPeer();
+// ── Cleanup on unload ──────────────────────────────────
 window.addEventListener('beforeunload', () => {
   if (peer) try { peer.destroy(); } catch (e) {}
+  if (audioCtx) try { audioCtx.close(); } catch (e) {}
 });
 </script>
 </body>
