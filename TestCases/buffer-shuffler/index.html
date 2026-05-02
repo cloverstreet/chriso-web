@@ -3,8 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Buffer Shuffler — Test Case v0.1</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+<title>Buffer Shuffler — Test Case v0.2</title>
+<!-- Tone.js intentionally NOT loaded in v0.2: the buffer-shuffler engine is pure
+     Web Audio. AudioWorkletNode's constructor requires a real BaseAudioContext,
+     and Tone.js 14.8.49's wrapper isn't one — so we use a bare AudioContext. -->
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 body {
@@ -233,7 +235,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 </head>
 <body>
 
-<div id="version-badge">BUFFER SHUFFLER · v0.1</div>
+<div id="version-badge">BUFFER SHUFFLER · v0.2</div>
 
 <div id="start-screen">
   <div style="font-size:.78rem;letter-spacing:.28em;color:#666;">BUFFER SHUFFLER — TEST CASE</div>
@@ -242,7 +244,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
     sprays grains back at any density / length / pitch / position. 8 factory presets.
   </div>
   <button id="start-btn" onclick="initAudio()">INITIALISE AUDIO</button>
-  <div id="start-status" style="font-size:.62rem;color:#555;letter-spacing:.15em;">click to start Tone.js context</div>
+  <div id="start-status" style="font-size:.62rem;color:#555;letter-spacing:.15em;">click to start audio context</div>
   <pre id="start-error" style="display:none;max-width:600px;color:#e05050;font-size:.6rem;letter-spacing:.05em;background:#1a0d0d;border:1px solid #5a2a2a;padding:8px;border-radius:3px;white-space:pre-wrap;"></pre>
 </div>
 
@@ -597,9 +599,12 @@ async function initAudio(){
 }
 
 async function _initAudio(){
-  await Tone.start();
-  Tone.context.lookAhead = 0;
-  rawCtx = Tone.context.rawContext;
+  // Bare AudioContext — no Tone wrapper. AudioWorkletNode's constructor checks
+  // instanceof BaseAudioContext and the Tone wrapper failed that test.
+  rawCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+  if (rawCtx.state === 'suspended') {
+    try { await rawCtx.resume(); } catch(e) { console.warn('resume:', e); }
+  }
   sampleRate = rawCtx.sampleRate;
   bufferLen = sampleRate * BUFFER_SECONDS;
   captureBuffer = rawCtx.createBuffer(2, bufferLen, sampleRate);
