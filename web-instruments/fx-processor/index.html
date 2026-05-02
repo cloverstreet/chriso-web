@@ -431,7 +431,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 <!-- Version badge (always visible, top-right) -->
 <div id="version-badge" style="position:fixed;top:8px;right:10px;
      font-family:'Courier New',monospace;font-size:.6rem;letter-spacing:.16em;
-     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v61</div>
+     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v62</div>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
 <!-- START SCREEN                                                   -->
@@ -1948,27 +1948,41 @@ class WavCaptureProcessor extends AudioWorkletProcessor {
 registerProcessor('wav-capture', WavCaptureProcessor);
 `;
 
+// v62: AudioWorkletNode constructor strict-checks instanceof BaseAudioContext.
+// Tone.js 14.8.49's Tone.context.rawContext is a wrapper that fails this check
+// even though it duck-types like an AudioContext. Reach for the underlying
+// native AudioContext via Tone.context._context (the standard private slot).
+function wavNativeCtx(){
+  const BAC = window.BaseAudioContext;
+  if (rawCtx && BAC && rawCtx instanceof BAC) return rawCtx;
+  if (rawCtx && rawCtx._context && BAC && rawCtx._context instanceof BAC) return rawCtx._context;
+  if (typeof Tone !== 'undefined' && Tone.context && Tone.context._context && BAC && Tone.context._context instanceof BAC) return Tone.context._context;
+  return rawCtx; // best effort; constructor will throw if still wrong
+}
+
 async function startWavCapture(){
   recDebug(`wav: rawCtx=${!!rawCtx} recordTap=${!!recordTap}`);
   if(!rawCtx) { document.getElementById('rec-status').textContent='no audio ctx'; return false; }
   if(!recordTap) { document.getElementById('rec-status').textContent='no record tap'; return false; }
-  if(!rawCtx.audioWorklet) {
-    recDebug('wav: no audioWorklet on rawCtx');
+  const nativeCtx = wavNativeCtx();
+  recDebug(`wav: nativeCtx=${nativeCtx === rawCtx ? 'rawCtx' : 'unwrapped'} sr=${nativeCtx.sampleRate}`);
+  if(!nativeCtx.audioWorklet) {
+    recDebug('wav: no audioWorklet on nativeCtx');
     document.getElementById('rec-status').textContent = 'WAV err: no AudioWorklet support';
     return false;
   }
   try {
-    if (!rawCtx.__wavWorkletLoaded) {
+    if (!nativeCtx.__wavWorkletLoaded) {
       recDebug('wav: addModule(blob)');
       const blob = new Blob([WAV_WORKLET_CODE], {type:'application/javascript'});
       const url = URL.createObjectURL(blob);
-      await rawCtx.audioWorklet.addModule(url);
+      await nativeCtx.audioWorklet.addModule(url);
       URL.revokeObjectURL(url);
-      rawCtx.__wavWorkletLoaded = true;
+      nativeCtx.__wavWorkletLoaded = true;
       recDebug('wav: worklet module loaded');
     }
     recDebug('wav: new AudioWorkletNode');
-    const worklet = new AudioWorkletNode(rawCtx, 'wav-capture', {
+    const worklet = new AudioWorkletNode(nativeCtx, 'wav-capture', {
       numberOfInputs: 1, numberOfOutputs: 0,
       channelCount: 2, channelCountMode: 'explicit', channelInterpretation: 'speakers',
     });
