@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Buffer Shuffler — Test Case v0.2</title>
+<title>Buffer Shuffler — Test Case v0.3</title>
 <!-- Tone.js intentionally NOT loaded in v0.2: the buffer-shuffler engine is pure
      Web Audio. AudioWorkletNode's constructor requires a real BaseAudioContext,
      and Tone.js 14.8.49's wrapper isn't one — so we use a bare AudioContext. -->
@@ -235,7 +235,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 </head>
 <body>
 
-<div id="version-badge">BUFFER SHUFFLER · v0.2</div>
+<div id="version-badge">BUFFER SHUFFLER · v0.3</div>
 
 <div id="start-screen">
   <div style="font-size:.78rem;letter-spacing:.28em;color:#666;">BUFFER SHUFFLER — TEST CASE</div>
@@ -257,13 +257,13 @@ input.gain-meter-slider::-webkit-slider-thumb {
         <span class="mod-title">SOURCE</span>
       </div>
       <div class="src-toggle">
-        <button id="src-mic" onclick="setSource('mic')">MIC</button>
-        <button id="src-sig" class="active" onclick="setSource('sig')">SIG GEN</button>
+        <button id="src-mic" onclick="setSource('mic')" title="Use microphone or audio input device. Browser will ask for mic permission on first select.">MIC</button>
+        <button id="src-sig" class="active" onclick="setSource('sig')" title="Use the built-in test oscillator (no permissions needed)">SIG GEN</button>
       </div>
 
       <!-- Sig gen controls (visible when SIG GEN active) -->
       <div id="src-sig-ctrls">
-        <div class="ctrl-inline">
+        <div class="ctrl-inline" title="Waveform of the built-in oscillator. (white-noise mode falls back to sawtooth in v0.3 — real noise source coming.)">
           <label>WAVE</label>
           <select id="src-wave" onchange="setSrcWave(this.value)">
             <option value="sine">Sine</option>
@@ -273,7 +273,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
             <option value="noise">White noise</option>
           </select>
         </div>
-        <div class="slider-row">
+        <div class="slider-row" title="Oscillator frequency, log scale 20 Hz – 20 kHz. Click value to type exactly.">
           <div class="slider-label-row">
             <span class="slider-label">FREQ</span>
             <span class="ctrl-val" id="src-freq-val" data-value="220">220 Hz</span>
@@ -294,10 +294,10 @@ input.gain-meter-slider::-webkit-slider-thumb {
       </div>
 
       <!-- Source gain into the ring buffer -->
-      <div class="slider-row">
+      <div class="slider-row" title="Source level going into the ring buffer (and to the pass-through). -60 to +6 dB.">
         <div class="slider-label-row">
           <span class="slider-label">SRC GAIN</span>
-          <span class="ctrl-val" id="src-gain-val" data-value="-6">-6 dB</span>
+          <span class="ctrl-val" id="src-gain-val" data-value="-6" title="Click to type a precise dB value">-6 dB</span>
         </div>
         <input type="range" id="src-gain-sl" min="-60" max="6" step="0.5" value="-6" oninput="setSrcGainDb(this.value)">
       </div>
@@ -323,7 +323,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
     <div class="module wide" id="shuffler-module">
       <div class="mod-head">
         <span class="mod-title"><span class="activity-led" id="grain-led"></span>BUFFER SHUFFLER</span>
-        <button class="byp-btn off" id="shuffler-enable-btn" onclick="toggleShuffler()">OFF</button>
+        <button class="byp-btn off" id="shuffler-enable-btn" onclick="toggleShuffler()" title="Toggle the grain engine on/off. Capture into the ring buffer keeps running regardless.">OFF</button>
       </div>
 
       <!-- Buffer fill / position viz -->
@@ -336,77 +336,89 @@ input.gain-meter-slider::-webkit-slider-thumb {
       </div>
 
       <!-- DENSITY -->
-      <div class="slider-row">
+      <div class="slider-row" title="Grains per second. 0.5–100, log scale.">
         <div class="slider-label-row">
           <span class="slider-label">DENSITY</span>
-          <span class="ctrl-val" id="param-density-val" data-value="8">8 /sec</span>
+          <span class="ctrl-val" id="param-density-val" data-value="8" title="Click to type a precise value">8 /sec</span>
         </div>
         <input type="range" id="param-density-sl" min="0" max="1000" step="any" value="500" oninput="setParamDensityPos(this.value)">
       </div>
 
       <!-- LENGTH -->
-      <div class="slider-row">
+      <div class="slider-row" title="Wall-clock grain length. Longer = smoother & more sample audible per grain. 5–2000 ms.">
         <div class="slider-label-row">
           <span class="slider-label">LENGTH</span>
-          <span class="ctrl-val" id="param-length-val" data-value="120">120 ms</span>
+          <span class="ctrl-val" id="param-length-val" data-value="120" title="Click to type a precise value in ms">120 ms</span>
         </div>
         <input type="range" id="param-length-sl" min="0" max="1000" step="any" value="500" oninput="setParamLengthPos(this.value)">
       </div>
 
       <!-- POSITION (lookback in seconds) -->
-      <div class="slider-row">
+      <div class="slider-row" title="How far back in the 12-second buffer the grain reads from. 0 = live now; 11 = ~max past.">
         <div class="slider-label-row">
           <span class="slider-label">POSITION</span>
-          <span class="ctrl-val" id="param-position-val" data-value="0.5">0.50 s back</span>
+          <span class="ctrl-val" id="param-position-val" data-value="0.5" title="Click to type a precise value">0.50 s back</span>
         </div>
         <input type="range" id="param-position-sl" min="0.02" max="11.5" step="0.01" value="0.5" oninput="setParamPosition(this.value)">
       </div>
 
       <!-- SPREAD -->
-      <div class="slider-row">
+      <div class="slider-row" title="Random jitter ± around POSITION. Each grain picks a fresh offset.">
         <div class="slider-label-row">
           <span class="slider-label">SPREAD</span>
-          <span class="ctrl-val" id="param-spread-val" data-value="0.5">0.50 s</span>
+          <span class="ctrl-val" id="param-spread-val" data-value="0.5" title="Click to type a precise value">0.50 s</span>
         </div>
         <input type="range" id="param-spread-sl" min="0" max="11" step="0.01" value="0.5" oninput="setParamSpread(this.value)">
       </div>
 
-      <!-- PITCH -->
+      <!-- PITCH (with coarse/fine toggle, mirroring fx-processor's pitch shifter) -->
       <div class="slider-row">
         <div class="slider-label-row">
           <span class="slider-label">PITCH</span>
-          <span class="ctrl-val" id="param-pitch-val" data-value="0">+0 semis</span>
+          <span style="display:flex;align-items:center;gap:6px;">
+            <button id="param-pitch-mode" onclick="togglePitchMode()"
+              title="Coarse = 1 semitone steps · Fine = 0.05 semitone steps (cents-level)"
+              style="padding:1px 6px;font-size:.55rem;font-family:Courier New,monospace;
+                     background:transparent;border:1px solid #383838;color:#888;
+                     cursor:pointer;border-radius:2px;letter-spacing:.05em;transition:all .15s;">COARSE</button>
+            <span class="ctrl-val" id="param-pitch-val" data-value="0">+0 semis</span>
+          </span>
         </div>
-        <input type="range" id="param-pitch-sl" min="-24" max="24" step="0.5" value="0" oninput="setParamPitch(this.value)">
+        <input type="range" id="param-pitch-sl" min="-24" max="24" step="1" value="0" oninput="setParamPitch(this.value)"
+               title="Drag to set grain playback pitch in semitones">
       </div>
 
       <!-- PAN SPREAD -->
-      <div class="slider-row">
+      <div class="slider-row" title="How wide each grain pans randomly. 0% = mono center; 100% = full L↔R random.">
         <div class="slider-label-row">
           <span class="slider-label">PAN SPREAD</span>
-          <span class="ctrl-val" id="param-panspread-val" data-value="0.4">40%</span>
+          <span class="ctrl-val" id="param-panspread-val" data-value="0.4" title="Click to type 0–100%">40%</span>
         </div>
         <input type="range" id="param-panspread-sl" min="0" max="1" step="0.01" value="0.4" oninput="setParamPanSpread(this.value)">
       </div>
 
       <!-- GRAIN GAIN — output of grain engine into the master mix -->
-      <div class="slider-row">
+      <div class="slider-row" title="Master gain on the grain output bus.">
         <div class="slider-label-row">
           <span class="slider-label">GRAIN OUT</span>
-          <span class="ctrl-val" id="param-graingain-val" data-value="-6">-6 dB</span>
+          <span class="ctrl-val" id="param-graingain-val" data-value="-6" title="Click to type a precise dB value">-6 dB</span>
         </div>
         <input type="range" id="param-graingain-sl" min="-60" max="12" step="0.5" value="-6" oninput="setGrainGainDb(this.value)">
       </div>
 
-      <!-- Preset row: 0=home (defaults), 1-8 factory presets -->
-      <div class="preset-row" id="preset-row">
-        <button class="preset-slot factory" data-slot="0" onclick="loadPreset(0)" title="Home / defaults">
+      <!-- Preset row 1: 0=home (defaults), 1-8 factory presets -->
+      <div class="preset-row" id="preset-row" title="Factory presets (slot 0 = home defaults). Click to recall · shift+click to overwrite.">
+        <button class="preset-slot factory" data-slot="0" onclick="loadPreset(0)" title="Home — default grain settings">
           <span class="preset-num">0</span>HOME
         </button>
-        <!-- factory slots 1-8 inserted by JS (so names stay in sync with FACTORY_PRESETS array) -->
+        <!-- factory slots 1-8 inserted by JS -->
+      </div>
+      <!-- Preset row 2: 9-16 user slots (empty until shift+clicked to save) -->
+      <div class="preset-row" id="user-preset-row" title="User slots — empty until you shift+click to save. Click to recall.">
+        <!-- user slots 9-16 inserted by JS -->
       </div>
       <div class="hint" style="margin-top:6px;text-align:center;color:#555;">
-        click slot to recall · shift+click to overwrite a slot with current state
+        click slot to recall · shift+click to save current state
       </div>
     </div>
   </div>
@@ -416,7 +428,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
     <div class="module" id="output-module">
       <div class="mod-head">
         <span class="mod-title">OUTPUT</span>
-        <button class="byp-btn" id="output-mute" onclick="toggleOutputMute()" style="margin-left:auto;">ON</button>
+        <button class="byp-btn" id="output-mute" onclick="toggleOutputMute()" title="Mute the master output (recording continues regardless)" style="margin-left:auto;">ON</button>
       </div>
 
       <div style="display:flex;justify-content:center;height:170px;min-height:170px;margin-bottom:4px;">
@@ -858,11 +870,39 @@ function setParamSpread(sec){
   el.textContent = round2(params.spreadSec) + ' s';
   el.dataset.value = params.spreadSec;
 }
+let pitchFineMode = false;
+function togglePitchMode(){
+  pitchFineMode = !pitchFineMode;
+  const sl = document.getElementById('param-pitch-sl');
+  const btn = document.getElementById('param-pitch-mode');
+  if (pitchFineMode) {
+    sl.step = '0.05';
+    btn.textContent = 'FINE';
+    btn.style.borderColor = '#5a4a2a';
+    btn.style.color = '#c8a854';
+  } else {
+    sl.step = '1';
+    btn.textContent = 'COARSE';
+    btn.style.borderColor = '#383838';
+    btn.style.color = '#888';
+    // Snap current value to integer when going back to coarse
+    const snapped = Math.round(params.pitchSemis);
+    if (snapped !== params.pitchSemis) {
+      sl.value = snapped;
+      setParamPitch(snapped);
+    }
+  }
+}
 function setParamPitch(s){
-  params.pitchSemis = clamp(parseFloat(s), -36, 36);
+  let v = clamp(parseFloat(s), -36, 36);
+  // In fine mode, allow up to 2-decimal precision; in coarse, snap to integer
+  if (!pitchFineMode) v = Math.round(v);
+  else v = Math.round(v * 20) / 20; // 0.05 step granularity
+  params.pitchSemis = v;
   const el = document.getElementById('param-pitch-val');
-  el.textContent = (params.pitchSemis>=0?'+':'') + round2(params.pitchSemis) + ' semis';
-  el.dataset.value = params.pitchSemis;
+  const formatted = pitchFineMode ? v.toFixed(2) : Math.round(v).toString();
+  el.textContent = (v>=0?'+':'') + formatted + ' semis';
+  el.dataset.value = v;
 }
 function setParamPanSpread(p){
   params.panSpread = clamp(parseFloat(p), 0, 1);
@@ -965,13 +1005,25 @@ function triggerGrain(){
   const lenSec = params.lengthMs / 1000;
   const sourceLenSec = lenSec * rate;
 
-  // Envelope: 8% attack, 92% gradual decay-to-zero over the grain length (clean-edge fades)
+  // v0.3: adaptive plateau envelope to prevent edge clicks. Fade time is
+  // clamp(grainLen * 0.15, 1.5ms, 8ms) so very short grains still get a
+  // ~1.5ms fade (kills click at start/end where the read sample is rarely
+  // near zero). For grains shorter than 2× fade we collapse to triangular.
+  const fadeMs = clamp(params.lengthMs * 0.15, 1.5, 8);
+  const fadeSec = fadeMs / 1000;
   const t0 = rawCtx.currentTime;
-  const tA = t0 + lenSec * 0.08;
   const tEnd = t0 + lenSec;
   env.gain.setValueAtTime(0, t0);
-  env.gain.linearRampToValueAtTime(1, tA);
-  env.gain.linearRampToValueAtTime(0, tEnd);
+  if (lenSec < 2 * fadeSec) {
+    // Tiny grain — triangular envelope (peak at midpoint)
+    env.gain.linearRampToValueAtTime(1, t0 + lenSec / 2);
+    env.gain.linearRampToValueAtTime(0, tEnd);
+  } else {
+    // Plateau envelope: fade in → hold at 1 → fade out
+    env.gain.linearRampToValueAtTime(1, t0 + fadeSec);
+    env.gain.setValueAtTime(1, tEnd - fadeSec);
+    env.gain.linearRampToValueAtTime(0, tEnd);
+  }
 
   try {
     src.start(t0, startSec, sourceLenSec + 0.05);
@@ -1048,19 +1100,51 @@ function startBufVizLoop(){
 
 /* ══════════ PRESETS ══════════ */
 function buildPresetRow(){
+  // Row 1: factory slots 1-8 (slot 0 = home, already in HTML)
   const row = document.getElementById('preset-row');
   for (let i = 1; i <= 8; i++) {
     const p = FACTORY_PRESETS[i];
     const btn = document.createElement('button');
     btn.className = 'preset-slot factory';
     btn.dataset.slot = String(i);
-    btn.title = `${p.name}: density=${p.density}/s, length=${p.lengthMs}ms, pos=${p.positionSec}s, spread=${p.spreadSec}s, pitch=${p.pitchSemis}st`;
+    btn.title = `${p.name}: density=${p.density}/s, length=${p.lengthMs}ms, pos=${p.positionSec}s, spread=${p.spreadSec}s, pitch=${p.pitchSemis}st\nClick to recall · Shift+click to overwrite this slot`;
     btn.onclick = (e) => {
       if (e.shiftKey) saveUserSlot(i);
       else loadPreset(i);
     };
     btn.innerHTML = `<span class="preset-num">${i}</span>${p.name.toUpperCase()}`;
     row.appendChild(btn);
+  }
+  // Row 2: user slots 9-16 (empty by default; populate via shift+click to save)
+  const userRow = document.getElementById('user-preset-row');
+  for (let i = 9; i <= 16; i++) {
+    const btn = document.createElement('button');
+    btn.className = 'preset-slot user empty';
+    btn.dataset.slot = String(i);
+    btn.title = `User slot ${i - 8}\nShift+click to save current state · Click to recall once saved`;
+    btn.onclick = (e) => {
+      if (e.shiftKey) saveUserSlot(i);
+      else if (userSlots[i]) loadPreset(i);
+    };
+    btn.innerHTML = `<span class="preset-num">${i - 8}</span>—`;
+    userRow.appendChild(btn);
+  }
+  refreshUserSlotLabels();
+}
+function refreshUserSlotLabels(){
+  for (let i = 9; i <= 16; i++) {
+    const btn = document.querySelector(`.preset-slot[data-slot="${i}"]`);
+    if (!btn) continue;
+    if (userSlots[i]) {
+      btn.classList.remove('empty');
+      const p = userSlots[i].params;
+      btn.innerHTML = `<span class="preset-num">${i - 8}</span>USR`;
+      btn.title = `User slot ${i - 8}: density=${round2(p.density)}/s, length=${round2(p.lengthMs)}ms, pos=${round2(p.positionSec)}s, pitch=${round2(p.pitchSemis)}st\nClick to recall · Shift+click to overwrite`;
+    } else {
+      btn.classList.add('empty');
+      btn.innerHTML = `<span class="preset-num">${i - 8}</span>—`;
+      btn.title = `User slot ${i - 8}\nShift+click to save current state · empty`;
+    }
   }
 }
 function loadPreset(i){
@@ -1069,27 +1153,17 @@ function loadPreset(i){
   Object.assign(params, p);
   applyParams();
   activePresetSlot = i;
-  // Highlight active slot
   document.querySelectorAll('.preset-slot').forEach(b => {
     b.classList.toggle('active', parseInt(b.dataset.slot) === i);
-  });
-  // If this slot has a user override, reflect it in the slot label color
-  document.querySelectorAll('.preset-slot[data-slot]').forEach(b => {
-    const idx = parseInt(b.dataset.slot);
-    if (idx === 0) return;
-    if (userSlots[idx]) {
-      b.classList.add('user'); b.classList.remove('factory');
-    } else {
-      b.classList.add('factory'); b.classList.remove('user');
-    }
   });
 }
 function saveUserSlot(i){
   if (i === 0) return;
   userSlots[i] = { params: {...params}, savedAt: Date.now() };
   saveUserSlots();
-  loadPreset(i); // refresh visual state
-  console.log(`saved current params → user slot ${i}`);
+  refreshUserSlotLabels();
+  loadPreset(i);
+  console.log(`saved current params → slot ${i}`);
 }
 
 /* ══════════ OUTPUT ══════════ */
