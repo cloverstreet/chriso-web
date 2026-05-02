@@ -431,7 +431,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 <!-- Version badge (always visible, top-right) -->
 <div id="version-badge" style="position:fixed;top:8px;right:10px;
      font-family:'Courier New',monospace;font-size:.6rem;letter-spacing:.16em;
-     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v62</div>
+     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v63</div>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
 <!-- START SCREEN                                                   -->
@@ -903,8 +903,9 @@ input.gain-meter-slider::-webkit-slider-thumb {
                 onmouseover="this.style.color='#e05050';this.style.borderColor='#5a2a2a'"
                 onmouseout="this.style.color='#444';this.style.borderColor='#252525'">✕</button>
             </div>
-            <!-- Hint -->
-            <div id="ps-hint" style="font-size:.59rem;color:#555;text-align:center;margin-bottom:4px;">click preset to select · drag preset to reposition · drag ⊕ to navigate</div>
+            <!-- v63: ps-hint removed — was redundant with the now-working slot
+                 button highlight. JS code that wrote to ps-hint is null-safe so
+                 those updates silently no-op. -->
           </div>
           <canvas id="playspace-canvas"></canvas>
       

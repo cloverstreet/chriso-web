@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Buffer Shuffler — Test Case v0.3</title>
+<title>Buffer Shuffler — Test Case v0.4</title>
 <!-- Tone.js intentionally NOT loaded in v0.2: the buffer-shuffler engine is pure
      Web Audio. AudioWorkletNode's constructor requires a real BaseAudioContext,
      and Tone.js 14.8.49's wrapper isn't one — so we use a bare AudioContext. -->
@@ -235,7 +235,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 </head>
 <body>
 
-<div id="version-badge">BUFFER SHUFFLER · v0.3</div>
+<div id="version-badge">BUFFER SHUFFLER · v0.4</div>
 
 <div id="start-screen">
   <div style="font-size:.78rem;letter-spacing:.28em;color:#666;">BUFFER SHUFFLER — TEST CASE</div>
@@ -963,6 +963,37 @@ function scheduleNextGrain(){
   const jitter = (Math.random() - 0.5) * baseInterval * 0.18;
   grainTimer = setTimeout(scheduleNextGrain, baseInterval + jitter);
 }
+// v0.4: Raised-cosine envelope generator. Returns a Float32Array shaped like
+//   /‾‾‾‾‾‾\
+// with cosine-eased fade-in over `fadeSec` at the start, flat plateau in
+// the middle, and cosine-eased fade-out over `fadeSec` at the end.
+// If lenSec < 2*fadeSec, collapses to a single Hann-window-ish bump.
+function makeRaisedCosineEnvelope(lenSec, fadeSec){
+  // Curve resolution: ~1 ms per sample, capped 256-4096.
+  const N = clamp(Math.floor(lenSec * 1000), 256, 4096);
+  const out = new Float32Array(N);
+  const fadeFrac = fadeSec / lenSec;
+  const fadeSamples = Math.max(1, Math.floor(N * fadeFrac));
+  if (lenSec < 2 * fadeSec) {
+    // Tiny grain — single cosine bump (Hann window)
+    for (let i = 0; i < N; i++) out[i] = 0.5 - 0.5 * Math.cos((Math.PI * 2 * i) / (N - 1));
+  } else {
+    for (let i = 0; i < N; i++) {
+      if (i < fadeSamples) {
+        // Fade in: 0.5 - 0.5*cos(π * t/fadeSamples) goes 0→1 cosine-eased
+        out[i] = 0.5 - 0.5 * Math.cos((Math.PI * i) / fadeSamples);
+      } else if (i > N - fadeSamples - 1) {
+        // Fade out: mirror
+        const k = N - 1 - i;
+        out[i] = 0.5 - 0.5 * Math.cos((Math.PI * k) / fadeSamples);
+      } else {
+        out[i] = 1;
+      }
+    }
+  }
+  return out;
+}
+
 function triggerGrain(){
   if (!captureBuffer) return;
   // Need at least RING_FILL_MIN_SEC of audio captured so we don't read from silence
@@ -1005,24 +1036,31 @@ function triggerGrain(){
   const lenSec = params.lengthMs / 1000;
   const sourceLenSec = lenSec * rate;
 
-  // v0.3: adaptive plateau envelope to prevent edge clicks. Fade time is
-  // clamp(grainLen * 0.15, 1.5ms, 8ms) so very short grains still get a
-  // ~1.5ms fade (kills click at start/end where the read sample is rarely
-  // near zero). For grains shorter than 2× fade we collapse to triangular.
+  // v0.4: raised-cosine fade-in/fade-out via setValueCurveAtTime. Same adaptive
+  // fadeMs as v0.3 but the shape is C¹-continuous (smooth derivative at edges)
+  // instead of linear corners — substantially less clicky for short grains.
+  // Builds the curve on the fly so each grain gets its proper fade ratio.
   const fadeMs = clamp(params.lengthMs * 0.15, 1.5, 8);
   const fadeSec = fadeMs / 1000;
   const t0 = rawCtx.currentTime;
   const tEnd = t0 + lenSec;
   env.gain.setValueAtTime(0, t0);
-  if (lenSec < 2 * fadeSec) {
-    // Tiny grain — triangular envelope (peak at midpoint)
-    env.gain.linearRampToValueAtTime(1, t0 + lenSec / 2);
-    env.gain.linearRampToValueAtTime(0, tEnd);
-  } else {
-    // Plateau envelope: fade in → hold at 1 → fade out
-    env.gain.linearRampToValueAtTime(1, t0 + fadeSec);
-    env.gain.setValueAtTime(1, tEnd - fadeSec);
-    env.gain.linearRampToValueAtTime(0, tEnd);
+  const curve = makeRaisedCosineEnvelope(lenSec, fadeSec);
+  try {
+    env.gain.setValueCurveAtTime(curve, t0, lenSec);
+  } catch(e) {
+    // Browsers reject setValueCurveAtTime if it would extend past the audio context's
+    // current schedule. Fall back to linear ramps in that case.
+    env.gain.cancelScheduledValues(t0);
+    env.gain.setValueAtTime(0, t0);
+    if (lenSec < 2 * fadeSec) {
+      env.gain.linearRampToValueAtTime(1, t0 + lenSec / 2);
+      env.gain.linearRampToValueAtTime(0, tEnd);
+    } else {
+      env.gain.linearRampToValueAtTime(1, t0 + fadeSec);
+      env.gain.setValueAtTime(1, tEnd - fadeSec);
+      env.gain.linearRampToValueAtTime(0, tEnd);
+    }
   }
 
   try {
