@@ -1,0 +1,408 @@
+<!--
+  ============================================================================
+  THE SOMETHING NIGHTCLUB — visual placeholder + first audio pass
+  ============================================================================
+  Deploy path:    chriso.org/thesomethingnightclub/index.html
+  Original scene: My Websites Claude (claude.ai web session, 2026-05-02)
+  Audio added:    TelloFoam Claude Code, 2026-05-02
+
+  WHAT'S HERE NOW:
+    - Three.js wireframe room (unchanged from the handoff): corner couch,
+      two cafe tables, a bar with stool + implied bottles, two walls
+      meeting at the back-left corner, dust motes, slow drift camera.
+    - First audio pass: a muffled sub-pulse "from the backroom" — a
+      low-frequency oscillator HRTF-panned behind and to the right,
+      heavily low-passed, modulated by a slow LFO. Quiet by default.
+      Lazy-initialized on first user gesture (browser autoplay policy).
+
+  WHAT'S STILL TBD (per the planning doc):
+    - Multiple binaural voices (Claude left, ChatGPT right)
+    - Web Speech / ElevenLabs TTS
+    - Persistent log via localStorage / Notion fetch
+    - Quote crystallization / artologue accumulation
+    - Tables 1–4 spatial mapping (AI Salon, GDB, Tech, Provocations)
+    - TelloFoam-style multi-peer integration
+
+  COORD: log on Notion "NightClub Working Notes" 355dbb52-…81fa…
+  ============================================================================
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>The Something NightClub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;1,400&family=Fraunces:opsz,wght@9..144,300;9..144,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #050304;
+    --ink: #c4a878;
+  }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100vh;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Cormorant Garamond', serif;
+    /* Touch: no pinch zoom, no rubber-band, no accidental selection while in the room. */
+    touch-action: none;
+    overscroll-behavior: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    pointer-events: none; z-index: 5;
+    opacity: 0.05; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  }
+  #scene { position: fixed; inset: 0; z-index: 1; }
+
+  .name {
+    position: fixed;
+    top: 2rem; left: 2.4rem;
+    z-index: 10;
+    font-family: 'Fraunces', serif;
+    font-weight: 300;
+    font-size: 0.78rem;
+    letter-spacing: 0.36em;
+    text-transform: lowercase;
+    opacity: 0.55;
+  }
+  .title {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-weight: 400;
+    font-size: clamp(1.6rem, 3vw, 2.4rem);
+    letter-spacing: 0.05em;
+    color: var(--ink);
+    text-align: center;
+    pointer-events: none;
+    text-shadow: 0 0 30px rgba(0,0,0,0.9);
+    opacity: 0;
+    animation: fade 4s ease-out 0.6s forwards;
+  }
+  .title small {
+    display: block;
+    font-style: normal;
+    font-family: 'Fraunces', serif;
+    font-weight: 300;
+    font-size: 0.55em;
+    letter-spacing: 0.4em;
+    margin-top: 0.6em;
+    text-transform: lowercase;
+    opacity: 0.5;
+  }
+  @keyframes fade { to { opacity: 1; } }
+
+  .back {
+    position: fixed;
+    bottom: 1.8rem; left: 2.4rem;
+    z-index: 10;
+    color: var(--ink);
+    text-decoration: none;
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 1rem;
+    letter-spacing: 0.04em;
+    opacity: 0.4;
+    transition: opacity 0.4s, letter-spacing 0.5s;
+  }
+  .back:hover { opacity: 1; letter-spacing: 0.08em; }
+
+  .note {
+    position: fixed;
+    bottom: 1.8rem; right: 2.4rem;
+    z-index: 10;
+    font-family: 'Fraunces', serif;
+    font-weight: 300;
+    font-size: 0.7rem;
+    letter-spacing: 0.28em;
+    text-transform: lowercase;
+    opacity: 0.3;
+    text-align: right;
+    pointer-events: none;
+  }
+
+  /* "press anywhere to enter" hint — fades after first interaction */
+  .enter-hint {
+    position: fixed;
+    bottom: 6rem; left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    font-family: 'Fraunces', serif;
+    font-weight: 300;
+    font-size: 0.66rem;
+    letter-spacing: 0.32em;
+    text-transform: lowercase;
+    opacity: 0;
+    color: var(--ink);
+    pointer-events: none;
+    animation: hintIn 1.2s ease-out 5s forwards;
+    transition: opacity 0.8s;
+  }
+  .enter-hint.gone { opacity: 0 !important; }
+  @keyframes hintIn { to { opacity: 0.45; } }
+</style>
+</head>
+<body>
+
+<div class="name">the something nightclub</div>
+
+<div class="title">
+  empty
+  <small>2:00 am · the room is awake</small>
+</div>
+
+<a class="back" href="../">← back to the corridor</a>
+<div class="note">est. unknown<br>ow. sypvefafvy</div>
+<div class="enter-hint" id="enterHint">tap or press a key to bring up the audio</div>
+
+<div id="scene"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ─── Scene ─────────────────────────────────────────────────────────────────
+(() => {
+  const container = document.getElementById('scene');
+
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x050304, 0.055);
+
+  const camera = new THREE.PerspectiveCamera(
+    42, window.innerWidth / window.innerHeight, 0.1, 200
+  );
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setClearColor(0x000000, 0);
+  container.appendChild(renderer.domElement);
+
+  // materials — three weights of warmth
+  const matBright = new THREE.LineBasicMaterial({ color: 0xc4a878, transparent: true, opacity: 0.78 });
+  const matMid    = new THREE.LineBasicMaterial({ color: 0x8a6840, transparent: true, opacity: 0.6 });
+  const matDim    = new THREE.LineBasicMaterial({ color: 0x4a3520, transparent: true, opacity: 0.5 });
+
+  function addEdges(geom, x, y, z, mat = matBright) {
+    const edges = new THREE.EdgesGeometry(geom, 1);
+    const line = new THREE.LineSegments(edges, mat);
+    line.position.set(x, y, z);
+    scene.add(line);
+    return line;
+  }
+
+  // floor
+  const grid = new THREE.GridHelper(40, 40, 0x3a2918, 0x1f140a);
+  grid.material.transparent = true;
+  grid.material.opacity = 0.55;
+  grid.position.y = 0;
+  scene.add(grid);
+
+  // walls (back-left corner)
+  addEdges(new THREE.PlaneGeometry(10, 6), -5, 3, -6, matDim).rotation.y = 0;
+  addEdges(new THREE.PlaneGeometry(10, 6), -8, 3, -1, matDim).rotation.y = Math.PI / 2;
+
+  // corner couch
+  addEdges(new THREE.BoxGeometry(1.4, 0.55, 4.5), -6.5, 0.45, -3, matBright);
+  addEdges(new THREE.BoxGeometry(3.6, 0.55, 1.4), -4.4, 0.45, -5, matBright);
+  addEdges(new THREE.BoxGeometry(0.25, 1.2, 4.5), -7.1, 0.95, -3, matMid);
+  addEdges(new THREE.BoxGeometry(3.6, 1.2, 0.25), -4.4, 0.95, -5.6, matMid);
+
+  // tables
+  const tableTop = (x, z) => {
+    addEdges(new THREE.CylinderGeometry(0.55, 0.55, 0.05, 32), x, 0.78, z, matBright);
+    addEdges(new THREE.CylinderGeometry(0.06, 0.06, 0.78, 8), x, 0.39, z, matMid);
+    addEdges(new THREE.CylinderGeometry(0.07, 0.06, 0.18, 12), x + 0.18, 0.89, z - 0.1, matBright);
+  };
+  tableTop(-4.2, -2.4);
+  tableTop(-2.8,  0.2);
+
+  // bar
+  addEdges(new THREE.BoxGeometry(1.2, 1.05, 7),    4.5, 0.525, -1, matBright);
+  addEdges(new THREE.BoxGeometry(1.55, 0.06, 7.2), 4.5, 1.08,  -1, matBright);
+  addEdges(new THREE.BoxGeometry(0.18, 2.6, 7),    5.9, 1.3,   -1, matMid);
+  for (let i = -2; i <= 2; i += 2) {
+    addEdges(new THREE.CylinderGeometry(0.06, 0.06, 0.4, 8), 5.78, 1.55, -1 + i, matBright);
+  }
+  addEdges(new THREE.CylinderGeometry(0.22, 0.22, 0.04, 24), 3.4, 0.78, -1, matBright);
+  addEdges(new THREE.CylinderGeometry(0.04, 0.04, 0.78, 8),  3.4, 0.39, -1, matMid);
+
+  // dust motes
+  const motes = [];
+  const moteGeom = new THREE.BufferGeometry();
+  const moteCount = 60;
+  const moteArr = new Float32Array(moteCount * 3);
+  for (let i = 0; i < moteCount; i++) {
+    moteArr[i*3]   = (Math.random() - 0.5) * 18;
+    moteArr[i*3+1] =  Math.random() * 5 + 0.4;
+    moteArr[i*3+2] = (Math.random() - 0.5) * 14;
+    motes.push({ baseY: moteArr[i*3+1], phase: Math.random() * Math.PI * 2 });
+  }
+  moteGeom.setAttribute('position', new THREE.BufferAttribute(moteArr, 3));
+  const moteMat = new THREE.PointsMaterial({
+    color: 0xc4a878, size: 0.045, transparent: true, opacity: 0.5, sizeAttenuation: true
+  });
+  const motePts = new THREE.Points(moteGeom, moteMat);
+  scene.add(motePts);
+
+  // camera drift
+  let t = 0;
+  const lookTarget = new THREE.Vector3(-1.2, 0.9, -2);
+  function frame() {
+    t += 0.0024;
+    const r = 11.5 + Math.sin(t * 0.4) * 0.7;
+    camera.position.x = Math.cos(t * 0.6) * r;
+    camera.position.z = Math.sin(t * 0.6) * r + 1;
+    camera.position.y = 3.4 + Math.sin(t * 0.9) * 0.4;
+    camera.lookAt(lookTarget);
+
+    const pos = motePts.geometry.attributes.position.array;
+    for (let i = 0; i < moteCount; i++) {
+      pos[i*3+1] = motes[i].baseY + Math.sin(t * 4 + motes[i].phase) * 0.35;
+      pos[i*3]   += Math.sin(t * 0.7 + motes[i].phase) * 0.0006;
+      pos[i*3+2] += Math.cos(t * 0.5 + motes[i].phase) * 0.0006;
+    }
+    motePts.geometry.attributes.position.needsUpdate = true;
+
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+  frame();
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+})();
+
+// ─── Audio ─────────────────────────────────────────────────────────────────
+// First pass: a muffled sub-pulse "from the backroom" — low-frequency
+// oscillator, slow LFO amplitude mod, heavily low-passed, HRTF-panned to
+// behind-and-to-the-right of the listener. Quiet enough to ignore, present
+// enough to color the room. Lazy-init on first user gesture per autoplay
+// policy. This is also the proving ground for the binaural-positioning
+// stack the planning doc is built around.
+(() => {
+  let audioCtx = null;
+  let started = false;
+
+  function startAudio() {
+    if (started) return;
+    started = true;
+    document.getElementById('enterHint').classList.add('gone');
+
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const now = audioCtx.currentTime;
+
+    // ── Master ────────────────────────────────────────────
+    const master = audioCtx.createGain();
+    master.gain.value = 0;
+    master.gain.setTargetAtTime(0.55, now, 6);  // slow fade in over ~6s
+    master.connect(audioCtx.destination);
+
+    // ── HRTF panner — backroom: behind + right + slightly down ────
+    // Listener defaults to (0,0,0) facing −Z. So a positive X is right,
+    // positive Z is BEHIND. Distance attenuation does the muffling work.
+    const panner = audioCtx.createPanner();
+    panner.panningModel  = 'HRTF';
+    panner.distanceModel = 'inverse';
+    panner.refDistance   = 1;
+    panner.maxDistance   = 30;
+    panner.rolloffFactor = 1.6;
+    panner.coneInnerAngle = 360;
+    panner.setPosition(2.4, -0.4, 4.2);  // right, slightly below, well behind
+    panner.connect(master);
+
+    // ── Sub fundamental: 52 Hz sine ───────────────────────
+    const sub = audioCtx.createOscillator();
+    sub.type = 'sine';
+    sub.frequency.value = 52;
+
+    // Slight detuned sibling for warmth — 2nd osc at 52.6 Hz so they beat
+    // very slowly (~0.6 Hz beat — adds movement at the fundamental level)
+    const subTwin = audioCtx.createOscillator();
+    subTwin.type = 'sine';
+    subTwin.frequency.value = 52.6;
+
+    // ── Pulse envelope: slow LFO modulating a gain ────────
+    // ~70 BPM-ish thump (1.16 Hz). Triangle-ish via sine, biased so it
+    // never goes silent — there's always some sub there, the pulse is a
+    // soft swell not a gate.
+    const pulseGain = audioCtx.createGain();
+    pulseGain.gain.value = 0.55;
+    const lfo = audioCtx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.value = 1.16;
+    const lfoDepth = audioCtx.createGain();
+    lfoDepth.gain.value = 0.45;
+    lfo.connect(lfoDepth).connect(pulseGain.gain);
+
+    // ── Low-pass: kill any harmonic above ~85 Hz ──────────
+    const lpf = audioCtx.createBiquadFilter();
+    lpf.type = 'lowpass';
+    lpf.frequency.value = 85;
+    lpf.Q.value = 0.5;
+
+    // ── Distant-crowd noise hint: very quiet filtered noise ───
+    // 1.5 seconds of brown-ish noise looped, low-passed hard so it sits
+    // under the kick. Suggests "another room with people in it" without
+    // revealing any actual content.
+    const noiseBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * 1.5, audioCtx.sampleRate);
+    const nch = noiseBuf.getChannelData(0);
+    let lastSample = 0;
+    for (let i = 0; i < nch.length; i++) {
+      const white = Math.random() * 2 - 1;
+      lastSample = (lastSample + 0.025 * white) / 1.025;  // brown-noise IIR
+      nch[i] = lastSample * 3.5;
+    }
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = noiseBuf;
+    noise.loop   = true;
+    const noiseLpf = audioCtx.createBiquadFilter();
+    noiseLpf.type = 'lowpass';
+    noiseLpf.frequency.value = 240;
+    noiseLpf.Q.value = 0.7;
+    const noiseGain = audioCtx.createGain();
+    noiseGain.gain.value = 0.045;  // very quiet — atmosphere only
+
+    // ── Wire it up ────────────────────────────────────────
+    sub.connect(pulseGain);
+    subTwin.connect(pulseGain);
+    pulseGain.connect(lpf);
+    lpf.connect(panner);
+
+    noise.connect(noiseLpf);
+    noiseLpf.connect(noiseGain);
+    noiseGain.connect(panner);
+
+    sub.start(now);
+    subTwin.start(now);
+    lfo.start(now);
+    noise.start(now);
+
+    // Resume context if the browser auto-suspended it (Safari does this)
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+
+  // Pointer Events cover mouse + touch + pen. Keydown for keyboard users.
+  // Once started, we don't need these anymore.
+  function unlockOnce() {
+    startAudio();
+    document.removeEventListener('pointerdown', unlockOnce);
+    document.removeEventListener('keydown', unlockOnce);
+  }
+  document.addEventListener('pointerdown', unlockOnce);
+  document.addEventListener('keydown', unlockOnce);
+})();
+</script>
+</body>
+</html>
