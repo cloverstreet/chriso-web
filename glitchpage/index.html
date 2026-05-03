@@ -111,18 +111,14 @@
 const linksContainer = document.getElementById('links');
 
 const SCATTERED_LINKS = [
-  // Interpolation-space-inspired: spread across full viewport, no
-  // central cluster, asymmetric weight. Each link has its own phase/
-  // frequency seed (computed in JS) so the glow flicker is per-link.
+  // Spread across viewport, leaving the centerline clear so
+  // "ChristopherO!" stays unobstructed.  Each link has its own
+  // phase/freq/hueBias seeds (computed in JS) for per-link flicker.
   { label: 'about',                    href: '/about/',                  x: 12, y: 22 },
-  { label: 'instruments',              href: '/web-instruments/',        x: 28, y: 38, sublabel: 'playables' },
-  { label: 'lessons',                  href: '/lessons/',                x: 14, y: 58 },
-  { label: 'workshop',                 href: '/workshop/',               x: 22, y: 78 },
-  { label: 'recommended events',       href: '/calendar/',               x: 76, y: 18, sublabel: 'public calendar' },
-  { label: 'mechanus rex',             href: '/mechanus-rex/',           x: 86, y: 36, sublabel: 'opera in progress' },
-  { label: 'archive',                  href: '/archive/',                x: 82, y: 58 },
-  { label: 'writing',                  href: '/writing/',                x: 64, y: 80 },
-  // The NightClub — now at /thesomethingnightclub/
+  { label: 'recommended events',       href: '/calendar/',               x: 86, y: 22, sublabel: 'public calendar' },
+  { label: 'lessons',                  href: '/lessons/',                x: 14, y: 70 },
+  { label: 'Playables',                href: '/web-instruments/',        x: 86, y: 70, sublabel: '(in progress)' },
+  // The NightClub — center-bottom: doors are downstairs.
   { label: 'the something nightclub',  href: '/thesomethingnightclub/',  x: 50, y: 90, sublabel: 'doors open · 2 a.m.', special: 'nightclub' }
 ];
 
