@@ -25,6 +25,8 @@
     top: 0; left: 0;
     z-index: 2;            /* above glow (0), below links (10) */
     pointer-events: none;  /* don't steal clicks from links */
+    mix-blend-mode: screen;/* let the title integrate with the glow field
+                              instead of punching out of it */
   }
 
   /* ── Scattered links ──────────────────────────────────────────
@@ -1362,7 +1364,13 @@ function draw() {
   ctx.clearRect(0, 0, W, H);
 
   if (peak < 0.5 && shards.length === 0 && !tearActive) {
+    // Quiet state — gentle breathing alpha so the title doesn't sit
+    // on top as a static logo; mix-blend-mode on #c integrates it
+    // with the glow field underneath.
+    ctx.save();
+    ctx.globalAlpha = 0.55 + 0.08 * Math.sin(frame * 0.011);
     ctx.drawImage(off, 0, 0);
+    ctx.restore();
     return;
   }
 
@@ -1460,9 +1468,9 @@ function draw() {
       const r2 = Math.sin(ns * 0.7  + i * 311.7) * 0.5 + 0.5;
       const r3 = Math.sin(ns * 0.15 + i * 53.3)  * 0.5 + 0.5;
 
-      const prob = Math.min(e / 100, 0.95);
+      const prob = Math.min(e / 140, 0.62);
       if (r1 < prob) {
-        const isMegaTear = r3 < 0.08 && e > 80;
+        const isMegaTear = r3 < 0.04 && e > 80;
         const baseShift  = (r2 - 0.5) * maxShift * 2;
         const shift      = isMegaTear ? baseShift * 3.5 : baseShift;
         ctx.drawImage(off, 0, sy, W, sh, shift, sy, W, sh);
@@ -1507,13 +1515,35 @@ function draw() {
     ctx.restore();
   }
 
+  // ── 4.5 Scattered slice stamps ───────────────────────────────────
+  // Spread the slice-tear field across the full canvas, not just the
+  // title band: pull thin slices from the text area and stamp them
+  // horizontally-shifted at random Y positions everywhere on screen.
+  if (e > 35) {
+    const stamps = Math.floor(2 + e * 0.025);
+    ctx.save();
+    ctx.globalAlpha = 0.32;
+    const textY    = H * 0.5;
+    const bandH    = Math.min(off.width * 0.13, 130);
+    const sampleY0 = textY - bandH * 0.6;
+    const sampleY1 = textY + bandH * 0.6;
+    for (let i = 0; i < stamps; i++) {
+      const sliceH = 1 + Math.random() * 5;
+      const sy     = sampleY0 + Math.random() * (sampleY1 - sampleY0);
+      const dy     = Math.random() * H;
+      const shift  = (Math.random() - 0.5) * e * 1.8;
+      ctx.drawImage(off, 0, sy, W, sliceH, shift, dy, W, sliceH);
+    }
+    ctx.restore();
+  }
+
   // ── 5. Shatter particles ─────────────────────────────────────────
   drawShards();
 
   // ── 6. Scan flashes ──────────────────────────────────────────────
-  if (e > 40 && Math.random() < 0.07) {
+  if (e > 40 && Math.random() < 0.03) {
     ctx.save();
-    ctx.globalAlpha = 0.08 + Math.random() * 0.14;
+    ctx.globalAlpha = 0.06 + Math.random() * 0.10;
     ctx.fillStyle = `hsl(${Math.random() * 360}, 100%, 75%)`;
     const fy = Math.random() * H;
     ctx.fillRect(0, fy, W, 1 + Math.random() * Math.floor(e * 0.09));
@@ -1521,7 +1551,7 @@ function draw() {
   }
 
   // ── 7. Large block corruption ────────────────────────────────────
-  if (e > 50 && Math.random() < 0.07) {
+  if (e > 50 && Math.random() < 0.025) {
     const bx = Math.random() * W * 0.6 + W * 0.2;
     const by = Math.random() * H * 0.5 + H * 0.25;
     const bw = 40  + Math.random() * 200;
