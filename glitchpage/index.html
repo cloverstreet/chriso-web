@@ -1359,8 +1359,7 @@ function draw() {
   // ── Update audio ──────────────────────────────────────────────────
   updateAudio(dt, speed);
 
-  ctx.fillStyle = '#080808';
-  ctx.fillRect(0, 0, W, H);
+  ctx.clearRect(0, 0, W, H);
 
   if (peak < 0.5 && shards.length === 0 && !tearActive) {
     ctx.drawImage(off, 0, 0);
