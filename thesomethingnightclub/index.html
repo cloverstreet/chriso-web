@@ -1,38 +1,53 @@
 <!--
   ============================================================================
-  THE SOMETHING NIGHTCLUB — visual placeholder + first audio + glitch pass
+  THE SOMETHING NIGHTCLUB — visual + audio + glitch + tensegrity flora + heads
   ============================================================================
   Deploy path:    chriso.org/thesomethingnightclub/index.html
   Original scene: My Websites Claude (claude.ai web session, 2026-05-02)
-  Audio:          TelloFoam Claude Code, 2026-05-02
-  Backroom +
-  plant +
-  bar figure +
-  velocity glitch: TelloFoam Claude Code, 2026-05-02
+  Audio + glitch +
+  tensegrity plants +
+  floating heads:  TelloFoam Claude Code, 2026-05-02 / 03
 
   WHAT'S HERE NOW:
     - Three.js wireframe room: corner couch, two cafe tables, bar with stool
-      + implied bottles, two walls meeting at the back-left corner, dust
-      motes, slow drift camera.
-    - BACKROOM: doorway in the back wall with three swaying silhouettes
-      and a deep-red glow plane that pulses in sync with the audio sub.
-    - PLANT: floor plant near the couch (pot + rim + 8 splayed fronds).
-    - FIGURE AT THE BAR: a single still figure (body + head), facing the
-      back-bar — the title says "empty" and yet.
-    - VELOCITY GLITCH: pointer velocity drives an "energy" value that
-      jitters every line's position, randomly disables depthTest (the
-      old-3D "things behind look in front" effect), shuffles renderOrder,
-      and wobbles the camera FOV. Calms back to the steady scene when
-      motion stops. Works with mouse + touch via Pointer Events — on
-      phone, drag-to-glitch is the gesture.
-    - AUDIO: muffled sub-pulse "from the backroom" — 52 Hz sine + slight
-      detune sibling, slow LFO mod, low-passed at 85 Hz, HRTF-panned
-      behind+right. Brown-noise distant-crowd hint underneath. Lazy-init
-      on first user gesture.
+      + implied bottles, two walls, dust motes, slow drift camera.
+    - BACKROOM: doorway in back wall + glow plane that pulses with the audio
+      sub, three swaying dancer-silhouettes inside.
+    - TENSEGRITY PLANT (replaces the old simple plant): a 3-strut T-prism
+      tensegrity structure in a pot — 3 rigid struts that don't touch,
+      held by 6 cables in tension. Inspired by Christophero's tensegrity-
+      robot work. Top endpoints wobble gently (sin-driven, per-strut
+      phase) — cables track endpoint positions live.
+    - TENSEGRITY TREE (new): 3-stage stacked T-prism, taller (~3.8u),
+      struts get smaller toward the top, cables more dense. Wobble
+      amplitude grows with height (like wind in a tree).
+    - FIGURE AT THE BAR: a single still figure standing facing the back-
+      bar — title says "empty" but somebody's there.
+    - FLOATING HEADS (3): wireframe spheres at three positions in the
+      room (above the bar, above the couch, mid-room). Each turns to
+      look around (random target every 4-8s, sometimes the camera).
+      Every 8-22s, a head opens its mouth (a ring) and emits a short
+      garbled-alien speech burst; an expanding visual ring shows the
+      sound coming out. Each head has its own HRTF panner, so the
+      voices arrive from their actual room positions. These are
+      placeholders for the future binaural-listening / generating
+      voice positions per the planning doc.
+    - VELOCITY GLITCH: pointer velocity → energy → per-line jitter +
+      depthTest sabotage + renderOrder shuffle + camera FOV wobble.
+      Calms back when motion stops. Pointer Events so it works on phone.
+    - BINAURAL ENGINE: every audible source (sub + each head) routes
+      through a `PannerNode`. The `AudioContext.listener` position +
+      orientation are coupled to the camera, so as the camera drifts
+      around the room the sound field rotates with it. Default is HRTF
+      (assumes headphones); the audio settings tab swaps everything to
+      equalpower stereo for speakers.
+    - SETTINGS TAB: top-right, "audio" tab — opens a tiny panel with
+      headphones / speakers toggle. Switching toggles all PannerNodes
+      between 'HRTF' and 'equalpower' modes.
 
   WHAT'S STILL TBD (per the planning doc):
-    - Multiple binaural voices (Claude left, ChatGPT right)
-    - Web Speech / ElevenLabs TTS
+    - Multiple binaural CONVERSATIONAL voices (Claude left, ChatGPT right)
+      with TTS — heads here are placeholders making nonsense sound
     - Persistent log via localStorage / Notion fetch
     - Quote crystallization / artologue accumulation
     - Tables 1–4 spatial mapping (AI Salon, GDB, Tech, Provocations)
@@ -163,6 +178,53 @@
   }
   .enter-hint.gone { opacity: 0 !important; }
   @keyframes hintIn { to { opacity: 0.45; } }
+
+  /* ── Settings tabs (top-right) ─────────────────────── */
+  .tabs {
+    position: fixed;
+    top: 1.6rem; right: 2.4rem;
+    z-index: 12;
+    display: flex; gap: 0.6rem;
+  }
+  .tab {
+    background: none; border: none; color: var(--ink);
+    font-family: 'Fraunces', serif; font-weight: 300;
+    font-size: 0.66rem; letter-spacing: 0.32em;
+    text-transform: lowercase; cursor: pointer;
+    opacity: 0.42; transition: opacity 0.3s, letter-spacing 0.5s;
+    padding: 4px 8px;
+  }
+  .tab:hover, .tab.open { opacity: 1; letter-spacing: 0.36em; }
+
+  .tab-panel {
+    position: fixed;
+    top: 3.4rem; right: 2.4rem;
+    z-index: 11;
+    background: rgba(15, 8, 8, 0.93);
+    border: 1px solid #4a3520;
+    padding: 12px 18px;
+    display: none;
+    color: var(--ink);
+    min-width: 240px;
+  }
+  .tab-panel.open { display: block; }
+  .tab-row {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 0.62rem; letter-spacing: 0.18em;
+    text-transform: lowercase; padding: 4px 0;
+  }
+  .tab-label { color: rgba(196, 168, 120, 0.55); min-width: 84px; }
+  .opt {
+    background: none;
+    border: 1px solid rgba(74, 53, 32, 0.7);
+    color: rgba(196, 168, 120, 0.55);
+    font-family: 'Fraunces', serif; font-weight: 300;
+    font-size: 0.62rem; letter-spacing: 0.18em;
+    text-transform: lowercase;
+    padding: 4px 10px; cursor: pointer; transition: all 0.2s;
+  }
+  .opt:hover { color: var(--ink); border-color: var(--ink); }
+  .opt.on { color: var(--ink); border-color: var(--ink); background: rgba(196, 168, 120, 0.06); }
 </style>
 </head>
 <body>
@@ -178,25 +240,66 @@
 <div class="note">est. unknown<br>ow. sypvefafvy</div>
 <div class="enter-hint" id="enterHint">tap or press a key to bring up the audio</div>
 
+<!-- Settings tabs (top-right) -->
+<div class="tabs">
+  <button class="tab" id="audioTab">audio</button>
+</div>
+<div class="tab-panel" id="audioPanel">
+  <div class="tab-row">
+    <span class="tab-label">listening on</span>
+    <button class="opt on" data-listening="headphones">headphones</button>
+    <button class="opt"    data-listening="speakers">speakers</button>
+  </div>
+</div>
+
 <div id="scene"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-// ─── Shared between scene + audio: the AudioContext once it's been started.
-// Visual sync (backroom glow pulse) reads currentTime from this so the
-// glow lines up with the actual sub-pulse.
+// ─── Cross-IIFE shared state ───────────────────────────────────────────────
 let audioCtx = null;
+let panningMode = 'HRTF';                  // or 'equalpower' for speakers
+const allPanners = [];                     // every PannerNode created — toggled in lockstep
+const heads = [];                          // populated in scene IIFE; speakHead() reads
+let speakHeadFn = null;                    // assigned by audio IIFE; called by scene IIFE on schedule
+
+function setPanningMode(mode) {
+  panningMode = mode;
+  for (const p of allPanners) p.panningModel = mode;
+}
+
+// ─── Settings tab handler (independent of scene/audio init) ────────────────
+(() => {
+  const tab = document.getElementById('audioTab');
+  const panel = document.getElementById('audioPanel');
+  tab.addEventListener('click', () => {
+    const open = panel.classList.toggle('open');
+    tab.classList.toggle('open', open);
+  });
+  // Close panel when clicking outside it (but not the tab itself)
+  document.addEventListener('pointerdown', e => {
+    if (e.target.closest('.tab-panel') || e.target.closest('.tabs')) return;
+    panel.classList.remove('open');
+    tab.classList.remove('open');
+  });
+  // Output toggle
+  panel.querySelectorAll('.opt[data-listening]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      panel.querySelectorAll('.opt[data-listening]').forEach(b => b.classList.remove('on'));
+      btn.classList.add('on');
+      const mode = btn.dataset.listening === 'speakers' ? 'equalpower' : 'HRTF';
+      setPanningMode(mode);
+    });
+  });
+})();
 
 // ─── Scene ─────────────────────────────────────────────────────────────────
 (() => {
   const container = document.getElementById('scene');
-
   const scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2(0x050304, 0.055);
 
-  const camera = new THREE.PerspectiveCamera(
-    42, window.innerWidth / window.innerHeight, 0.1, 200
-  );
+  const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 200);
   const baseFov = 42;
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -208,10 +311,9 @@ let audioCtx = null;
   const matBright = new THREE.LineBasicMaterial({ color: 0xc4a878, transparent: true, opacity: 0.78 });
   const matMid    = new THREE.LineBasicMaterial({ color: 0x8a6840, transparent: true, opacity: 0.6 });
   const matDim    = new THREE.LineBasicMaterial({ color: 0x4a3520, transparent: true, opacity: 0.5 });
+  const matCable  = new THREE.LineBasicMaterial({ color: 0xa8845a, transparent: true, opacity: 0.45 });
+  const matHead   = new THREE.LineBasicMaterial({ color: 0xd4b888, transparent: true, opacity: 0.7 });
 
-  // Every wireframe goes into allLines so the glitch loop can iterate.
-  // Groups (e.g. the chair, the figure) are pushed too — origPos is on
-  // userData so the loop can restore them.
   const allLines = [];
 
   function addEdges(geom, x, y, z, mat = matBright) {
@@ -233,13 +335,10 @@ let audioCtx = null;
     allLines.push(group);
   }
 
-  // ── Floor ────────────────────────────────────────────
+  // ── Floor + walls ───────────────────────────────────
   const grid = new THREE.GridHelper(40, 40, 0x3a2918, 0x1f140a);
-  grid.material.transparent = true;
-  grid.material.opacity = 0.55;
+  grid.material.transparent = true; grid.material.opacity = 0.55;
   scene.add(grid);
-
-  // ── Walls ────────────────────────────────────────────
   addEdges(new THREE.PlaneGeometry(10, 6), -5, 3, -6, matDim).rotation.y = 0;
   addEdges(new THREE.PlaneGeometry(10, 6), -8, 3, -1, matDim).rotation.y = Math.PI / 2;
 
@@ -268,100 +367,268 @@ let audioCtx = null;
   addEdges(new THREE.CylinderGeometry(0.22, 0.22, 0.04, 24), 3.4, 0.78, -1, matBright);
   addEdges(new THREE.CylinderGeometry(0.04, 0.04, 0.78, 8),  3.4, 0.39, -1, matMid);
 
-  // ── BACKROOM — doorway in back wall + glow + dancers ─
-  // Doorway frame: a simple rectangle outline, sitting just in front of
-  // the back wall to suggest a cut-through.
+  // ── Backroom ─────────────────────────────────────────
   const doorFrame = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.PlaneGeometry(1.7, 2.5)),
-    matBright
+    new THREE.EdgesGeometry(new THREE.PlaneGeometry(1.7, 2.5)), matBright
   );
   doorFrame.position.set(-1.6, 1.55, -5.95);
   doorFrame.userData.origPos = doorFrame.position.clone();
-  scene.add(doorFrame);
-  allLines.push(doorFrame);
+  scene.add(doorFrame); allLines.push(doorFrame);
 
-  // Glow plane behind the door — colored, opacity pulsing with the audio LFO.
-  // Mesh (not LineSegments) so it can be filled.
   const backGlowMat = new THREE.MeshBasicMaterial({
-    color: 0xa83020,
-    transparent: true,
-    opacity: 0.18,
-    side: THREE.DoubleSide,
-    depthWrite: false,
+    color: 0xa83020, transparent: true, opacity: 0.18,
+    side: THREE.DoubleSide, depthWrite: false,
   });
   const backGlow = new THREE.Mesh(new THREE.PlaneGeometry(1.55, 2.4), backGlowMat);
   backGlow.position.set(-1.6, 1.55, -6.4);
   scene.add(backGlow);
-  // not in allLines — its position is anchor; we only modulate opacity
 
-  // Three dancer-silhouettes inside, swaying. Slight z stagger for depth.
   const dancers = [];
   for (let i = 0; i < 3; i++) {
     const d = addEdges(
       new THREE.CylinderGeometry(0.16, 0.16, 1.4, 8),
-      -1.6 + (i - 1) * 0.42,
-      1.0,
-      -6.7 - i * 0.18,
-      matMid
+      -1.6 + (i - 1) * 0.42, 1.0, -6.7 - i * 0.18, matMid
     );
     d.userData.dancerIdx = i;
     dancers.push(d);
   }
 
-  // ── PLANT — floor plant near the couch ───────────────
-  // Pot
-  addEdges(new THREE.CylinderGeometry(0.28, 0.22, 0.4, 16), -2.6, 0.2, -3.4, matBright);
-  // Rim
-  addEdges(new THREE.CylinderGeometry(0.30, 0.28, 0.06, 16), -2.6, 0.42, -3.4, matMid);
-  // 8 splayed fronds — varied length, splayed via rotation
-  for (let i = 0; i < 8; i++) {
-    const angle = (i / 8) * Math.PI * 2;
-    const len = 0.7 + Math.random() * 0.55;
-    const frond = addEdges(
-      new THREE.CylinderGeometry(0.018, 0.005, len, 4),
-      -2.6 + Math.cos(angle) * 0.10,
-      0.42 + len / 2,
-      -3.4 + Math.sin(angle) * 0.10,
-      matBright
-    );
-    // Splay outward
-    frond.rotation.z = Math.cos(angle) * 0.50;
-    frond.rotation.x = Math.sin(angle) * 0.50;
+  // ── Bar figure (the surprise) ────────────────────────
+  const figure = new THREE.Group();
+  const body = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.CylinderGeometry(0.22, 0.20, 1.55, 10)), matBright
+  );
+  body.position.y = 0.78; figure.add(body);
+  const fHead = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.SphereGeometry(0.18, 12, 8)), matBright
+  );
+  fHead.position.y = 1.72; fHead.rotation.z = -0.1; figure.add(fHead);
+  const shoulders = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(0.55, 0.06, 0.18)), matMid
+  );
+  shoulders.position.y = 1.45; figure.add(shoulders);
+  trackGroup(figure, 3.7, 0, -1, -Math.PI / 2);
+
+  // ── TENSEGRITY HELPERS ───────────────────────────────
+  // A strut is a 1-unit cylinder rendered as edges, scaled+oriented per
+  // frame to span p1→p2. Cables are 2-vertex Line objects whose endpoint
+  // buffers are rewritten each frame to follow strut tips. When a strut's
+  // endpoint moves, its cables follow naturally.
+  function makeStrut(mat) {
+    const geo = new THREE.CylinderGeometry(0.04, 0.04, 1.0, 6);
+    const edges = new THREE.EdgesGeometry(geo);
+    const line = new THREE.LineSegments(edges, mat);
+    line.userData.origPos = new THREE.Vector3();   // satisfied by glitch loop
+    scene.add(line);
+    allLines.push(line);
+    return line;
+  }
+  function placeStrut(line, p1, p2) {
+    const dir = new THREE.Vector3().subVectors(p2, p1);
+    const len = dir.length();
+    line.position.copy(p1).addScaledVector(dir, 0.5);
+    line.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+    line.scale.set(1, len, 1);
+    line.userData.origPos.copy(line.position);  // re-anchor for glitch
+  }
+  function makeCable(p1, p2, mat = matCable) {
+    const geo = new THREE.BufferGeometry();
+    const arr = new Float32Array(6);
+    arr[0]=p1.x; arr[1]=p1.y; arr[2]=p1.z;
+    arr[3]=p2.x; arr[4]=p2.y; arr[5]=p2.z;
+    geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+    const line = new THREE.Line(geo, mat);
+    scene.add(line);
+    return { line, geo };
+  }
+  function updateCable(c, p1, p2) {
+    const a = c.geo.attributes.position.array;
+    a[0]=p1.x; a[1]=p1.y; a[2]=p1.z;
+    a[3]=p2.x; a[4]=p2.y; a[5]=p2.z;
+    c.geo.attributes.position.needsUpdate = true;
   }
 
-  // ── SURPRISE — figure at the bar ─────────────────────
-  // A single still figure standing AT the bar (on the customer side of
-  // the counter), facing the back-bar. Body cylinder + sphere head.
-  // The title says "empty" but somebody's there.
-  const figure = new THREE.Group();
-  // Body — a tall narrow cylinder
-  const body = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.CylinderGeometry(0.22, 0.20, 1.55, 10)),
-    matBright
-  );
-  body.position.y = 0.78;
-  figure.add(body);
-  // Head — a small sphere, slightly tilted
-  const head = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.SphereGeometry(0.18, 12, 8)),
-    matBright
-  );
-  head.position.y = 1.72;
-  head.rotation.z = -0.1;
-  figure.add(head);
-  // Faint shoulders — a horizontal bar
-  const shoulders = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.BoxGeometry(0.55, 0.06, 0.18)),
-    matMid
-  );
-  shoulders.position.y = 1.45;
-  figure.add(shoulders);
-  // Position: between bar stool (3.4, -1) and bar counter (4.5, -1).
-  // Facing the back-bar (positive x).
-  trackGroup(figure, 3.7, 0, -1, -Math.PI / 2);
-  // "facing" via rotation.y = -π/2 so head/shoulders orient toward bar
+  // Build a single 3-strut T-prism. Returns { struts, cables, basePts, anchors }.
+  // anchors are the bottom points (pinned, attached to whatever it's planted in).
+  function makeTPrism(cx, cy, cz, opts = {}) {
+    const numStruts = 3;
+    const heightTop  = opts.height    || 1.0;
+    const radiusBot  = opts.radiusBot || 0.30;
+    const radiusTop  = opts.radiusTop || 0.32;
+    const twist      = opts.twist     || (Math.PI * 5 / 6);  // ~150° — classic T-prism twist
+    const wobble     = opts.wobble    || 0.04;
+    const mat        = opts.mat       || matBright;
 
-  // ── Dust motes (existing) ────────────────────────────
+    const anchors = [];     // bottom points (pinned)
+    const tops    = [];     // top points (mutable)
+    const baseTops = [];    // pristine reference
+    const phases  = [];
+    const struts  = [];
+
+    for (let i = 0; i < numStruts; i++) {
+      const aBot = (i / numStruts) * Math.PI * 2;
+      const aTop = aBot + twist;
+      const bot = new THREE.Vector3(
+        cx + Math.cos(aBot) * radiusBot,
+        cy,
+        cz + Math.sin(aBot) * radiusBot
+      );
+      const top = new THREE.Vector3(
+        cx + Math.cos(aTop) * radiusTop,
+        cy + heightTop,
+        cz + Math.sin(aTop) * radiusTop
+      );
+      anchors.push(bot);
+      tops.push(top);
+      baseTops.push(top.clone());
+      phases.push(Math.random() * Math.PI * 2);
+      const strut = makeStrut(mat);
+      placeStrut(strut, bot, top);
+      struts.push(strut);
+    }
+
+    // Cables:
+    //   3 forming the top triangle
+    //   3 forming the bottom triangle
+    //   3 lateral cables: bot[i] → top[(i+1)%3] (the tension that lifts the strut)
+    const cables = [];
+    for (let i = 0; i < numStruts; i++) {
+      const j = (i + 1) % numStruts;
+      cables.push({ ...makeCable(tops[i], tops[j]),    fromTop: i, toTop: j,  fromBot: -1, toBot: -1 });
+      cables.push({ ...makeCable(anchors[i], anchors[j]), fromTop: -1, toTop: -1, fromBot: i, toBot: j });
+      cables.push({ ...makeCable(anchors[i], tops[j]),    fromTop: -1, toTop: j,  fromBot: i, toBot: -1 });
+    }
+
+    return { struts, cables, anchors, tops, baseTops, phases, wobble };
+  }
+
+  // Update a tensegrity structure: wobble top points, reposition struts, redraw cables.
+  function updateTPrism(t, p) {
+    for (let i = 0; i < p.tops.length; i++) {
+      const phase = p.phases[i];
+      p.tops[i].x = p.baseTops[i].x + Math.sin(t * 0.6 + phase) * p.wobble;
+      p.tops[i].z = p.baseTops[i].z + Math.cos(t * 0.5 + phase) * p.wobble;
+      p.tops[i].y = p.baseTops[i].y + Math.sin(t * 0.9 + phase + 1) * p.wobble * 0.4;
+      placeStrut(p.struts[i], p.anchors[i], p.tops[i]);
+    }
+    for (const c of p.cables) {
+      const from = c.fromBot >= 0 ? p.anchors[c.fromBot] : p.tops[c.fromTop];
+      const to   = c.toBot   >= 0 ? p.anchors[c.toBot]   : p.tops[c.toTop];
+      updateCable(c, from, to);
+    }
+  }
+
+  // ── PLANT (replaces old simple plant): tensegrity T-prism in a pot ──
+  // Pot
+  addEdges(new THREE.CylinderGeometry(0.32, 0.26, 0.42, 16), -2.6, 0.21, -3.4, matBright);
+  addEdges(new THREE.CylinderGeometry(0.34, 0.32, 0.06, 16), -2.6, 0.42, -3.4, matMid);
+  // T-prism above the pot
+  const plantPrism = makeTPrism(-2.6, 0.45, -3.4, {
+    height: 1.4, radiusBot: 0.18, radiusTop: 0.40, wobble: 0.05, mat: matBright
+  });
+
+  // ── TREE (new, taller): 3-stage stacked T-prism ─────────────────
+  // Bigger pot
+  addEdges(new THREE.CylinderGeometry(0.50, 0.42, 0.55, 18),   1.5, 0.275, -3.6, matBright);
+  addEdges(new THREE.CylinderGeometry(0.52, 0.50, 0.06, 18),   1.5, 0.55,  -3.6, matMid);
+  // Stage 1 — the lower trunk: thicker, less wobble
+  const treeS1 = makeTPrism(1.5, 0.58, -3.6, {
+    height: 1.2, radiusBot: 0.30, radiusTop: 0.42, wobble: 0.025, mat: matBright
+  });
+  // Stage 2 — middle: anchor on stage1's tops, smaller, more wobble
+  // We can't literally chain anchors (the anchors are pinned ground points
+  // in the helper). Instead we build stage 2 as a separate prism centered
+  // above stage 1. It looks stacked even if the geometric anchors are
+  // independent.
+  const treeS2 = makeTPrism(1.5, 1.78, -3.6, {
+    height: 1.2, radiusBot: 0.36, radiusTop: 0.32, wobble: 0.045,
+    twist: Math.PI * 7 / 6,  // counter-twist for visual interest
+    mat: matBright,
+  });
+  // Stage 3 — crown: smaller still, most wobble
+  const treeS3 = makeTPrism(1.5, 2.98, -3.6, {
+    height: 0.95, radiusBot: 0.26, radiusTop: 0.18, wobble: 0.07, mat: matBright
+  });
+
+  const tensegrities = [plantPrism, treeS1, treeS2, treeS3];
+
+  // ── FLOATING HEADS — 3 placeholders for binaural voice positions ────
+  // Each head: wireframe sphere, two eye dots, one mouth ring (scaleable
+  // during speech). Position is fixed; rotation tweens toward random
+  // look-targets. The audio side reads each head's `position` for its
+  // PannerNode, and the mouth scale + a spawned ring visualize speech.
+  const headPositions = [
+    new THREE.Vector3(4.5,  2.55, -1),    // above the bar
+    new THREE.Vector3(-5.5, 2.45, -3),    // above the corner couch
+    new THREE.Vector3( 0.4, 2.65,  1.4),  // mid-room, slightly forward
+  ];
+  const ringPool = [];
+
+  function makeHead(pos, idx) {
+    const g = new THREE.Group();
+    // Sphere
+    const sphereLines = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.SphereGeometry(0.32, 14, 10)), matHead
+    );
+    g.add(sphereLines);
+    // Eyes — two small circles offset
+    const eyeMat = new THREE.LineBasicMaterial({ color: 0xe4d4a8, transparent: true, opacity: 0.85 });
+    const eyeGeo = new THREE.EdgesGeometry(new THREE.CircleGeometry(0.04, 12));
+    const eyeL = new THREE.LineSegments(eyeGeo, eyeMat);
+    const eyeR = new THREE.LineSegments(eyeGeo, eyeMat);
+    eyeL.position.set(-0.10, 0.05, 0.30);
+    eyeR.position.set( 0.10, 0.05, 0.30);
+    g.add(eyeL); g.add(eyeR);
+    // Mouth — a small ring on the front face
+    const mouth = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.CircleGeometry(0.07, 16)), matHead
+    );
+    mouth.position.set(0, -0.10, 0.30);
+    g.add(mouth);
+
+    g.position.copy(pos);
+    g.userData.origPos = pos.clone();
+    g.userData.origRotY = 0;
+    scene.add(g);
+    allLines.push(g);
+
+    return {
+      group: g,
+      mouth,
+      pos,
+      idx,
+      curRotY: 0,
+      curRotX: 0,
+      targetRotY: Math.random() * Math.PI * 2,
+      targetRotX: 0,
+      nextLookAt: 2 + Math.random() * 4,
+      nextSpeak: 6 + Math.random() * 12,   // first speak between 6–18s
+      mouthOpen: 0,                        // 0..1
+      mouthDecay: 0,
+      bobPhase: Math.random() * Math.PI * 2,
+    };
+  }
+
+  for (let i = 0; i < headPositions.length; i++) {
+    heads.push(makeHead(headPositions[i], i));
+  }
+
+  // Spawn an expanding ring visual at a head's mouth — the visual sound burst.
+  function spawnSoundRing(headObj) {
+    const ringGeo = new THREE.RingGeometry(0.05, 0.07, 24);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xe8c87a, transparent: true, opacity: 0.5,
+      side: THREE.DoubleSide, depthWrite: false,
+    });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.position.copy(headObj.group.position);
+    ring.position.y -= 0.10;  // align to mouth
+    // face camera (we'll re-orient each frame in update)
+    scene.add(ring);
+    ringPool.push({ ring, mat: ringMat, geo: ringGeo, born: 0, _t0: performance.now() / 1000 });
+  }
+
+  // ── Dust motes ───────────────────────────────────────
   const motes = [];
   const moteGeom = new THREE.BufferGeometry();
   const moteCount = 60;
@@ -379,85 +646,154 @@ let audioCtx = null;
   const motePts = new THREE.Points(moteGeom, moteMat);
   scene.add(motePts);
 
-  // ── Energy tracking — pointer velocity drives glitch ─
-  // Pointer Events fire for mouse + pen + touch (on touch only while
-  // a finger is down — which is exactly the "drag-to-glitch" semantic).
+  // ── Pointer velocity → glitch energy ─────────────────
   let mx = window.innerWidth / 2, my = window.innerHeight / 2;
   let lx = mx, ly = my;
   let energy = 0;
   window.addEventListener('pointermove', e => { mx = e.clientX; my = e.clientY; });
 
-  // ── Camera + frame loop ──────────────────────────────
+  // ── Main frame loop ──────────────────────────────────
   let t = 0;
   const lookTarget = new THREE.Vector3(-1.2, 0.9, -2);
 
   function frame() {
     t += 0.0024;
 
-    // Slow drift camera (existing)
+    // Camera drift
     const r = 11.5 + Math.sin(t * 0.4) * 0.7;
     camera.position.x = Math.cos(t * 0.6) * r;
     camera.position.z = Math.sin(t * 0.6) * r + 1;
     camera.position.y = 3.4 + Math.sin(t * 0.9) * 0.4;
     camera.lookAt(lookTarget);
 
-    // Energy update — same shape as glitchpage
+    // Couple AudioContext.listener to camera for binaural realism.
+    // Has to wait until audioCtx is created (lazy-init on first gesture).
+    if (audioCtx) {
+      const l = audioCtx.listener;
+      const fwd = new THREE.Vector3().subVectors(lookTarget, camera.position).normalize();
+      if (l.positionX) {
+        l.positionX.value = camera.position.x;
+        l.positionY.value = camera.position.y;
+        l.positionZ.value = camera.position.z;
+        l.forwardX.value = fwd.x; l.forwardY.value = fwd.y; l.forwardZ.value = fwd.z;
+        l.upX.value = 0; l.upY.value = 1; l.upZ.value = 0;
+      } else {
+        l.setPosition(camera.position.x, camera.position.y, camera.position.z);
+        l.setOrientation(fwd.x, fwd.y, fwd.z, 0, 1, 0);
+      }
+    }
+
+    // Energy
     const dx = mx - lx, dy = my - ly;
     const speed = Math.sqrt(dx*dx + dy*dy);
     energy = Math.min(300, energy + speed * 0.6);
     energy *= 0.92;
     lx = mx; ly = my;
-    const e = Math.min(1, energy / 180);  // 0..1 normalized
+    const e = Math.min(1, energy / 180);
 
-    // Backroom glow pulse — sync to audio LFO if it's running
+    // Backroom glow pulse (sync to audio LFO)
     const audioT = audioCtx ? audioCtx.currentTime : t * 60;
     const pulse = (Math.sin(audioT * 1.16 * Math.PI * 2) + 1) / 2;
     backGlowMat.opacity = 0.10 + pulse * 0.22 + e * 0.18;
 
-    // Dancer sway — gentle by default, more frantic at high energy
+    // Dancer sway
     for (const d of dancers) {
       const i = d.userData.dancerIdx;
       const baseX = -1.6 + (i - 1) * 0.42;
       d.userData.origPos.x = baseX + Math.sin(t * 5 + i) * 0.06 * (1 + e * 4);
     }
 
-    // ── GLITCH ──────────────────────────────────────────
-    // Per-line jitter + depthTest sabotage + renderOrder shuffle.
-    // Decays back to zero offset when energy drops, so the room
-    // self-restores when motion stops.
-    const jitterX = e * 1.4;
-    const jitterY = e * 0.7;
-    const jitterZ = e * 1.4;
+    // Tensegrities — wobble + cable update
+    for (const p of tensegrities) updateTPrism(t, p);
+
+    // Heads — looking around + bobbing + speech
+    const nowSec = audioT;  // use audio clock if available, else proxy
+    for (const h of heads) {
+      h.bobPhase += 0.018;
+      h.group.position.copy(h.pos);
+      h.group.position.y += Math.sin(h.bobPhase) * 0.05;
+
+      h.nextLookAt -= 0.016;  // ~ assumes 60fps; close enough for a "look around" cadence
+      if (h.nextLookAt <= 0) {
+        // Sometimes look at the camera (most attention-grabbing), sometimes a random direction
+        if (Math.random() < 0.45) {
+          const dirToCam = new THREE.Vector3().subVectors(camera.position, h.group.position);
+          h.targetRotY = Math.atan2(dirToCam.x, dirToCam.z);
+          h.targetRotX = -Math.atan2(dirToCam.y - 0, Math.sqrt(dirToCam.x*dirToCam.x + dirToCam.z*dirToCam.z));
+        } else {
+          h.targetRotY += (Math.random() - 0.5) * Math.PI;
+          h.targetRotX = (Math.random() - 0.5) * 0.4;
+        }
+        h.nextLookAt = 3 + Math.random() * 5;
+      }
+      h.curRotY += (h.targetRotY - h.curRotY) * 0.04;
+      h.curRotX += (h.targetRotX - h.curRotX) * 0.04;
+      h.group.rotation.y = h.curRotY;
+      h.group.rotation.x = h.curRotX;
+      h.group.userData.origRotY = h.curRotY;  // rebase so glitch jitters around current
+
+      // Speech scheduling
+      h.nextSpeak -= 0.016;
+      if (h.nextSpeak <= 0 && audioCtx && speakHeadFn) {
+        speakHeadFn(h.idx);
+        spawnSoundRing(h);
+        h.mouthOpen = 1.0;
+        h.mouthDecay = 0;
+        h.nextSpeak = 8 + Math.random() * 14;  // 8–22s
+      }
+
+      // Mouth: open + decay
+      if (h.mouthOpen > 0) {
+        h.mouthDecay += 0.04;
+        h.mouthOpen = Math.max(0, 1 - h.mouthDecay);
+      }
+      const sc = 1 + h.mouthOpen * 1.1 + Math.sin(t * 36) * h.mouthOpen * 0.3;
+      h.mouth.scale.set(sc, sc, sc);
+    }
+
+    // Sound rings — expand + fade
+    for (let i = ringPool.length - 1; i >= 0; i--) {
+      const r = ringPool[i];
+      const age = (performance.now() / 1000) - r._t0;
+      if (age > 0.8) {
+        scene.remove(r.ring); r.geo.dispose(); r.mat.dispose();
+        ringPool.splice(i, 1);
+        continue;
+      }
+      const s = 1 + age * 14;
+      r.ring.scale.set(s, s, s);
+      r.mat.opacity = Math.max(0, 0.5 * (1 - age / 0.8));
+      r.ring.lookAt(camera.position);
+    }
+
+    // Glitch
+    const jX = e * 1.4, jY = e * 0.7, jZ = e * 1.4;
     for (const obj of allLines) {
       const orig = obj.userData.origPos;
       if (!orig) continue;
-      obj.position.x = orig.x + (Math.random() - 0.5) * jitterX;
-      obj.position.y = orig.y + (Math.random() - 0.5) * jitterY;
-      obj.position.z = orig.z + (Math.random() - 0.5) * jitterZ;
+      obj.position.x = orig.x + (Math.random() - 0.5) * jX;
+      obj.position.y = orig.y + (Math.random() - 0.5) * jY;
+      obj.position.z = orig.z + (Math.random() - 0.5) * jZ;
       obj.renderOrder = e > 0.05 ? (Math.random() - 0.5) * e * 8 : 0;
-      // depthTest sabotage — the "things behind look in front" effect.
-      // Random per-line per-frame so it sparkles, not steady.
       if (obj.material) {
         obj.material.depthTest = Math.random() > e * 0.55;
       } else if (obj.children) {
-        // Group: toggle each child material
         for (const c of obj.children) {
           if (c.material) c.material.depthTest = Math.random() > e * 0.55;
         }
       }
     }
-    // Also shake the figure's rotation slightly when violent — feels alive
     if (e > 0.08) {
       figure.rotation.y = figure.userData.origRotY + (Math.random() - 0.5) * e * 0.5;
     } else {
       figure.rotation.y = figure.userData.origRotY;
     }
 
-    // FOV wobble — perspective glitch
+    // FOV wobble
     camera.fov = baseFov + Math.sin(t * 7) * e * 14 + (Math.random() - 0.5) * e * 4;
     camera.updateProjectionMatrix();
 
-    // Motes (existing)
+    // Motes
     const pos = motePts.geometry.attributes.position.array;
     for (let i = 0; i < moteCount; i++) {
       pos[i*3+1] = motes[i].baseY + Math.sin(t * 4 + motes[i].phase) * 0.35;
@@ -495,37 +831,28 @@ let audioCtx = null;
     master.gain.setTargetAtTime(0.55, now, 6);
     master.connect(audioCtx.destination);
 
-    const panner = audioCtx.createPanner();
-    panner.panningModel  = 'HRTF';
-    panner.distanceModel = 'inverse';
-    panner.refDistance   = 1;
-    panner.maxDistance   = 30;
-    panner.rolloffFactor = 1.6;
-    panner.coneInnerAngle = 360;
-    panner.setPosition(2.4, -0.4, 4.2);
-    panner.connect(master);
+    // ── Sub-pulse from the backroom (existing) ──────────
+    const subPanner = audioCtx.createPanner();
+    subPanner.panningModel  = panningMode;
+    subPanner.distanceModel = 'inverse';
+    subPanner.refDistance   = 1; subPanner.maxDistance = 30; subPanner.rolloffFactor = 1.6;
+    subPanner.coneInnerAngle = 360;
+    // The backroom is at (-1.6, 1.55, -6.4) — put the sub source there now
+    // that listener is camera-coupled, so it actually comes from the backroom
+    // direction as the camera drifts.
+    subPanner.setPosition(-1.6, 1.0, -6.8);
+    subPanner.connect(master);
+    allPanners.push(subPanner);
 
-    const sub = audioCtx.createOscillator();
-    sub.type = 'sine';
-    sub.frequency.value = 52;
+    const sub = audioCtx.createOscillator(); sub.type = 'sine'; sub.frequency.value = 52;
+    const subTwin = audioCtx.createOscillator(); subTwin.type = 'sine'; subTwin.frequency.value = 52.6;
 
-    const subTwin = audioCtx.createOscillator();
-    subTwin.type = 'sine';
-    subTwin.frequency.value = 52.6;
-
-    const pulseGain = audioCtx.createGain();
-    pulseGain.gain.value = 0.55;
-    const lfo = audioCtx.createOscillator();
-    lfo.type = 'sine';
-    lfo.frequency.value = 1.16;
-    const lfoDepth = audioCtx.createGain();
-    lfoDepth.gain.value = 0.45;
+    const pulseGain = audioCtx.createGain(); pulseGain.gain.value = 0.55;
+    const lfo = audioCtx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 1.16;
+    const lfoDepth = audioCtx.createGain(); lfoDepth.gain.value = 0.45;
     lfo.connect(lfoDepth).connect(pulseGain.gain);
 
-    const lpf = audioCtx.createBiquadFilter();
-    lpf.type = 'lowpass';
-    lpf.frequency.value = 85;
-    lpf.Q.value = 0.5;
+    const lpf = audioCtx.createBiquadFilter(); lpf.type = 'lowpass'; lpf.frequency.value = 85; lpf.Q.value = 0.5;
 
     const noiseBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * 1.5, audioCtx.sampleRate);
     const nch = noiseBuf.getChannelData(0);
@@ -535,29 +862,86 @@ let audioCtx = null;
       lastSample = (lastSample + 0.025 * white) / 1.025;
       nch[i] = lastSample * 3.5;
     }
-    const noise = audioCtx.createBufferSource();
-    noise.buffer = noiseBuf;
-    noise.loop   = true;
-    const noiseLpf = audioCtx.createBiquadFilter();
-    noiseLpf.type = 'lowpass';
-    noiseLpf.frequency.value = 240;
-    noiseLpf.Q.value = 0.7;
-    const noiseGain = audioCtx.createGain();
-    noiseGain.gain.value = 0.045;
+    const noise = audioCtx.createBufferSource(); noise.buffer = noiseBuf; noise.loop = true;
+    const noiseLpf = audioCtx.createBiquadFilter(); noiseLpf.type = 'lowpass'; noiseLpf.frequency.value = 240; noiseLpf.Q.value = 0.7;
+    const noiseGain = audioCtx.createGain(); noiseGain.gain.value = 0.045;
 
-    sub.connect(pulseGain);
-    subTwin.connect(pulseGain);
-    pulseGain.connect(lpf);
-    lpf.connect(panner);
+    sub.connect(pulseGain); subTwin.connect(pulseGain);
+    pulseGain.connect(lpf); lpf.connect(subPanner);
+    noise.connect(noiseLpf); noiseLpf.connect(noiseGain); noiseGain.connect(subPanner);
 
-    noise.connect(noiseLpf);
-    noiseLpf.connect(noiseGain);
-    noiseGain.connect(panner);
+    sub.start(now); subTwin.start(now); lfo.start(now); noise.start(now);
 
-    sub.start(now);
-    subTwin.start(now);
-    lfo.start(now);
-    noise.start(now);
+    // ── Per-head speech voices ──────────────────────────
+    // Each head has its own oscillator chain → bandpass → AM gain →
+    // panner → master. The osc runs continuously; speakHead() ramps the
+    // AM gain in a short pattern of "syllables" while randomly tweaking
+    // the oscillator frequency to produce garbled, alien speech tone.
+    const headBaseFreqs = [180, 240, 130];  // 3 distinct registers
+    const headVoices = [];
+    for (let i = 0; i < heads.length; i++) {
+      const h = heads[i];
+      const panner = audioCtx.createPanner();
+      panner.panningModel  = panningMode;
+      panner.distanceModel = 'inverse';
+      panner.refDistance   = 1; panner.maxDistance = 25; panner.rolloffFactor = 1.4;
+      panner.setPosition(h.pos.x, h.pos.y, h.pos.z);
+      panner.connect(master);
+      allPanners.push(panner);
+
+      // Two oscillators (saw + square detuned) for richness
+      const osc1 = audioCtx.createOscillator(); osc1.type = 'sawtooth'; osc1.frequency.value = headBaseFreqs[i];
+      const osc2 = audioCtx.createOscillator(); osc2.type = 'square';   osc2.frequency.value = headBaseFreqs[i] * 1.005;
+
+      const oscMix = audioCtx.createGain(); oscMix.gain.value = 0.5;
+      osc1.connect(oscMix); osc2.connect(oscMix);
+
+      // Bandpass — formant-ish, gives a vocal-tract feel
+      const bp = audioCtx.createBiquadFilter(); bp.type = 'bandpass';
+      bp.frequency.value = 1200 + i * 350; bp.Q.value = 6;
+
+      // Highpass to kill DC/sub mud from the saw
+      const hp = audioCtx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 200;
+
+      // AM gate — gated open during speak()
+      const am = audioCtx.createGain(); am.gain.value = 0;
+
+      oscMix.connect(hp); hp.connect(bp); bp.connect(am); am.connect(panner);
+      osc1.start(now); osc2.start(now);
+
+      headVoices.push({ osc1, osc2, am, bp, baseFreq: headBaseFreqs[i] });
+    }
+
+    // Expose the speak function so the scene loop can trigger it.
+    speakHeadFn = function (idx) {
+      const v = headVoices[idx];
+      if (!v) return;
+      const t0 = audioCtx.currentTime;
+      const segs = 3 + Math.floor(Math.random() * 3);   // 3–5 syllables
+      const segDur = 0.10 + Math.random() * 0.05;
+      const gap = 0.04 + Math.random() * 0.04;
+
+      // Schedule AM envelope per syllable
+      v.am.gain.cancelScheduledValues(t0);
+      v.am.gain.setValueAtTime(0, t0);
+      for (let s = 0; s < segs; s++) {
+        const ts = t0 + s * (segDur + gap);
+        v.am.gain.linearRampToValueAtTime(0.32, ts + 0.018);
+        v.am.gain.linearRampToValueAtTime(0.0,  ts + segDur);
+      }
+
+      // Schedule pitch warble — random walk on osc1 around base freq
+      v.osc1.frequency.cancelScheduledValues(t0);
+      const fineSteps = segs * 5;
+      const stepDur = (segs * (segDur + gap)) / fineSteps;
+      for (let f = 0; f < fineSteps; f++) {
+        const ts = t0 + f * stepDur;
+        const ratio = 0.7 + Math.random() * 0.7;
+        v.osc1.frequency.setValueAtTime(v.baseFreq * ratio, ts);
+      }
+      // After speak ends, return to base
+      v.osc1.frequency.setValueAtTime(v.baseFreq, t0 + segs * (segDur + gap) + 0.05);
+    };
 
     if (audioCtx.state === 'suspended') audioCtx.resume();
   }
