@@ -3,14 +3,71 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DronorParty — v0.1</title>
-<link rel="stylesheet" href="../_shared/audio-widgets.css">
+<title>DronorParty — v0.10</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
-<script src="../_shared/audio-widgets.js"></script>
 <style>
-/* The shared audio-widgets.css applies its own body padding/layout; we want
-   the FX-Processor-ish board layout instead. Reset the body bits we override. */
-body { padding:16px 12px !important; gap:0 !important; }
+/* ── Canonical gain/meter strip CSS ─────────────────────────────────────
+   Inlined from the original _shared/audio-widgets.css spec
+   (Notion: "FX Processor — UI Standards & Component Specs")
+   so this file is self-contained, matching the single-file convention used
+   by other instruments in web-instruments/.
+   ─────────────────────────────────────────────────────────────────────── */
+.gain-meter-wrap {
+  position: relative;
+  width: 22px; height: 100%;
+  flex-shrink: 0;
+}
+.gain-meter-bg {
+  position: absolute; inset: 0;
+  display: flex; gap: 8px;
+}
+.gain-meter-wrap::before {
+  content: ""; position: absolute;
+  left: -2px; right: -2px;
+  bottom: var(--zero-db, 83.33%); height: 1px;
+  background: rgba(200, 200, 100, 0.45);
+  z-index: 1; pointer-events: none;
+}
+.gain-meter-wrap::after {
+  content: "0"; position: absolute;
+  left: -11px;
+  bottom: calc(var(--zero-db, 83.33%) - 5px);
+  font-family: 'Courier New', monospace; font-size: .46rem;
+  color: rgba(200, 200, 100, 0.55); line-height: 1;
+  z-index: 1; pointer-events: none;
+}
+.gain-meter-bar {
+  flex: 1; position: relative;
+  background: linear-gradient(to top, #0d1a0d 0%, #121f12 80%, #0f0f0f 100%);
+  border-radius: 2px; overflow: hidden;
+}
+.gain-meter-level {
+  position: absolute; bottom: 0; left: 0; width: 100%; height: 0%;
+  background: linear-gradient(
+    to top,
+    #1a5a1a 0%, #2a9a2a 68%, #7ab020 78%, #b89010 85%,
+    #c06010 91%, #c83010 96%, #e02020 100%);
+  transition: height .04s linear;
+}
+.gain-meter-peak {
+  position: absolute; left: 0; width: 100%; height: 2px;
+  background: rgba(255, 255, 255, .6);
+  bottom: 0; opacity: 0;
+  transition: bottom .12s linear;
+}
+.gain-meter-peak.active { opacity: 1; }
+input.gain-meter-slider {
+  position: absolute; top: 0; left: 0; z-index: 2;
+  writing-mode: vertical-lr; direction: rtl;
+  width: 100%; height: 100%;
+  background: transparent; -webkit-appearance: none; cursor: pointer; outline: none;
+}
+input.gain-meter-slider::-webkit-slider-runnable-track { background: transparent; }
+input.gain-meter-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 26px; height: 5px;
+  background: #6aaee0; border-radius: 1px; cursor: pointer;
+  box-shadow: 0 0 4px rgba(100, 160, 220, 0.5);
+}
 
 /* Make the meter visualizer divs transparent to mouse events so they don't
    intercept drags. The native vertical-mode slider is unreliable in Chrome
@@ -231,8 +288,8 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
 </head>
 <body>
 
-<div id="version-badge">DronorParty v0.9</div>
-<div id="stage-indicator">stage 2-11 / 4 strings · 8 presets · tooltips</div>
+<div id="version-badge">DronorParty v0.10</div>
+<div id="stage-indicator">stage 2-12 / self-contained · graduated to web-instruments/</div>
 
 <div id="start-screen">
   <h1>DronorParty</h1>
@@ -389,9 +446,9 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
 </div>
 
 <div class="foot">
-  v0.6: custom drag on gain strips · 6 tuning presets (1-4 factory · 5-6 shift+click to save) · delay live.
-  Pluck step = 8th note. Defaults: gain -6 dB · decay 0.975 · brightness 1500 Hz.<br>
-  Pending: mic input audio (12) · polish + deploy.
+  v0.10: 4 strings · 8 dronor + 6 delay presets · custom drag · self-contained (inlined gain-meter CSS).
+  Pluck step = 8th note. Defaults: gain -6 dB · decay 0.975 · brightness 1500 Hz · output -3 dB.<br>
+  Pending: mic input audio (when actual input routing is needed).
 </div>
 
 <script>
@@ -1450,7 +1507,7 @@ async function startAudio() {
   startScheduler();
   requestAnimationFrame(meterTick);
 
-  console.log('DronorParty v0.9 — 4 strings. sr=', audioCtx.sampleRate,
+  console.log('DronorParty v0.10 — self-contained. sr=', audioCtx.sampleRate,
               'ctx=', Tone.context.state, 'maxCh=', audioCtx.destination.maxChannelCount);
 }
 
