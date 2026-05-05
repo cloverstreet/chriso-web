@@ -288,8 +288,8 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
 </head>
 <body>
 
-<div id="version-badge">DronorParty v0.10</div>
-<div id="stage-indicator">stage 2-12 / self-contained · graduated to web-instruments/</div>
+<div id="version-badge">DronorParty v0.11</div>
+<div id="stage-indicator">stage 2-12 / HUMANIZE + OFFSET · S-HUM removed · PITCH RATIO</div>
 
 <div id="start-screen">
   <h1>DronorParty</h1>
@@ -514,10 +514,10 @@ for (let i = 0; i < STRING_COUNT; i++) {
     bypass:    false,
     ratio:     TUNINGS['12-ET'][i],
     divisor:   DEFAULT_DIVISORS[i],
+    offset:    0,           // 0-100%: shifts every pluck by this fraction of one step period
+    humanize:  0,           // 0-100%: random per-pluck timing jitter (was timingHumanize)
     pattern:   DEFAULT_PATTERN,
     intensity: 1.0,
-    timingHumanize:   0,
-    strengthHumanize: 0,
     brightness: 1500,
     decay:      0.975,
     pan:        0,
@@ -563,30 +563,31 @@ function loadTuningPreset(idx) {
     p.full.forEach((sp, i) => {
       const s = state.strings[i];
       if (!s) return;
-      s.divisor          = sp.divisor;
-      s.pattern          = sp.pattern;
-      s.intensity        = sp.intensity;
-      s.timingHumanize   = sp.timingHumanize;
-      s.strengthHumanize = sp.strengthHumanize;
-      s.brightness       = sp.brightness;
-      s.decay            = sp.decay;
-      s.gain             = sp.gain;
-      s.pan              = sp.pan;
+      s.divisor    = sp.divisor;
+      s.offset     = sp.offset    ?? 0;
+      // legacy fallback: presets saved before v0.11 used `timingHumanize`
+      s.humanize   = sp.humanize  ?? sp.timingHumanize ?? 0;
+      s.pattern    = sp.pattern;
+      s.intensity  = sp.intensity;
+      s.brightness = sp.brightness;
+      s.decay      = sp.decay;
+      s.gain       = sp.gain;
+      s.pan        = sp.pan;
       // Push to UI inputs
       const $ = sel => document.querySelector(sel);
       const inpDiv = $(`[data-divisor="${i}"]`);     if (inpDiv)  inpDiv.value  = s.divisor;
+      const inpOff = $(`[data-offset="${i}"]`);      if (inpOff)  inpOff.value  = s.offset;
+      const inpHum = $(`[data-hum="${i}"]`);         if (inpHum)  inpHum.value  = s.humanize;
       const inpPat = $(`[data-pattern="${i}"]`);     if (inpPat)  inpPat.value  = s.pattern;
       const inpInt = $(`[data-intensity="${i}"]`);   if (inpInt)  inpInt.value  = s.intensity;
-      const inpThm = $(`[data-thum="${i}"]`);        if (inpThm)  inpThm.value  = s.timingHumanize;
-      const inpShm = $(`[data-shum="${i}"]`);        if (inpShm)  inpShm.value  = s.strengthHumanize;
       const inpBri = $(`[data-bright="${i}"]`);      if (inpBri)  inpBri.value  = s.brightness;
       const inpDec = $(`[data-decay="${i}"]`);       if (inpDec)  inpDec.value  = s.decay;
       const inpPan = $(`[data-pan="${i}"]`);         if (inpPan)  inpPan.value  = s.pan;
       // Update the readouts
       const v = sel => document.querySelector(sel);
+      const vOff = v(`[data-offset-val="${i}"]`);    if (vOff) vOff.textContent = s.offset + '%';
+      const vHum = v(`[data-hum-val="${i}"]`);       if (vHum) vHum.textContent = s.humanize + '%';
       const vInt = v(`[data-intensity-val="${i}"]`); if (vInt) vInt.textContent = s.intensity.toFixed(2);
-      const vThm = v(`[data-thum-val="${i}"]`);      if (vThm) vThm.textContent = s.timingHumanize + '%';
-      const vShm = v(`[data-shum-val="${i}"]`);      if (vShm) vShm.textContent = s.strengthHumanize + '%';
       const vBri = v(`[data-bright-val="${i}"]`);    if (vBri) vBri.textContent = Math.round(s.brightness) + ' Hz';
       const vDec = v(`[data-decay-val="${i}"]`);     if (vDec) vDec.textContent = s.decay.toFixed(3);
       const lr = s.pan < -0.02 ? 'L' + Math.round(-s.pan * 100)
@@ -616,15 +617,15 @@ function saveTuningPreset(idx) {
     tuningSystem: state.tuningSystem,
     ratios: state.strings.map(s => s.ratio),
     full: state.strings.map(s => ({
-      divisor:          s.divisor,
-      pattern:          s.pattern,
-      intensity:        s.intensity,
-      timingHumanize:   s.timingHumanize,
-      strengthHumanize: s.strengthHumanize,
-      brightness:       s.brightness,
-      decay:            s.decay,
-      gain:             s.gain,
-      pan:              s.pan,
+      divisor:    s.divisor,
+      offset:     s.offset,
+      humanize:   s.humanize,
+      pattern:    s.pattern,
+      intensity:  s.intensity,
+      brightness: s.brightness,
+      decay:      s.decay,
+      gain:       s.gain,
+      pan:        s.pan,
     })),
     factory: false,
   };
@@ -703,19 +704,33 @@ function buildStringStrips() {
       </div>
       <button class="pluck-btn" data-pluck="${idx}"
               title="Pluck this string manually at full strength (ignores pattern; useful for tuning).">PLUCK</button>
-      <div class="slider-row" title="Frequency multiplier vs ROOT. Examples: 1.0 = unison · 1.5 = perfect fifth · 2.0 = octave · 5/4 = just major third · 7/4 = harmonic seventh. Editing this flips the TUNING dropdown to Custom.">
+      <div class="slider-row" title="Pitch ratio — frequency multiplier vs ROOT. Examples: 1.0 = unison · 1.5 = perfect fifth · 2.0 = octave · 5/4 = just major third · 7/4 = harmonic seventh. Editing this flips the TUNING dropdown to Custom.">
         <div class="slider-label-row">
-          <span class="slider-label">RATIO</span>
+          <span class="slider-label">PITCH RATIO</span>
           <input type="text" data-ratio="${idx}" value="${s.ratio.toFixed(4)}"
                  style="width:54px; font-size:.62rem; text-align:right; padding:1px 3px;">
         </div>
       </div>
-      <div class="slider-row" title="Pluck divisor. String fires every N pattern steps. Default coprime values (7, 11, 13) give natural polyrhythm. Smaller = denser plucks.">
+      <div class="slider-row" title="Pluck divisor. String fires every N pattern steps. Default coprime values (7, 11, 13, 17) give natural polyrhythm. Smaller = denser plucks.">
         <div class="slider-label-row">
           <span class="slider-label">DIV</span>
           <input type="number" data-divisor="${idx}" value="${s.divisor}" min="1" max="32"
                  style="width:42px; font-size:.62rem; text-align:right; padding:1px 3px;">
         </div>
+      </div>
+      <div class="slider-row" title="Humanize — random per-pluck timing jitter. 0% = strict on-the-grid. 100% = up to 1.5 × this string's pluck period of jitter (plucks can land past the next would-be slot).">
+        <div class="slider-label-row">
+          <span class="slider-label">HUMANIZE</span>
+          <span class="ctrl-val" data-hum-val="${idx}">${s.humanize}%</span>
+        </div>
+        <input type="range" data-hum="${idx}" min="0" max="100" step="1" value="${s.humanize}">
+      </div>
+      <div class="slider-row" title="Time offset — fixed shift applied to EVERY pluck on this string, as a fraction of one step period. 0% = no shift. 50% = always half a step late. Useful for phase-shifting strings against each other while keeping the same divisor.">
+        <div class="slider-label-row">
+          <span class="slider-label">OFFSET</span>
+          <span class="ctrl-val" data-offset-val="${idx}">${s.offset}%</span>
+        </div>
+        <input type="range" data-offset="${idx}" min="0" max="100" step="1" value="${s.offset}">
       </div>
       <div class="slider-row" title="Accent pattern. Each digit (0-9) is one pluck strength. 0 = rest (silent step, but pattern advances). Pattern cycles forever. e.g., '4321' = loud-medium-soft-softer-loud-...">
         <div class="slider-label-row">
@@ -732,20 +747,6 @@ function buildStringStrips() {
           <span class="ctrl-val" data-intensity-val="${idx}">${s.intensity.toFixed(2)}</span>
         </div>
         <input type="range" data-intensity="${idx}" min="0" max="2.5" step="0.01" value="${s.intensity}">
-      </div>
-      <div class="slider-row" title="Timing humanize. Each pluck is delayed by 0–(T-HUM% × 1.5) of this string's pluck period. 0% = on-the-grid. 100% = up to 1.5 string periods of jitter (plucks can land past the next slot).">
-        <div class="slider-label-row">
-          <span class="slider-label">T-HUM</span>
-          <span class="ctrl-val" data-thum-val="${idx}">${s.timingHumanize}%</span>
-        </div>
-        <input type="range" data-thum="${idx}" min="0" max="100" step="1" value="${s.timingHumanize}">
-      </div>
-      <div class="slider-row" title="Strength humanize. Random ±variation in pluck volume per pluck. 0% = strict pattern. 100% = ±200% — plucks can drop to silence or saturate to clipping. Independent of T-HUM.">
-        <div class="slider-label-row">
-          <span class="slider-label">S-HUM</span>
-          <span class="ctrl-val" data-shum-val="${idx}">${s.strengthHumanize}%</span>
-        </div>
-        <input type="range" data-shum="${idx}" min="0" max="100" step="1" value="${s.strengthHumanize}">
       </div>
       <div class="slider-row" title="Brightness — lowpass cutoff on the string output (post Karplus-Strong loop). Lower = darker / more muffled. Doesn't affect the in-loop FIR damping (so it's safe to modulate live).">
         <div class="slider-label-row">
@@ -1045,23 +1046,21 @@ function onTick() {
     s.patternStep = (step + 1) % patLen;
     if (!(digit > 0)) return;                                 // rest
     let strength = (digit / 9) * s.intensity;
-    if (s.strengthHumanize > 0) {
-      // ±200% multiplier at 100% S-hum (was ±100%). At full crank, plucks
-      // can drop to silence or saturate to clip — guarantees audible variation
-      // even when the strings are washing in long-decay sustain.
-      const sj = (Math.random() * 2 - 1) * (s.strengthHumanize / 100) * 2;
-      strength *= 1 + sj;
-    }
     strength = Math.max(0, Math.min(1, strength));
     if (strength < 0.001) return;
     const freq = state.rootFreq * s.ratio;
     let timingMs = 0;
-    if (s.timingHumanize > 0) {
-      // At 100% T-hum, max delay is up to 1.5× this string's pluck period
-      // (divisor × step). Plenty audible — the next pluck can land anywhere
-      // in the next pluck window, sometimes overlapping the following pluck.
+    // OFFSET — fixed shift for every pluck on this string, as a fraction of
+    // one step period. Useful for phase-shifting strings against each other.
+    if (s.offset > 0) {
+      timingMs += (s.offset / 100) * state.clockPeriod * 1000;
+    }
+    // HUMANIZE — random per-pluck timing jitter, scaled to this string's
+    // pluck period (divisor × step) so it's audible regardless of tempo.
+    // 100% = up to 1.5× the string's pluck period.
+    if (s.humanize > 0) {
       const stringPeriod = s.divisor * state.clockPeriod;
-      timingMs = Math.random() * (s.timingHumanize / 100) * stringPeriod * 1000 * 1.5;
+      timingMs += Math.random() * (s.humanize / 100) * stringPeriod * 1000 * 1.5;
     }
     if (timingMs > 0) {
       setTimeout(() => pluckKS(s.audio, freq, strength, s.brightness), timingMs);
@@ -1159,8 +1158,8 @@ function wireStringControls() {
     const t = e.target;
     let i = -1, kind = null;
     if      (t.dataset.intensity != null) { i = +t.dataset.intensity; kind = 'intensity'; }
-    else if (t.dataset.thum      != null) { i = +t.dataset.thum;      kind = 'thum'; }
-    else if (t.dataset.shum      != null) { i = +t.dataset.shum;      kind = 'shum'; }
+    else if (t.dataset.hum       != null) { i = +t.dataset.hum;       kind = 'hum'; }
+    else if (t.dataset.offset    != null) { i = +t.dataset.offset;    kind = 'offset'; }
     else if (t.dataset.bright    != null) { i = +t.dataset.bright;    kind = 'bright'; }
     else if (t.dataset.decay     != null) { i = +t.dataset.decay;     kind = 'decay'; }
     else if (t.dataset.pan       != null) { i = +t.dataset.pan;       kind = 'pan'; }
@@ -1175,13 +1174,13 @@ function wireStringControls() {
         document.querySelector(`[data-intensity-val="${i}"]`).textContent = v.toFixed(2);
         drawBargraph(i);
         break;
-      case 'thum':
-        s.timingHumanize = v;
-        document.querySelector(`[data-thum-val="${i}"]`).textContent = v + '%';
+      case 'hum':
+        s.humanize = v;
+        document.querySelector(`[data-hum-val="${i}"]`).textContent = v + '%';
         break;
-      case 'shum':
-        s.strengthHumanize = v;
-        document.querySelector(`[data-shum-val="${i}"]`).textContent = v + '%';
+      case 'offset':
+        s.offset = v;
+        document.querySelector(`[data-offset-val="${i}"]`).textContent = v + '%';
         break;
       case 'bright':
         s.brightness = v;
@@ -1507,7 +1506,7 @@ async function startAudio() {
   startScheduler();
   requestAnimationFrame(meterTick);
 
-  console.log('DronorParty v0.10 — self-contained. sr=', audioCtx.sampleRate,
+  console.log('DronorParty v0.11 — HUMANIZE + OFFSET. sr=', audioCtx.sampleRate,
               'ctx=', Tone.context.state, 'maxCh=', audioCtx.destination.maxChannelCount);
 }
 
