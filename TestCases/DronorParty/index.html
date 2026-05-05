@@ -1,0 +1,1460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DronorParty — v0.1</title>
+<link rel="stylesheet" href="../_shared/audio-widgets.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+<script src="../_shared/audio-widgets.js"></script>
+<style>
+/* The shared audio-widgets.css applies its own body padding/layout; we want
+   the FX-Processor-ish board layout instead. Reset the body bits we override. */
+body { padding:16px 12px !important; gap:0 !important; }
+
+/* Make the meter visualizer divs transparent to mouse events so they don't
+   intercept drags. The native vertical-mode slider is unreliable in Chrome
+   (writing-mode: vertical-lr drags freeze mid-drag), so v0.6 disables the
+   slider's pointer events entirely and uses a custom JS drag handler on the
+   wrap. The slider element is kept (programmatically updated for visual
+   thumb position) but does not capture mouse input. */
+.gain-meter-bg,
+.gain-meter-bar,
+.gain-meter-level,
+.gain-meter-peak { pointer-events: none; }
+input.gain-meter-slider { pointer-events: none; opacity: 0; }      /* keep for value storage; visually invisible */
+input.gain-meter-slider::-webkit-slider-thumb { width: 0; height: 0; background: transparent; }
+.gain-meter-wrap { cursor: ns-resize; }
+/* Custom thumb — positioned by JS in pixels relative to wrap. Bypasses
+   writing-mode/direction quirks entirely (v0.7 fix). */
+.gain-thumb {
+  position: absolute; left: -2px; right: -2px;
+  height: 5px; background: #6aaee0;
+  border-radius: 1px;
+  box-shadow: 0 0 4px rgba(100, 160, 220, 0.5);
+  pointer-events: none; z-index: 3;
+  bottom: 0;
+  transition: bottom .04s linear;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:#0d0d0d; color:#d0d0d0;
+  font-family:'Courier New',monospace; font-size:13px;
+  min-height:100vh; display:flex; flex-direction:column;
+  align-items:center; padding:16px 12px; overflow-x:auto;
+}
+
+#version-badge {
+  position:fixed; top:8px; right:10px;
+  font-family:'Courier New',monospace; font-size:.6rem;
+  letter-spacing:.16em; color:#555; pointer-events:none; z-index:50;
+}
+
+#start-screen {
+  display:flex; flex-direction:column; align-items:center; gap:18px; margin-top:18vh;
+}
+#start-screen h1 {
+  font-size:1.4rem; letter-spacing:.18em; color:#c8a854;
+  font-weight:normal;
+}
+#start-screen .blurb {
+  font-size:.7rem; letter-spacing:.08em; color:#666;
+  max-width:480px; text-align:center; line-height:1.7;
+}
+#start-btn {
+  padding:14px 44px; background:transparent;
+  border:1px solid #c8a854; color:#c8a854;
+  font-family:'Courier New',monospace; font-size:.9rem;
+  letter-spacing:.2em; cursor:pointer; transition:all .2s;
+}
+#start-btn:hover { background:#c8a854; color:#000; }
+
+#board { display:none; flex-direction:row; align-items:flex-start; gap:8px; }
+.col-wrap { display:flex; flex-direction:column; gap:6px; flex-shrink:0; }
+
+/* Module shell */
+.module {
+  background:#111; border:1px solid #242424;
+  border-radius:5px; padding:8px 10px 9px;
+  position:relative; flex-shrink:0;
+}
+.module.in-out  { width:155px; }
+.module.fx      { width:265px; }
+.module.dronor  { width:620px; }   /* v0.9: widened to fit 4 string strips */
+
+.mod-head {
+  display:flex; align-items:center; gap:5px;
+  margin-bottom:7px; padding-bottom:6px;
+  border-bottom:1px solid #1e1e1e;
+}
+.mod-title {
+  font-size:.7rem; letter-spacing:.12em; color:#bbb;
+  text-transform:uppercase; flex-shrink:0;
+}
+.mod-head .head-presets {
+  display:flex; gap:2px; margin-left:auto; margin-right:4px;
+}
+.head-preset-slot {
+  width:18px; height:18px; background:transparent;
+  border:1px solid #1e1e1e; color:#555;
+  font-family:'Courier New',monospace; font-size:.55rem;
+  cursor:pointer; border-radius:2px; transition:all .1s;
+  text-align:center; line-height:16px; padding:0;
+}
+.head-preset-slot.saved { border-color:#3a6a3a; color:#6b9; }
+.head-preset-slot:hover { border-color:#444; color:#888; }
+.head-preset-slot.saved:hover { border-color:#5a5; }
+
+.byp-btn {
+  padding:2px 7px; background:rgba(30,80,30,.4);
+  border:1px solid #2a6a2a; color:#4c4;
+  font-family:'Courier New',monospace; font-size:.66rem;
+  font-weight:600; letter-spacing:.04em; cursor:pointer;
+  border-radius:2px; transition:all .15s; white-space:nowrap;
+  text-shadow:0 0 8px rgba(80,200,80,.4);
+}
+.byp-btn.off {
+  background:rgba(30,30,30,.4); border-color:#555;
+  color:#555; text-shadow:none; font-weight:400;
+}
+
+/* Form controls */
+.ctrl-val { font-size:.68rem; color:#c8a854; white-space:nowrap; cursor:text; }
+.ctrl-val:hover { color:#e8c874; text-decoration:underline dotted #666; }
+.slider-row { margin-bottom:6px; }
+.slider-label-row {
+  display:flex; align-items:baseline; justify-content:space-between;
+  margin-bottom:2px;
+}
+.slider-label { font-size:.62rem; letter-spacing:.12em; color:#999; }
+.ctrl-inline { display:flex; align-items:center; gap:6px; margin-bottom:5px; }
+.ctrl-inline label {
+  font-size:.62rem; letter-spacing:.12em; color:#888;
+  flex-shrink:0;
+}
+
+input[type="range"] {
+  -webkit-appearance:none; width:100%; height:3px;
+  background:#2a2a2a; outline:none; border-radius:2px; cursor:pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance:none; width:12px; height:12px;
+  background:#c8a854; border-radius:50%; cursor:pointer;
+}
+select, input[type="text"], input[type="number"] {
+  background:#161616; border:1px solid #2e2e2e;
+  color:#c0c0c0; font-family:'Courier New',monospace;
+  font-size:.66rem; padding:2px 4px; outline:none;
+  border-radius:2px;
+}
+select { cursor:pointer; }
+input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
+
+/* DronorParty global controls bar */
+.dronor-globals {
+  display:flex; flex-direction:column; gap:6px;
+  padding:8px 0 10px; margin-bottom:8px;
+  border-bottom:1px solid #1e1e1e;
+}
+.dronor-globals .gline {
+  display:flex; align-items:center; gap:8px;
+  font-size:.62rem; letter-spacing:.1em; color:#999;
+}
+.dronor-globals .gline label {
+  color:#888; min-width:46px; text-transform:uppercase;
+}
+.freq-field {
+  display:flex; align-items:center; gap:6px;
+}
+.freq-field input { width:62px; text-align:right; }
+.freq-field .note-display {
+  font-size:.66rem; color:#7abbe0; letter-spacing:.06em;
+  min-width:46px;
+}
+
+/* DronorParty: 3 string strips side by side */
+.strings-row {
+  display:flex; gap:8px; align-items:stretch;
+  justify-content:space-between;
+}
+.string-strip {
+  flex:1; min-width:0;
+  background:#0c0c0c; border:1px solid #1a1a1a;
+  border-radius:3px; padding:7px 6px;
+  display:flex; flex-direction:column; gap:5px;
+}
+.string-strip .str-head {
+  display:flex; align-items:center; justify-content:space-between;
+  border-bottom:1px solid #1a1a1a; padding-bottom:4px;
+  margin-bottom:2px;
+}
+.string-strip .str-num {
+  font-size:.6rem; letter-spacing:.18em; color:#666;
+}
+.string-strip .byp-btn { padding:1px 5px; font-size:.58rem; }
+.string-strip .pluck-btn {
+  width:100%; padding:5px 0;
+  background:transparent; border:1px solid #c8a854;
+  color:#c8a854; font-family:'Courier New',monospace;
+  font-size:.62rem; letter-spacing:.16em;
+  cursor:pointer; border-radius:2px; transition:all .12s;
+}
+.string-strip .pluck-btn:hover { background:#c8a85422; }
+.string-strip .pluck-btn:active { background:#c8a85455; }
+
+/* Tiny accent bar-graph */
+.accent-bargraph {
+  display:flex; align-items:flex-end; gap:1px;
+  height:14px; padding:0 2px;
+}
+.accent-bargraph .bar {
+  flex:1; background:#c8a854; min-width:2px;
+  transition:height .08s linear, background .12s;
+}
+.accent-bargraph .bar.rest { background:#333; }
+
+/* Footer / hint area */
+.foot {
+  font-size:.56rem; color:#555; letter-spacing:.12em;
+  text-align:center; max-width:780px; line-height:1.7;
+  margin-top:14px;
+}
+
+/* Stage indicator (so we know which build step is live) */
+#stage-indicator {
+  position:fixed; bottom:8px; right:10px;
+  font-family:'Courier New',monospace; font-size:.56rem;
+  letter-spacing:.16em; color:#444; pointer-events:none; z-index:50;
+  text-transform:uppercase;
+}
+</style>
+</head>
+<body>
+
+<div id="version-badge">DronorParty v0.9</div>
+<div id="stage-indicator">stage 2-11 / 4 strings · 8 presets · tooltips</div>
+
+<div id="start-screen">
+  <h1>DronorParty</h1>
+  <div class="blurb">
+    A tunable Karplus-Strong drone synthesizer.<br>
+    Synthetic, polyrhythmic, no bridge physics.
+  </div>
+  <button id="start-btn">START AUDIO</button>
+</div>
+
+<div id="board">
+
+  <!-- (Mic Input removed in v0.4 — DronorParty is a sound source, not a processor.
+       Mic module will return in stage 12 alongside actual input routing.) -->
+
+  <!-- ─── DRONOR PARTY ────────────────────────────────────────────────── -->
+  <div class="col-wrap">
+    <div class="module dronor" id="mod-dronor">
+      <div class="mod-head" title="DronorParty: a tunable Karplus-Strong drone synth. Three plucked strings with shared root and tempo, independent rhythms and timbres.">
+        <div class="head-presets" title="Tuning presets — click to recall, shift+click to save (slots 5–8 only).">
+          <button class="head-preset-slot" data-preset="1">1</button>
+          <button class="head-preset-slot" data-preset="2">2</button>
+          <button class="head-preset-slot" data-preset="3">3</button>
+          <button class="head-preset-slot" data-preset="4">4</button>
+          <button class="head-preset-slot" data-preset="5">5</button>
+          <button class="head-preset-slot" data-preset="6">6</button>
+          <button class="head-preset-slot" data-preset="7">7</button>
+          <button class="head-preset-slot" data-preset="8">8</button>
+        </div>
+        <div class="mod-title">DRONOR PARTY</div>
+        <button class="byp-btn" data-bypass="dronor" title="Mute the entire dronor bus (strings keep ringing internally).">ON</button>
+      </div>
+
+      <!-- Globals: root, tuning system, master clock -->
+      <div class="dronor-globals">
+        <div class="gline" title="Drone root frequency. Type a number in Hz (e.g., 220) or a note name (A, A3, Bb4). All three string pitches scale from this.">
+          <label>ROOT</label>
+          <div class="freq-field">
+            <input type="text" id="root-freq" value="220" maxlength="8">
+            <span class="note-display" id="root-note">≈ A3</span>
+          </div>
+          <div style="flex:1"></div>
+          <label style="min-width:auto;" title="Tuning system. Loads showcase intervals for the three strings: 12-ET = equal-tempered triad · 5-limit = just M3 + just P5 · 7-limit = P5 + harmonic 7th · Pythagorean = sharp M3 + just P5. Editing any ratio flips this to Custom.">TUNING</label>
+          <select id="tuning-system" style="width:96px;" title="Tuning system. Loads showcase intervals for the three strings.">
+            <option value="12-ET">12-ET</option>
+            <option value="5-limit">5-limit JI</option>
+            <option value="7-limit">7-limit JI</option>
+            <option value="pythag">Pythagorean</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+        <div class="gline" title="Pluck step duration. Each pattern digit lasts this long. Default 0.25 s = 8th note at 120 BPM. Strings fire every divisor steps (e.g., div 7 = every 7 eighths = every 1.75 s).">
+          <label>STEP</label>
+          <input type="range" id="clock-period" min="0.04" max="2.0" step="0.001" value="0.25" style="flex:1;">
+          <span class="ctrl-val" id="clock-val" style="min-width:118px; text-align:right;">0.250 s/8th · 120 BPM</span>
+        </div>
+      </div>
+
+      <!-- Three string strips -->
+      <div class="strings-row" id="strings-row">
+        <!-- populated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── DELAY ──────────────────────────────────────────────────────── -->
+  <div class="col-wrap">
+    <div class="module fx" id="mod-delay">
+      <div class="mod-head" title="Delay/echo. Defaults bypassed; click ON to engage.">
+        <div class="head-presets" title="Delay presets — click to recall, shift+click to save (slots 5-6 only). Bypass state is not part of presets.">
+          <button class="head-preset-slot" data-preset="d1">1</button>
+          <button class="head-preset-slot" data-preset="d2">2</button>
+          <button class="head-preset-slot" data-preset="d3">3</button>
+          <button class="head-preset-slot" data-preset="d4">4</button>
+          <button class="head-preset-slot" data-preset="d5">5</button>
+          <button class="head-preset-slot" data-preset="d6">6</button>
+        </div>
+        <div class="mod-title">DELAY</div>
+        <button class="byp-btn off" data-bypass="delay" title="Toggle delay on/off. When OFF, dry=1 / wet=0 / fb=0 (bypassed); slider settings are kept.">OFF</button>
+      </div>
+      <div class="slider-row" title="Delay time in seconds (0.01 to 2.0).">
+        <div class="slider-label-row">
+          <span class="slider-label">TIME</span>
+          <span class="ctrl-val" id="dly-time-val">0.250 s</span>
+        </div>
+        <input type="range" id="dly-time" min="0.01" max="2.0" step="0.001" value="0.25">
+      </div>
+      <div class="slider-row" title="Feedback amount. Higher = more repeats. Capped at 0.95 to prevent runaway.">
+        <div class="slider-label-row">
+          <span class="slider-label">FEEDBACK</span>
+          <span class="ctrl-val" id="dly-fb-val">0.40</span>
+        </div>
+        <input type="range" id="dly-fb" min="0" max="0.95" step="0.001" value="0.40">
+      </div>
+      <div class="slider-row" title="Direct (no delay) signal level out to the main output.">
+        <div class="slider-label-row">
+          <span class="slider-label">DRY→OUT</span>
+          <span class="ctrl-val" id="dly-dry-val">100%</span>
+        </div>
+        <input type="range" id="dly-dry" min="0" max="1" step="0.01" value="1">
+      </div>
+      <div class="slider-row" title="Delayed signal level out to the main output.">
+        <div class="slider-label-row">
+          <span class="slider-label">WET→OUT</span>
+          <span class="ctrl-val" id="dly-wet-val">35%</span>
+        </div>
+        <input type="range" id="dly-wet" min="0" max="1" step="0.01" value="0.35">
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── OUTPUTS ─────────────────────────────────────────────────────── -->
+  <div class="col-wrap">
+    <div class="module in-out" id="mod-output">
+      <div class="mod-head" title="Master output. Hard limiter at -3 dBFS sits between this gain and the speakers — protects against KS feedback bursts.">
+        <div class="mod-title">OUTPUT</div>
+        <button class="byp-btn" id="output-mute" data-bypass="out" title="Mute master output.">ON</button>
+      </div>
+      <div class="ctrl-inline" style="flex-direction:column; align-items:stretch; gap:2px; margin-bottom:5px;">
+        <label style="margin-bottom:1px;">DEVICE</label>
+        <select id="output-device"><option value="">Default (System)</option></select>
+      </div>
+      <div class="ctrl-inline" style="flex-direction:column; align-items:stretch; gap:2px; margin-bottom:3px;">
+        <label style="margin-bottom:1px;">CHANNELS</label>
+        <select id="output-channels"><option value="0">Ch 1–2</option></select>
+      </div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px; padding:0 1px;">
+        <span style="font-size:.58rem; color:#555; letter-spacing:.1em;">MAX CH</span>
+        <span style="font-size:.60rem; color:#666;" id="out-maxch">—</span>
+      </div>
+      <!-- Combined gain+meter strip (FXP canonical) -->
+      <div style="display:flex; justify-content:center; height:68px; min-height:68px; margin-bottom:4px;">
+        <div class="gain-meter-wrap" style="height:68px;" title="Master output gain. Drag to set, double-click to reset to 0 dB. Bars show pre-limiter level.">
+          <div class="gain-meter-bg">
+            <div class="gain-meter-bar">
+              <div class="gain-meter-level" id="out-level-l" style="height:0%"></div>
+              <div class="gain-meter-peak"  id="out-pk-l"    style="bottom:0%"></div>
+            </div>
+            <div class="gain-meter-bar">
+              <div class="gain-meter-level" id="out-level-r" style="height:0%"></div>
+              <div class="gain-meter-peak"  id="out-pk-r"    style="bottom:0%"></div>
+            </div>
+          </div>
+          <input class="gain-meter-slider" type="range" id="output-gain-db"
+                 min="-60" max="12" step="0.5" value="-3">
+        </div>
+      </div>
+      <div style="text-align:center; margin-top:3px;">
+        <span class="ctrl-val" id="output-gain-val" style="font-size:.68rem;">-3dB</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="foot">
+  v0.6: custom drag on gain strips · 6 tuning presets (1-4 factory · 5-6 shift+click to save) · delay live.
+  Pluck step = 8th note. Defaults: gain -6 dB · decay 0.975 · brightness 1500 Hz.<br>
+  Pending: mic input audio (12) · polish + deploy.
+</div>
+
+<script>
+'use strict';
+
+// ── Build constants ─────────────────────────────────────────────────────
+const STRING_COUNT = 4;
+const DEFAULT_DIVISORS = [7, 11, 13, 17];   // coprime polyrhythm (all prime)
+const DEFAULT_PATTERN  = '4321';
+
+// Tuning system → showcase ratios for the three strings.
+// Earlier versions used (1, P5, octave) for every system, which made the
+// dropdown nearly inaudible (only the 12-ET P5 differed by ~2 cents from
+// 1.5). v0.8 uses each system's *characteristic* interval so switching
+// systems audibly changes the chord.
+const TUNINGS = {
+  '12-ET':   [1, Math.pow(2, 4/12),  Math.pow(2, 7/12), 2  ],  // unison · M3_eq   · P5_eq    · octave   (equal-tempered major triad + 8ve)
+  '5-limit': [1, 5/4,                3/2,              2  ],  // unison · just M3 · just P5  · octave   (just major triad + 8ve)
+  '7-limit': [1, 5/4,                3/2,              7/4],  // unison · just M3 · just P5  · harm 7th (just dominant 7 — the killer 7-limit demo)
+  'pythag':  [1, 81/64,              3/2,              2  ],  // unison · pyth M3 · just P5  · octave   (Pythagorean major + 8ve)
+  'custom':  [1, 3/2,                2,                5/2],  // tanpura-ish stack
+};
+
+// Note names for display in the freq-field
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const A4_HZ = 440;
+
+function freqToNoteName(hz) {
+  if (!isFinite(hz) || hz <= 0) return '—';
+  const semis = Math.round(12 * Math.log2(hz / A4_HZ));
+  // MIDI 69 = A4. So midi = 69 + semis.
+  const midi = 69 + semis;
+  const oct  = Math.floor(midi / 12) - 1;
+  const name = NOTE_NAMES[((midi % 12) + 12) % 12];
+  return name + oct;
+}
+function noteNameToFreq(name) {
+  // accepts "A", "A4", "Bb3", "C#5"
+  const m = String(name).trim().match(/^([A-Ga-g])([#bB♯♭]?)(-?\d+)?$/);
+  if (!m) return null;
+  let pcLetter = m[1].toUpperCase();
+  let acc = m[2] || '';
+  if (acc === '♯') acc = '#';
+  if (acc === '♭') acc = 'b';
+  const oct = m[3] !== undefined ? parseInt(m[3], 10) : 4;
+  const baseSemi = { C:0, D:2, E:4, F:5, G:7, A:9, B:11 }[pcLetter];
+  let semi = baseSemi + (acc === '#' ? 1 : acc === 'b' ? -1 : 0);
+  const midi = (oct + 1) * 12 + semi;
+  return A4_HZ * Math.pow(2, (midi - 69) / 12);
+}
+
+// ── State ───────────────────────────────────────────────────────────────
+let audioStarted = false;
+const state = {
+  rootFreq: 220,
+  tuningSystem: '12-ET',
+  clockPeriod: 0.25,    // seconds per pattern step (= 8th note at 120 BPM)
+  strings: [],   // populated below
+};
+
+for (let i = 0; i < STRING_COUNT; i++) {
+  state.strings.push({
+    bypass:    false,
+    ratio:     TUNINGS['12-ET'][i],
+    divisor:   DEFAULT_DIVISORS[i],
+    pattern:   DEFAULT_PATTERN,
+    intensity: 1.0,
+    timingHumanize:   0,
+    strengthHumanize: 0,
+    brightness: 1500,
+    decay:      0.975,
+    pan:        0,
+    gain:       -6,
+  });
+}
+
+// ── Tuning presets ──────────────────────────────────────────────────────
+// 6 slots. 1-4 factory (showcase distinct intervals across systems), 5-6 user.
+// Slots 1-4 use intervals that DIFFER between systems so the presets
+// audibly contrast — defaulting all to (1, P5, octave) made them sound
+// identical (only ~2 cents of P5 difference between 12-ET and the JIs).
+// Click = recall, shift+click = save (user slots only).
+//
+// User-saved presets capture the FULL per-string state (ratio, divisor,
+// pattern, intensity, brightness, decay, gain, pan, humanize) plus tuning
+// system, so they're full musical patches not just tuning.
+function makeTuningPreset(name, tuningSystem, ratios) {
+  return { name, tuningSystem, ratios: ratios.slice(), full: null, factory: true };
+}
+const tuningPresets = [
+  makeTuningPreset('12-ET',  '12-ET',   TUNINGS['12-ET'].slice()),
+  makeTuningPreset('5-lim',  '5-limit', TUNINGS['5-limit'].slice()),
+  makeTuningPreset('7-lim',  '7-limit', TUNINGS['7-limit'].slice()),
+  makeTuningPreset('pythag', 'pythag',  TUNINGS['pythag'].slice()),
+  null, null, null, null,   // slots 5-8 user-savable
+];
+
+function loadTuningPreset(idx) {
+  const p = tuningPresets[idx];
+  if (!p) return;
+  state.tuningSystem = p.tuningSystem;
+  document.getElementById('tuning-system').value = p.tuningSystem;
+  p.ratios.forEach((r, i) => {
+    if (state.strings[i]) {
+      state.strings[i].ratio = r;
+      const inp = document.querySelector(`[data-ratio="${i}"]`);
+      if (inp) inp.value = r.toFixed(4);
+    }
+  });
+  // Restore full per-string state if the preset has it
+  if (p.full) {
+    p.full.forEach((sp, i) => {
+      const s = state.strings[i];
+      if (!s) return;
+      s.divisor          = sp.divisor;
+      s.pattern          = sp.pattern;
+      s.intensity        = sp.intensity;
+      s.timingHumanize   = sp.timingHumanize;
+      s.strengthHumanize = sp.strengthHumanize;
+      s.brightness       = sp.brightness;
+      s.decay            = sp.decay;
+      s.gain             = sp.gain;
+      s.pan              = sp.pan;
+      // Push to UI inputs
+      const $ = sel => document.querySelector(sel);
+      const inpDiv = $(`[data-divisor="${i}"]`);     if (inpDiv)  inpDiv.value  = s.divisor;
+      const inpPat = $(`[data-pattern="${i}"]`);     if (inpPat)  inpPat.value  = s.pattern;
+      const inpInt = $(`[data-intensity="${i}"]`);   if (inpInt)  inpInt.value  = s.intensity;
+      const inpThm = $(`[data-thum="${i}"]`);        if (inpThm)  inpThm.value  = s.timingHumanize;
+      const inpShm = $(`[data-shum="${i}"]`);        if (inpShm)  inpShm.value  = s.strengthHumanize;
+      const inpBri = $(`[data-bright="${i}"]`);      if (inpBri)  inpBri.value  = s.brightness;
+      const inpDec = $(`[data-decay="${i}"]`);       if (inpDec)  inpDec.value  = s.decay;
+      const inpPan = $(`[data-pan="${i}"]`);         if (inpPan)  inpPan.value  = s.pan;
+      // Update the readouts
+      const v = sel => document.querySelector(sel);
+      const vInt = v(`[data-intensity-val="${i}"]`); if (vInt) vInt.textContent = s.intensity.toFixed(2);
+      const vThm = v(`[data-thum-val="${i}"]`);      if (vThm) vThm.textContent = s.timingHumanize + '%';
+      const vShm = v(`[data-shum-val="${i}"]`);      if (vShm) vShm.textContent = s.strengthHumanize + '%';
+      const vBri = v(`[data-bright-val="${i}"]`);    if (vBri) vBri.textContent = Math.round(s.brightness) + ' Hz';
+      const vDec = v(`[data-decay-val="${i}"]`);     if (vDec) vDec.textContent = s.decay.toFixed(3);
+      const lr = s.pan < -0.02 ? 'L' + Math.round(-s.pan * 100)
+              : s.pan >  0.02 ? 'R' + Math.round( s.pan * 100) : 'C';
+      const vPan = v(`[data-pan-val="${i}"]`);       if (vPan) vPan.textContent = lr;
+      drawBargraph(i);
+      // Push live audio updates
+      if (s.audio && audioCtx) {
+        const t = audioCtx.currentTime;
+        s.audio.filter.frequency.setTargetAtTime(s.brightness, t, 0.02);
+        s.audio.feedback.gain.setTargetAtTime(s.decay, t, 0.02);
+        s.audio.panner.pan.setTargetAtTime(s.pan, t, 0.02);
+        s.audio.strGain.gain.setTargetAtTime(dbToGain(s.gain), t, 0.02);
+      }
+      // Push gain to the custom thumb visual
+      const stripEl = document.querySelector(`[data-string="${i}"]`);
+      const wrap    = stripEl && stripEl.querySelector('.gain-meter-wrap');
+      if (wrap && wrap._setGainDb) wrap._setGainDb(s.gain);
+    });
+  }
+}
+
+function saveTuningPreset(idx) {
+  if (idx < 4) return;   // can't overwrite factory presets
+  tuningPresets[idx] = {
+    name: 'user' + (idx - 3),
+    tuningSystem: state.tuningSystem,
+    ratios: state.strings.map(s => s.ratio),
+    full: state.strings.map(s => ({
+      divisor:          s.divisor,
+      pattern:          s.pattern,
+      intensity:        s.intensity,
+      timingHumanize:   s.timingHumanize,
+      strengthHumanize: s.strengthHumanize,
+      brightness:       s.brightness,
+      decay:            s.decay,
+      gain:             s.gain,
+      pan:              s.pan,
+    })),
+    factory: false,
+  };
+  refreshPresetSlotStyle();
+}
+
+function refreshPresetSlotStyle() {
+  document.querySelectorAll('#mod-dronor .head-preset-slot').forEach((btn, i) => {
+    btn.classList.toggle('saved', tuningPresets[i] != null);
+    btn.title = tuningPresets[i]
+      ? `${tuningPresets[i].name}` + (tuningPresets[i].factory ? '' : ' (shift+click to overwrite)')
+      : 'empty (shift+click to save)';
+  });
+}
+
+// ── Delay presets ───────────────────────────────────────────────────────
+// 4 factory + 2 user. Time/feedback/dry/wet captured. Bypass state is NOT
+// part of presets — recalling a preset does not turn the delay on/off.
+const delayPresets = [
+  { name: 'slap',   time: 0.080, fb: 0.20, dry: 1.0, wet: 0.40, factory: true },
+  { name: 'echo',   time: 0.250, fb: 0.55, dry: 1.0, wet: 0.50, factory: true },
+  { name: 'long',   time: 0.500, fb: 0.70, dry: 1.0, wet: 0.55, factory: true },
+  { name: 'wash',   time: 0.750, fb: 0.85, dry: 0.7, wet: 0.65, factory: true },
+  null,
+  null,
+];
+function loadDelayPreset(idx) {
+  const p = delayPresets[idx];
+  if (!p) return;
+  const set = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) { el.value = val; el.dispatchEvent(new Event('input')); }
+  };
+  set('dly-time', p.time);
+  set('dly-fb',   p.fb);
+  set('dly-dry',  p.dry);
+  set('dly-wet',  p.wet);
+}
+function saveDelayPreset(idx) {
+  if (idx < 4) return;
+  const get = id => parseFloat(document.getElementById(id).value);
+  delayPresets[idx] = {
+    name: 'user' + (idx - 3),
+    time: get('dly-time'),
+    fb:   get('dly-fb'),
+    dry:  get('dly-dry'),
+    wet:  get('dly-wet'),
+    factory: false,
+  };
+  refreshDelayPresetSlotStyle();
+}
+function refreshDelayPresetSlotStyle() {
+  document.querySelectorAll('#mod-delay .head-preset-slot').forEach((btn, i) => {
+    btn.classList.toggle('saved', delayPresets[i] != null);
+    btn.title = delayPresets[i]
+      ? `${delayPresets[i].name}` + (delayPresets[i].factory ? '' : ' (shift+click to overwrite)')
+      : 'empty (shift+click to save)';
+  });
+}
+
+// ── DOM build: string strips ────────────────────────────────────────────
+function buildStringStrips() {
+  const host = document.getElementById('strings-row');
+  host.innerHTML = '';
+  state.strings.forEach((s, idx) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'string-strip';
+    wrap.dataset.string = idx;
+    wrap.innerHTML = `
+      <div class="str-head">
+        <span class="str-num" title="One of three independent Karplus-Strong strings.">STR ${idx + 1}</span>
+        <button class="byp-btn ${s.bypass ? 'off' : ''}" data-string-bypass="${idx}"
+                title="Bypass this string (mute its output without affecting the others).">
+          ${s.bypass ? 'OFF' : 'ON'}
+        </button>
+      </div>
+      <button class="pluck-btn" data-pluck="${idx}"
+              title="Pluck this string manually at full strength (ignores pattern; useful for tuning).">PLUCK</button>
+      <div class="slider-row" title="Frequency multiplier vs ROOT. Examples: 1.0 = unison · 1.5 = perfect fifth · 2.0 = octave · 5/4 = just major third · 7/4 = harmonic seventh. Editing this flips the TUNING dropdown to Custom.">
+        <div class="slider-label-row">
+          <span class="slider-label">RATIO</span>
+          <input type="text" data-ratio="${idx}" value="${s.ratio.toFixed(4)}"
+                 style="width:54px; font-size:.62rem; text-align:right; padding:1px 3px;">
+        </div>
+      </div>
+      <div class="slider-row" title="Pluck divisor. String fires every N pattern steps. Default coprime values (7, 11, 13) give natural polyrhythm. Smaller = denser plucks.">
+        <div class="slider-label-row">
+          <span class="slider-label">DIV</span>
+          <input type="number" data-divisor="${idx}" value="${s.divisor}" min="1" max="32"
+                 style="width:42px; font-size:.62rem; text-align:right; padding:1px 3px;">
+        </div>
+      </div>
+      <div class="slider-row" title="Accent pattern. Each digit (0-9) is one pluck strength. 0 = rest (silent step, but pattern advances). Pattern cycles forever. e.g., '4321' = loud-medium-soft-softer-loud-...">
+        <div class="slider-label-row">
+          <span class="slider-label">PATTERN</span>
+          <input type="text" data-pattern="${idx}" value="${s.pattern}" maxlength="16"
+                 style="width:74px; font-size:.62rem; text-align:right; padding:1px 3px;">
+        </div>
+        <div class="accent-bargraph" data-bargraph="${idx}"
+             title="Live preview of pattern strengths after INTENSITY scaling."></div>
+      </div>
+      <div class="slider-row" title="Multiplier on the accent pattern. 0 = mute. 1.0 = use pattern values as written. >1 boosts toward clipping. e.g., intensity 2 turns '4' into effective '8'.">
+        <div class="slider-label-row">
+          <span class="slider-label">INTENSITY</span>
+          <span class="ctrl-val" data-intensity-val="${idx}">${s.intensity.toFixed(2)}</span>
+        </div>
+        <input type="range" data-intensity="${idx}" min="0" max="2.5" step="0.01" value="${s.intensity}">
+      </div>
+      <div class="slider-row" title="Timing humanize. Each pluck is delayed by 0–(T-HUM% × 1.5) of this string's pluck period. 0% = on-the-grid. 100% = up to 1.5 string periods of jitter (plucks can land past the next slot).">
+        <div class="slider-label-row">
+          <span class="slider-label">T-HUM</span>
+          <span class="ctrl-val" data-thum-val="${idx}">${s.timingHumanize}%</span>
+        </div>
+        <input type="range" data-thum="${idx}" min="0" max="100" step="1" value="${s.timingHumanize}">
+      </div>
+      <div class="slider-row" title="Strength humanize. Random ±variation in pluck volume per pluck. 0% = strict pattern. 100% = ±200% — plucks can drop to silence or saturate to clipping. Independent of T-HUM.">
+        <div class="slider-label-row">
+          <span class="slider-label">S-HUM</span>
+          <span class="ctrl-val" data-shum-val="${idx}">${s.strengthHumanize}%</span>
+        </div>
+        <input type="range" data-shum="${idx}" min="0" max="100" step="1" value="${s.strengthHumanize}">
+      </div>
+      <div class="slider-row" title="Brightness — lowpass cutoff on the string output (post Karplus-Strong loop). Lower = darker / more muffled. Doesn't affect the in-loop FIR damping (so it's safe to modulate live).">
+        <div class="slider-label-row">
+          <span class="slider-label">BRIGHT</span>
+          <span class="ctrl-val" data-bright-val="${idx}">${Math.round(s.brightness)} Hz</span>
+        </div>
+        <input type="range" data-bright="${idx}" min="200" max="12000" step="1" value="${s.brightness}">
+      </div>
+      <div class="slider-row" title="String ring time (in-loop feedback gain). 0.95 ≈ short attack-decay. 0.975 ≈ medium drone. 0.99+ = long sustain (careful with high intensity).">
+        <div class="slider-label-row">
+          <span class="slider-label">DECAY</span>
+          <span class="ctrl-val" data-decay-val="${idx}">${s.decay.toFixed(3)}</span>
+        </div>
+        <input type="range" data-decay="${idx}" min="0.90" max="0.999" step="0.001" value="${s.decay}">
+      </div>
+      <div class="slider-row" title="Stereo position. -1 = full left, 0 = center, +1 = full right.">
+        <div class="slider-label-row">
+          <span class="slider-label">PAN</span>
+          <span class="ctrl-val" data-pan-val="${idx}">C</span>
+        </div>
+        <input type="range" data-pan="${idx}" min="-1" max="1" step="0.01" value="${s.pan}">
+      </div>
+      <!-- Per-string gain+meter strip (FXP canonical, smaller) -->
+      <div style="display:flex; justify-content:center; height:60px; min-height:60px; margin-top:4px;">
+        <div class="gain-meter-wrap" style="height:60px;"
+             title="String output gain (post-pan, pre-bus). Drag to set, double-click to reset to 0 dB.">
+          <div class="gain-meter-bg">
+            <div class="gain-meter-bar">
+              <div class="gain-meter-level" data-str-level-l="${idx}" style="height:0%"></div>
+              <div class="gain-meter-peak"  data-str-pk-l="${idx}"    style="bottom:0%"></div>
+            </div>
+            <div class="gain-meter-bar">
+              <div class="gain-meter-level" data-str-level-r="${idx}" style="height:0%"></div>
+              <div class="gain-meter-peak"  data-str-pk-r="${idx}"    style="bottom:0%"></div>
+            </div>
+          </div>
+          <input class="gain-meter-slider" type="range" data-str-gain-db="${idx}"
+                 min="-60" max="12" step="0.5" value="${s.gain}">
+        </div>
+      </div>
+      <div style="text-align:center; margin-top:2px;">
+        <span class="ctrl-val" data-str-gain-val="${idx}" style="font-size:.62rem;">${s.gain.toFixed(0)}dB</span>
+      </div>
+    `;
+    host.appendChild(wrap);
+    drawBargraph(idx);
+  });
+}
+
+// ── Accent pattern bargraph ─────────────────────────────────────────────
+function drawBargraph(idx) {
+  const s = state.strings[idx];
+  const host = document.querySelector(`[data-bargraph="${idx}"]`);
+  if (!host) return;
+  host.innerHTML = '';
+  const chars = (s.pattern || '').slice(0, 16).split('');
+  chars.forEach(ch => {
+    const v = parseInt(ch, 10);
+    const bar = document.createElement('div');
+    bar.className = 'bar' + (v === 0 ? ' rest' : '');
+    // scale by intensity, clamp 0..1, 0 => 2px floor for visibility of rests
+    const scaled = Math.max(0, Math.min(1, (v / 9) * s.intensity));
+    bar.style.height = (v === 0 ? 2 : Math.max(2, scaled * 14)) + 'px';
+    host.appendChild(bar);
+  });
+}
+
+// ── Freq-field: number-wins behavior ────────────────────────────────────
+function refreshNoteDisplay() {
+  const f = state.rootFreq;
+  document.getElementById('root-note').textContent = '≈ ' + freqToNoteName(f);
+}
+function commitRootFreq(rawValue) {
+  const txt = String(rawValue).trim();
+  if (!txt) return;
+  const asNum = parseFloat(txt);
+  if (isFinite(asNum) && /^[\d.]+$/.test(txt.replace(/\s/g, ''))) {
+    // pure number → freq wins, note is approximate
+    state.rootFreq = asNum;
+    document.getElementById('root-freq').value = asNum;
+  } else {
+    const f = noteNameToFreq(txt);
+    if (f) {
+      state.rootFreq = f;
+      document.getElementById('root-freq').value = f.toFixed(2);
+    }
+  }
+  refreshNoteDisplay();
+}
+
+// ── Master clock display ────────────────────────────────────────────────
+// clockPeriod = seconds per pattern step. Pattern digits are interpreted
+// as 8th notes, so implied quarter-note BPM = 60 / (period × 2).
+function refreshClockDisplay() {
+  const sec = state.clockPeriod;
+  const bpm = 60 / (sec * 2);
+  document.getElementById('clock-val').textContent =
+    sec.toFixed(3) + ' s/8th · ' + bpm.toFixed(1) + ' BPM';
+}
+
+// ── Audio graph ─────────────────────────────────────────────────────────
+let audioCtx = null;
+let dronorBus = null;          // sums all three strings
+let delayChain = null;         // simple delay (input → dry+wet w/ feedback → outputGain)
+let delayBypassed = true;      // sliders inactive when bypassed (default OFF)
+let outputGainNode = null;     // master output gain
+let outputMuted = false;       // master output mute (decoupled from gain slider value)
+let outputLimiter = null;      // hard limiter — prevents Chrome auto-mute on peaks
+let outputSplitter = null;
+let outputAnalyserL = null;
+let outputAnalyserR = null;
+let schedHandle = null;
+let tickCount = 0;
+
+const dbToGain = db => Math.pow(10, db / 20);
+const gainToDb = g  => 20 * Math.log10(Math.max(g, 1e-6));
+
+// Auto-resume the audio context if it gets suspended (Chrome safety, tab focus, etc.)
+function ensureRunning() {
+  if (audioCtx && audioCtx.state !== 'running') {
+    audioCtx.resume().catch(() => {});
+  }
+}
+
+// Custom drag handler for gain-meter-wrap with custom thumb div.
+// Bypasses Chrome's vertical-mode slider quirks (drag freeze, inverted
+// visuals from writing-mode/direction interactions) by using a JS-positioned
+// thumb element. The native slider element is kept (invisible) only as a
+// value store readable by other code.
+const THUMB_HEIGHT = 5;
+function attachGainDrag(wrap, slider, valEl, min, max, formatLabel, onSet) {
+  if (!wrap || !slider) return;
+  // Build custom thumb if not already present
+  let thumb = wrap.querySelector('.gain-thumb');
+  if (!thumb) {
+    thumb = document.createElement('div');
+    thumb.className = 'gain-thumb';
+    wrap.appendChild(thumb);
+  }
+  let dragging = false, pid = null;
+  function valueFromY(clientY) {
+    const rect = wrap.getBoundingClientRect();
+    let t = 1 - (clientY - rect.top) / rect.height;   // top = max, bottom = min
+    if (t < 0) t = 0; else if (t > 1) t = 1;
+    return min + t * (max - min);
+  }
+  function positionThumb(v) {
+    const h = wrap.clientHeight || 60;
+    const usable = Math.max(0, h - THUMB_HEIGHT);
+    const pct = (v - min) / (max - min);
+    thumb.style.bottom = (pct * usable) + 'px';
+  }
+  function commit(v) {
+    slider.value = v;
+    positionThumb(v);
+    if (valEl) valEl.textContent = formatLabel(v);
+    onSet(v);
+  }
+  wrap.addEventListener('pointerdown', e => {
+    ensureRunning();
+    dragging = true; pid = e.pointerId;
+    try { wrap.setPointerCapture(pid); } catch (_) {}
+    commit(valueFromY(e.clientY));
+    e.preventDefault();
+  });
+  wrap.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    commit(valueFromY(e.clientY));
+  });
+  const release = () => {
+    dragging = false;
+    if (pid != null) {
+      try { wrap.releasePointerCapture(pid); } catch (_) {}
+      pid = null;
+    }
+  };
+  wrap.addEventListener('pointerup', release);
+  wrap.addEventListener('pointercancel', release);
+  wrap.addEventListener('dblclick', () => commit(0));
+  // Initial thumb position from current slider value
+  positionThumb(parseFloat(slider.value) || 0);
+  // Expose for external programmatic updates (preset recall etc.)
+  wrap._setGainDb = v => commit(v);
+}
+
+function createKSChain(ctx) {
+  // Karplus-Strong with a STABLE in-loop filter (the BiquadFilter inside a
+  // feedback loop blew up — Chrome printed "BiquadFilterNode: state is bad
+  // due to unstable filter caused by fast parameter automation" v0.2/v0.3).
+  //
+  // Loop: noise → sumNode → delay → loopFIR (2-tap moving avg) → feedback → sumNode
+  //   - 2-tap FIR has feedforward [0.5, 0.5] only, no feedback coefficients,
+  //     so it's a non-recursive filter — mathematically stable forever.
+  //   - Adds a half-sample group delay (≈ 0.5 cents pitch shift, inaudible).
+  //   - Provides classic KS string-decay: each loop pass averages adjacent
+  //     samples → highs decay faster than lows → pitched, plucky sound.
+  // Output tap: loopFIR → brightness (BiquadFilter, OUTSIDE loop, safe to
+  //   modulate) → output → panner → strGain → bus
+  const sumNode  = ctx.createGain(); sumNode.gain.value = 1;
+  const delay    = ctx.createDelay(0.5);
+  delay.delayTime.value = 1 / 220;          // nonzero default; pluck overwrites
+  const loopFIR  = ctx.createIIRFilter([0.5, 0.5], [1.0]);  // canonical KS
+  const feedback = ctx.createGain(); feedback.gain.value = 0.96;
+  const filter   = ctx.createBiquadFilter();   // brightness (out-of-loop)
+  filter.type = 'lowpass';
+  filter.Q.value = 0.5;
+  filter.frequency.value = 2500;
+  const output   = ctx.createGain(); output.gain.value = 1;
+  const panner   = ctx.createStereoPanner();
+  const strGain  = ctx.createGain(); strGain.gain.value = 1;
+
+  // Feedback loop (stable)
+  sumNode.connect(delay);
+  delay.connect(loopFIR);
+  loopFIR.connect(feedback);
+  feedback.connect(sumNode);
+  // Output tap from the same loopFIR node (multi-destination ok)
+  loopFIR.connect(filter);
+  filter.connect(output);
+  output.connect(panner);
+  panner.connect(strGain);
+
+  // Per-string stereo analyser (post-pan, post-gain)
+  const splitter = ctx.createChannelSplitter(2);
+  const aL = ctx.createAnalyser();
+  const aR = ctx.createAnalyser();
+  aL.fftSize = 1024; aL.smoothingTimeConstant = 0;
+  aR.fftSize = 1024; aR.smoothingTimeConstant = 0;
+  strGain.connect(splitter);
+  splitter.connect(aL, 0);
+  splitter.connect(aR, 1);
+
+  return { sumNode, delay, loopFIR, feedback, filter, output, panner, strGain, aL, aR };
+}
+
+// Simple delay: input → dry → out, input → delay → wet → out, with feedback loop.
+function createDelayChain(ctx) {
+  const input    = ctx.createGain(); input.gain.value = 1;
+  const delayN   = ctx.createDelay(2.0); delayN.delayTime.value = 0.25;
+  const feedback = ctx.createGain(); feedback.gain.value = 0;        // bypass-safe default
+  const dry      = ctx.createGain(); dry.gain.value = 1;
+  const wet      = ctx.createGain(); wet.gain.value = 0;             // bypass-safe default
+  input.connect(dry);
+  input.connect(delayN);
+  delayN.connect(feedback);
+  feedback.connect(delayN);
+  delayN.connect(wet);
+  return { input, delayN, feedback, dry, wet };
+}
+
+function pluckKS(ks, freq, strength, brightness) {
+  if (!audioCtx || !ks) return;
+  if (!isFinite(freq) || freq < 20 || freq > 4000) return;
+  if (strength <= 0) return;
+  const sr = audioCtx.sampleRate;
+  const t  = audioCtx.currentTime;
+  ks.delay.delayTime.setValueAtTime(1 / freq, t);
+  ks.filter.frequency.setTargetAtTime(brightness, t, 0.005);
+  // Inject one period of noise — fills delay line, seeds broad spectrum
+  const burstSec = 1 / freq;
+  const bufLen = Math.max(8, Math.ceil(burstSec * sr));
+  const buf = audioCtx.createBuffer(1, bufLen, sr);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < bufLen; i++) data[i] = (Math.random() * 2 - 1) * strength;
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  src.connect(ks.sumNode);
+  src.start(t);
+}
+
+// ── Master scheduler ────────────────────────────────────────────────────
+function startScheduler() {
+  stopScheduler();
+  tickCount = 0;
+  state.strings.forEach(s => { s.patternStep = 0; });
+  onTick();   // fire tick 0 immediately so we hear something on START
+  schedHandle = setInterval(onTick, state.clockPeriod * 1000);
+}
+function stopScheduler() {
+  if (schedHandle != null) { clearInterval(schedHandle); schedHandle = null; }
+}
+// Adjust the setInterval period WITHOUT resetting tick/pattern state and
+// WITHOUT firing onTick immediately. Called on every clock-slider input
+// event — the previous restartScheduler() generated 100s of plucks per drag.
+function rescheduleSchedulerPeriod() {
+  if (schedHandle == null) return;
+  clearInterval(schedHandle);
+  schedHandle = setInterval(onTick, state.clockPeriod * 1000);
+}
+function onTick() {
+  state.strings.forEach((s) => {
+    if (!s.audio || s.bypass) return;
+    if (tickCount % s.divisor !== 0) return;
+    const patLen = Math.max(1, (s.pattern || '4321').length);
+    const step   = (s.patternStep || 0) % patLen;
+    const digit  = parseInt(s.pattern[step] || '0', 10);
+    s.patternStep = (step + 1) % patLen;
+    if (!(digit > 0)) return;                                 // rest
+    let strength = (digit / 9) * s.intensity;
+    if (s.strengthHumanize > 0) {
+      // ±200% multiplier at 100% S-hum (was ±100%). At full crank, plucks
+      // can drop to silence or saturate to clip — guarantees audible variation
+      // even when the strings are washing in long-decay sustain.
+      const sj = (Math.random() * 2 - 1) * (s.strengthHumanize / 100) * 2;
+      strength *= 1 + sj;
+    }
+    strength = Math.max(0, Math.min(1, strength));
+    if (strength < 0.001) return;
+    const freq = state.rootFreq * s.ratio;
+    let timingMs = 0;
+    if (s.timingHumanize > 0) {
+      // At 100% T-hum, max delay is up to 1.5× this string's pluck period
+      // (divisor × step). Plenty audible — the next pluck can land anywhere
+      // in the next pluck window, sometimes overlapping the following pluck.
+      const stringPeriod = s.divisor * state.clockPeriod;
+      timingMs = Math.random() * (s.timingHumanize / 100) * stringPeriod * 1000 * 1.5;
+    }
+    if (timingMs > 0) {
+      setTimeout(() => pluckKS(s.audio, freq, strength, s.brightness), timingMs);
+    } else {
+      pluckKS(s.audio, freq, strength, s.brightness);
+    }
+  });
+  tickCount++;
+}
+
+// ── Meter rendering ─────────────────────────────────────────────────────
+const METER_DBMIN = -60, METER_DBMAX = 12;
+const _meterBuf = new Float32Array(1024);
+const meterPeaks = new Map();
+function pctFromDb(db) {
+  return Math.max(0, Math.min(100, ((db - METER_DBMIN) / (METER_DBMAX - METER_DBMIN)) * 100));
+}
+function renderMeter(analyser, levelEl, peakEl, peakKey, now) {
+  if (!analyser || !levelEl) return;
+  analyser.getFloatTimeDomainData(_meterBuf);
+  let p = 0;
+  for (let i = 0; i < _meterBuf.length; i++) {
+    const v = Math.abs(_meterBuf[i]); if (v > p) p = v;
+  }
+  levelEl.style.height = pctFromDb(gainToDb(p)) + '%';
+  if (peakEl) {
+    let entry = meterPeaks.get(peakKey);
+    if (!entry) { entry = { value: 0, time: 0 }; meterPeaks.set(peakKey, entry); }
+    if (p >= entry.value || (now - entry.time) > 1600) {
+      if (p >= entry.value) entry.time = now;
+      entry.value = p;
+    }
+    if ((now - entry.time) > 1600) entry.value *= 0.92;
+    peakEl.style.bottom = pctFromDb(gainToDb(entry.value)) + '%';
+    peakEl.classList.toggle('active', entry.value > 1e-4);
+  }
+}
+function meterTick() {
+  if (!audioCtx) return;
+  const now = performance.now();
+  if (outputAnalyserL) {
+    renderMeter(outputAnalyserL,
+      document.getElementById('out-level-l'),
+      document.getElementById('out-pk-l'), 'out-L', now);
+    renderMeter(outputAnalyserR,
+      document.getElementById('out-level-r'),
+      document.getElementById('out-pk-r'), 'out-R', now);
+  }
+  state.strings.forEach((s, i) => {
+    if (!s.audio) return;
+    renderMeter(s.audio.aL,
+      document.querySelector(`[data-str-level-l="${i}"]`),
+      document.querySelector(`[data-str-pk-l="${i}"]`),    'str' + i + '-L', now);
+    renderMeter(s.audio.aR,
+      document.querySelector(`[data-str-level-r="${i}"]`),
+      document.querySelector(`[data-str-pk-r="${i}"]`),    'str' + i + '-R', now);
+  });
+  requestAnimationFrame(meterTick);
+}
+
+// ── Wire up controls ────────────────────────────────────────────────────
+function wireGlobalControls() {
+  const rootInput = document.getElementById('root-freq');
+  rootInput.addEventListener('change', e => commitRootFreq(e.target.value));
+  rootInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') e.target.blur();
+  });
+
+  document.getElementById('tuning-system').addEventListener('change', e => {
+    state.tuningSystem = e.target.value;
+    if (e.target.value !== 'custom') {
+      const ratios = TUNINGS[e.target.value];
+      ratios.forEach((r, i) => {
+        if (state.strings[i]) {
+          state.strings[i].ratio = r;
+          const inp = document.querySelector(`[data-ratio="${i}"]`);
+          if (inp) inp.value = r.toFixed(4);
+        }
+      });
+    }
+  });
+
+  document.getElementById('clock-period').addEventListener('input', e => {
+    state.clockPeriod = parseFloat(e.target.value);
+    refreshClockDisplay();
+    rescheduleSchedulerPeriod();
+  });
+}
+
+function wireStringControls() {
+  const stringsRow = document.getElementById('strings-row');
+
+  stringsRow.addEventListener('input', e => {
+    ensureRunning();
+    const t = e.target;
+    let i = -1, kind = null;
+    if      (t.dataset.intensity != null) { i = +t.dataset.intensity; kind = 'intensity'; }
+    else if (t.dataset.thum      != null) { i = +t.dataset.thum;      kind = 'thum'; }
+    else if (t.dataset.shum      != null) { i = +t.dataset.shum;      kind = 'shum'; }
+    else if (t.dataset.bright    != null) { i = +t.dataset.bright;    kind = 'bright'; }
+    else if (t.dataset.decay     != null) { i = +t.dataset.decay;     kind = 'decay'; }
+    else if (t.dataset.pan       != null) { i = +t.dataset.pan;       kind = 'pan'; }
+    else if (t.dataset.strGainDb != null) { i = +t.dataset.strGainDb; kind = 'strGain'; }
+    if (!(i >= 0)) return;
+    const s = state.strings[i];
+    const v = parseFloat(t.value);
+    const now = audioCtx ? audioCtx.currentTime : 0;
+    switch (kind) {
+      case 'intensity':
+        s.intensity = v;
+        document.querySelector(`[data-intensity-val="${i}"]`).textContent = v.toFixed(2);
+        drawBargraph(i);
+        break;
+      case 'thum':
+        s.timingHumanize = v;
+        document.querySelector(`[data-thum-val="${i}"]`).textContent = v + '%';
+        break;
+      case 'shum':
+        s.strengthHumanize = v;
+        document.querySelector(`[data-shum-val="${i}"]`).textContent = v + '%';
+        break;
+      case 'bright':
+        s.brightness = v;
+        document.querySelector(`[data-bright-val="${i}"]`).textContent = Math.round(v) + ' Hz';
+        if (s.audio) s.audio.filter.frequency.setTargetAtTime(v, now, 0.02);
+        break;
+      case 'decay':
+        s.decay = v;
+        document.querySelector(`[data-decay-val="${i}"]`).textContent = v.toFixed(3);
+        if (s.audio) s.audio.feedback.gain.setTargetAtTime(v, now, 0.02);
+        break;
+      case 'pan': {
+        s.pan = v;
+        const lr = v < -0.02 ? 'L' + Math.round(-v * 100)
+                : v >  0.02 ? 'R' + Math.round( v * 100)
+                : 'C';
+        document.querySelector(`[data-pan-val="${i}"]`).textContent = lr;
+        if (s.audio) s.audio.panner.pan.setTargetAtTime(v, now, 0.02);
+        break;
+      }
+      case 'strGain':
+        s.gain = v;
+        document.querySelector(`[data-str-gain-val="${i}"]`).textContent = v.toFixed(0) + 'dB';
+        if (s.audio) s.audio.strGain.gain.setTargetAtTime(dbToGain(v), now, 0.02);
+        break;
+    }
+  });
+
+  stringsRow.addEventListener('change', e => {
+    const t = e.target;
+    if (t.dataset.ratio != null) {
+      const i = +t.dataset.ratio;
+      const v = parseFloat(t.value);
+      if (isFinite(v) && v > 0) {
+        state.strings[i].ratio = v;
+        document.getElementById('tuning-system').value = 'custom';
+        state.tuningSystem = 'custom';
+      } else {
+        t.value = state.strings[i].ratio.toFixed(4);
+      }
+    } else if (t.dataset.divisor != null) {
+      const i = +t.dataset.divisor;
+      const v = Math.max(1, Math.min(32, parseInt(t.value, 10) || 1));
+      state.strings[i].divisor = v;
+      t.value = v;
+    } else if (t.dataset.pattern != null) {
+      const i = +t.dataset.pattern;
+      const cleaned = (t.value || '').replace(/[^0-9]/g, '').slice(0, 16) || '4321';
+      state.strings[i].pattern = cleaned;
+      t.value = cleaned;
+      drawBargraph(i);
+    }
+  });
+
+  stringsRow.addEventListener('click', e => {
+    const t = e.target;
+    if (t.dataset.pluck != null) {
+      const i = +t.dataset.pluck;
+      const s = state.strings[i];
+      if (s && s.audio) {
+        const freq = state.rootFreq * s.ratio;
+        // Manual pluck = full strength (clamped) regardless of pattern
+        const strength = Math.max(0.05, Math.min(1, s.intensity));
+        pluckKS(s.audio, freq, strength, s.brightness);
+      }
+      t.style.background = '#c8a85488';
+      setTimeout(() => { t.style.background = ''; }, 90);
+    } else if (t.dataset.stringBypass != null) {
+      const i = +t.dataset.stringBypass;
+      state.strings[i].bypass = !state.strings[i].bypass;
+      t.classList.toggle('off', state.strings[i].bypass);
+      t.textContent = state.strings[i].bypass ? 'OFF' : 'ON';
+    }
+  });
+
+  // Double-click str-gain to reset to 0dB
+  stringsRow.addEventListener('dblclick', e => {
+    const t = e.target;
+    if (t.dataset.strGainDb != null) {
+      const i = +t.dataset.strGainDb;
+      t.value = 0;
+      state.strings[i].gain = 0;
+      document.querySelector(`[data-str-gain-val="${i}"]`).textContent = '0dB';
+      if (state.strings[i].audio) {
+        state.strings[i].audio.strGain.gain.setTargetAtTime(1, audioCtx.currentTime, 0.02);
+      }
+    }
+  });
+}
+
+function wireOutputControls() {
+  const slider = document.getElementById('output-gain-db');
+  const val    = document.getElementById('output-gain-val');
+  slider.addEventListener('input', () => {
+    ensureRunning();
+    const db = parseFloat(slider.value);
+    if (val) val.textContent = db.toFixed(0) + 'dB';
+    if (outputGainNode) {
+      outputGainNode.gain.setTargetAtTime(dbToGain(db), audioCtx.currentTime, 0.02);
+    }
+  });
+  slider.addEventListener('dblclick', () => {
+    slider.value = 0;
+    slider.dispatchEvent(new Event('input'));
+  });
+
+  const muteBtn = document.getElementById('output-mute');
+  muteBtn.addEventListener('click', () => {
+    outputMuted = !outputMuted;
+    muteBtn.classList.toggle('off', outputMuted);
+    muteBtn.textContent = outputMuted ? 'OFF' : 'ON';
+    if (outputGainNode) {
+      const db = parseFloat(slider.value);
+      const target = outputMuted ? 0 : dbToGain(db);
+      outputGainNode.gain.setTargetAtTime(target, audioCtx.currentTime, 0.02);
+    }
+  });
+}
+
+function wireModuleBypass() {
+  // Top-level module bypasses. Output is in wireOutputControls, delay is in
+  // wireDelayControls. This handler now only manages dronor bus.
+  document.querySelectorAll('.module .byp-btn').forEach(btn => {
+    if (btn.id === 'output-mute')             return;
+    if (btn.dataset.bypass === 'delay')       return;
+    if (btn.dataset.stringBypass != null)     return;
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      btn.classList.toggle('off');
+      btn.textContent = btn.classList.contains('off') ? 'OFF' : 'ON';
+      if (btn.dataset.bypass === 'dronor' && dronorBus) {
+        const target = btn.classList.contains('off') ? 0 : 1;
+        dronorBus.gain.setTargetAtTime(target, audioCtx.currentTime, 0.05);
+      }
+    });
+  });
+}
+
+function wireDelayControls() {
+  const time = document.getElementById('dly-time');
+  const fb   = document.getElementById('dly-fb');
+  const dry  = document.getElementById('dly-dry');
+  const wet  = document.getElementById('dly-wet');
+  const timeVal = document.getElementById('dly-time-val');
+  const fbVal   = document.getElementById('dly-fb-val');
+  const dryVal  = document.getElementById('dly-dry-val');
+  const wetVal  = document.getElementById('dly-wet-val');
+  const byp     = document.querySelector('#mod-delay [data-bypass="delay"]');
+
+  function applyTime() {
+    ensureRunning();
+    const v = parseFloat(time.value);
+    if (delayChain) delayChain.delayN.delayTime.setTargetAtTime(v, audioCtx.currentTime, 0.05);
+    timeVal.textContent = v.toFixed(3) + ' s';
+  }
+  function applyFb() {
+    ensureRunning();
+    const v = parseFloat(fb.value);
+    if (delayChain && !delayBypassed) delayChain.feedback.gain.setTargetAtTime(v, audioCtx.currentTime, 0.02);
+    fbVal.textContent = v.toFixed(2);
+  }
+  function applyDry() {
+    ensureRunning();
+    const v = parseFloat(dry.value);
+    if (delayChain && !delayBypassed) delayChain.dry.gain.setTargetAtTime(v, audioCtx.currentTime, 0.02);
+    dryVal.textContent = Math.round(v * 100) + '%';
+  }
+  function applyWet() {
+    ensureRunning();
+    const v = parseFloat(wet.value);
+    if (delayChain && !delayBypassed) delayChain.wet.gain.setTargetAtTime(v, audioCtx.currentTime, 0.02);
+    wetVal.textContent = Math.round(v * 100) + '%';
+  }
+  time.addEventListener('input', applyTime);
+  fb.addEventListener('input', applyFb);
+  dry.addEventListener('input', applyDry);
+  wet.addEventListener('input', applyWet);
+
+  byp.addEventListener('click', e => {
+    e.stopPropagation();
+    delayBypassed = !delayBypassed;
+    byp.classList.toggle('off', delayBypassed);
+    byp.textContent = delayBypassed ? 'OFF' : 'ON';
+    if (!delayChain) return;
+    const now = audioCtx.currentTime;
+    if (delayBypassed) {
+      delayChain.wet.gain.setTargetAtTime(0, now, 0.02);
+      delayChain.feedback.gain.setTargetAtTime(0, now, 0.02);
+      delayChain.dry.gain.setTargetAtTime(1, now, 0.02);
+    } else {
+      delayChain.dry.gain.setTargetAtTime(parseFloat(dry.value), now, 0.02);
+      delayChain.wet.gain.setTargetAtTime(parseFloat(wet.value), now, 0.02);
+      delayChain.feedback.gain.setTargetAtTime(parseFloat(fb.value), now, 0.02);
+    }
+  });
+}
+
+function wirePresetSlots() {
+  document.querySelectorAll('#mod-dronor .head-preset-slot').forEach(btn => {
+    btn.addEventListener('click', e => {
+      const idx = parseInt(btn.dataset.preset, 10) - 1;   // "1"-"6" → 0-5
+      if (e.shiftKey) saveTuningPreset(idx);
+      else            loadTuningPreset(idx);
+    });
+  });
+  refreshPresetSlotStyle();
+
+  document.querySelectorAll('#mod-delay .head-preset-slot').forEach(btn => {
+    btn.addEventListener('click', e => {
+      // Delay presets use data-preset="d1".."d6" — strip the 'd'
+      const raw = btn.dataset.preset.replace(/^d/, '');
+      const idx = parseInt(raw, 10) - 1;
+      if (e.shiftKey) saveDelayPreset(idx);
+      else            loadDelayPreset(idx);
+    });
+  });
+  refreshDelayPresetSlotStyle();
+}
+
+// ── Boot ────────────────────────────────────────────────────────────────
+async function startAudio() {
+  if (audioStarted) return;
+  await Tone.start();
+  audioStarted = true;
+  audioCtx = (Tone.context && Tone.context.rawContext) || Tone.context;
+  document.getElementById('start-screen').style.display = 'none';
+  document.getElementById('board').style.display = 'flex';
+
+  buildStringStrips();
+
+  // Per-string KS chains
+  state.strings.forEach((s) => {
+    s.audio = createKSChain(audioCtx);
+    s.audio.feedback.gain.value  = s.decay;
+    s.audio.filter.frequency.value = s.brightness;
+    s.audio.panner.pan.value     = s.pan;
+    s.audio.strGain.gain.value   = dbToGain(s.gain);
+    s.patternStep = 0;
+  });
+
+  // Bus → Delay → Output
+  dronorBus = audioCtx.createGain();
+  dronorBus.gain.value = 1;
+  state.strings.forEach(s => s.audio.strGain.connect(dronorBus));
+
+  // Delay chain (defaults bypassed: dry=1, wet=0, fb=0)
+  delayChain = createDelayChain(audioCtx);
+  dronorBus.connect(delayChain.input);
+
+  outputGainNode = audioCtx.createGain();
+  outputGainNode.gain.value = dbToGain(parseFloat(
+    document.getElementById('output-gain-db').value));
+  delayChain.dry.connect(outputGainNode);
+  delayChain.wet.connect(outputGainNode);
+
+  // Output stereo analysers (tap pre-limiter so the meter shows what we're
+  // sending into the limiter — pegged red ⇒ limiting is happening)
+  outputSplitter = audioCtx.createChannelSplitter(2);
+  outputAnalyserL = audioCtx.createAnalyser();
+  outputAnalyserR = audioCtx.createAnalyser();
+  outputAnalyserL.fftSize = 1024; outputAnalyserL.smoothingTimeConstant = 0;
+  outputAnalyserR.fftSize = 1024; outputAnalyserR.smoothingTimeConstant = 0;
+  outputGainNode.connect(outputSplitter);
+  outputSplitter.connect(outputAnalyserL, 0);
+  outputSplitter.connect(outputAnalyserR, 1);
+
+  // Hard limiter (DynamicsCompressorNode in limiter mode) before destination.
+  // Prevents Chrome from auto-muting the tab on peak-amplitude bursts.
+  outputLimiter = audioCtx.createDynamicsCompressor();
+  outputLimiter.threshold.value = -3;     // dBFS
+  outputLimiter.knee.value      = 0;      // hard knee
+  outputLimiter.ratio.value     = 20;     // ≈ limiter
+  outputLimiter.attack.value    = 0.001;  // 1 ms
+  outputLimiter.release.value   = 0.05;   // 50 ms
+
+  outputGainNode.connect(outputLimiter);
+  outputLimiter.connect(audioCtx.destination);
+
+  // Wire UI
+  wireGlobalControls();
+  wireStringControls();
+  wireOutputControls();
+  wireDelayControls();
+  wirePresetSlots();
+  wireModuleBypass();
+  refreshNoteDisplay();
+  refreshClockDisplay();
+
+  // Attach custom gain drag handlers to each gain-meter-wrap
+  // (replaces the unreliable native vertical slider behavior)
+  state.strings.forEach((s, i) => {
+    const stripEl = document.querySelector(`[data-string="${i}"]`);
+    if (!stripEl) return;
+    const wrap   = stripEl.querySelector('.gain-meter-wrap');
+    const slider = stripEl.querySelector('input.gain-meter-slider');
+    const valEl  = stripEl.querySelector('[data-str-gain-val]');
+    attachGainDrag(wrap, slider, valEl, -60, 12,
+      db => db.toFixed(0) + 'dB',
+      db => {
+        s.gain = db;
+        if (s.audio) s.audio.strGain.gain.setTargetAtTime(dbToGain(db), audioCtx.currentTime, 0.02);
+      }
+    );
+  });
+  {
+    const wrap   = document.querySelector('#mod-output .gain-meter-wrap');
+    const slider = document.getElementById('output-gain-db');
+    const valEl  = document.getElementById('output-gain-val');
+    attachGainDrag(wrap, slider, valEl, -60, 12,
+      db => db.toFixed(0) + 'dB',
+      db => {
+        // Respect mute state: while muted, slider value tracks user intent
+        // (so unmute restores to the new position) but the audio node stays
+        // at 0. Without this, dragging gain after muting silently un-mutes
+        // while the OFF button still shows OFF.
+        if (!outputGainNode) return;
+        const target = outputMuted ? 0 : dbToGain(db);
+        outputGainNode.gain.setTargetAtTime(target, audioCtx.currentTime, 0.02);
+      }
+    );
+  }
+
+  startScheduler();
+  requestAnimationFrame(meterTick);
+
+  console.log('DronorParty v0.9 — 4 strings. sr=', audioCtx.sampleRate,
+              'ctx=', Tone.context.state, 'maxCh=', audioCtx.destination.maxChannelCount);
+}
+
+document.getElementById('start-btn').addEventListener('click', startAudio);
+</script>
+</body>
+</html>
