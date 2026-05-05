@@ -795,6 +795,7 @@ let dronorBus = null;          // sums all three strings
 let delayChain = null;         // simple delay (input → dry+wet w/ feedback → outputGain)
 let delayBypassed = true;      // sliders inactive when bypassed (default OFF)
 let outputGainNode = null;     // master output gain
+let outputMuted = false;       // master output mute (decoupled from gain slider value)
 let outputLimiter = null;      // hard limiter — prevents Chrome auto-mute on peaks
 let outputSplitter = null;
 let outputAnalyserL = null;
@@ -1232,11 +1233,12 @@ function wireOutputControls() {
 
   const muteBtn = document.getElementById('output-mute');
   muteBtn.addEventListener('click', () => {
-    muteBtn.classList.toggle('off');
-    muteBtn.textContent = muteBtn.classList.contains('off') ? 'OFF' : 'ON';
+    outputMuted = !outputMuted;
+    muteBtn.classList.toggle('off', outputMuted);
+    muteBtn.textContent = outputMuted ? 'OFF' : 'ON';
     if (outputGainNode) {
       const db = parseFloat(slider.value);
-      const target = muteBtn.classList.contains('off') ? 0 : dbToGain(db);
+      const target = outputMuted ? 0 : dbToGain(db);
       outputGainNode.gain.setTargetAtTime(target, audioCtx.currentTime, 0.02);
     }
   });
@@ -1433,7 +1435,15 @@ async function startAudio() {
     const valEl  = document.getElementById('output-gain-val');
     attachGainDrag(wrap, slider, valEl, -60, 12,
       db => db.toFixed(0) + 'dB',
-      db => { if (outputGainNode) outputGainNode.gain.setTargetAtTime(dbToGain(db), audioCtx.currentTime, 0.02); }
+      db => {
+        // Respect mute state: while muted, slider value tracks user intent
+        // (so unmute restores to the new position) but the audio node stays
+        // at 0. Without this, dragging gain after muting silently un-mutes
+        // while the OFF button still shows OFF.
+        if (!outputGainNode) return;
+        const target = outputMuted ? 0 : dbToGain(db);
+        outputGainNode.gain.setTargetAtTime(target, audioCtx.currentTime, 0.02);
+      }
     );
   }
 
