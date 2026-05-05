@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Buffer Shuffler — Test Case v0.4</title>
+<title>Buffer Shuffler — v0.5</title>
 <!-- Tone.js intentionally NOT loaded in v0.2: the buffer-shuffler engine is pure
      Web Audio. AudioWorkletNode's constructor requires a real BaseAudioContext,
      and Tone.js 14.8.49's wrapper isn't one — so we use a bare AudioContext. -->
@@ -230,18 +230,76 @@ input.gain-meter-slider::-webkit-slider-thumb {
 }
 .activity-led.fire { background:#7abbe0; box-shadow:0 0 6px rgba(122,187,224,.9); }
 
+/* ── v0.5 RANGE SLIDER WIDGET ─────────────────────────────────── */
+.range-slider {
+  position:relative; width:100%; height:22px;
+  cursor:pointer; touch-action:none;
+  user-select:none;
+}
+.rs-track {
+  position:absolute; left:0; right:0; top:50%;
+  height:3px; transform:translateY(-50%);
+  background:#2a2a2a; border-radius:2px; pointer-events:none;
+}
+.rs-band {
+  position:absolute; top:50%; height:8px;
+  transform:translateY(-50%);
+  background:rgba(122,187,224,0.32);
+  border:1px solid rgba(122,187,224,0.55);
+  border-radius:3px; cursor:grab;
+  box-shadow:0 0 4px rgba(122,187,224,0.15) inset;
+}
+.rs-band:active { cursor:grabbing; }
+.rs-band.collapsed {
+  background:rgba(122,187,224,0.55);
+  height:14px; border-radius:2px;
+}
+.rs-handle {
+  position:absolute; top:50%;
+  width:9px; height:16px;
+  transform:translate(-50%,-50%);
+  background:#c8a854; border-radius:2px;
+  cursor:ew-resize;
+  box-shadow:0 0 5px rgba(200,168,84,0.4);
+  z-index:2;
+}
+.rs-handle.rs-handle-high { background:#e0b858; }
+.rs-handle:hover { box-shadow:0 0 8px rgba(200,168,84,0.7); }
+/* Brief flash showing where a grain just picked within the range */
+.rs-fire-dot {
+  position:absolute; top:50%; transform:translate(-50%,-50%);
+  width:3px; height:14px; background:#ffffff;
+  border-radius:1px; opacity:0;
+  pointer-events:none; box-shadow:0 0 6px rgba(255,255,255,0.7);
+  transition:opacity .14s linear;
+  z-index:3;
+}
+.rs-fire-dot.fire { opacity:.65; transition:none; }
+.rs-readout {
+  font-size:.65rem; white-space:nowrap;
+}
+.rs-readout .rs-sep { color:#444; padding:0 2px; }
+.rs-readout .rs-low  { color:#c8a854; cursor:text; }
+.rs-readout .rs-high { color:#e0b858; cursor:text; }
+.rs-readout .rs-low:hover, .rs-readout .rs-high:hover {
+  text-decoration:underline dotted #666;
+}
+
 .hint { font-size:.56rem; color:#555; letter-spacing:.08em; }
 </style>
 </head>
 <body>
 
-<div id="version-badge">BUFFER SHUFFLER · v0.4</div>
+<div id="version-badge">BUFFER SHUFFLER · v0.5</div>
 
 <div id="start-screen">
   <div style="font-size:.78rem;letter-spacing:.28em;color:#666;">BUFFER SHUFFLER — TEST CASE</div>
-  <div style="font-size:.62rem;color:#444;letter-spacing:.06em;max-width:520px;text-align:center;line-height:1.5;">
-    A million turntablists. Captures a rolling 12-second buffer of your source,
-    sprays grains back at any density / length / pitch / position. 8 factory presets.
+  <div style="font-size:.62rem;color:#444;letter-spacing:.06em;max-width:560px;text-align:center;line-height:1.5;">
+    A million turntablists. Captures a rolling 12-second buffer of your source
+    and sprays grains back at any density / length / pitch / position / pan.
+    Each parameter is a RANGE — every grain picks a fresh value within it.
+    Drag a band laterally to shift, drag up to widen, drag down to collapse to a single value.
+    Grab the gold edge handles to resize one side. Click any value to type.
   </div>
   <button id="start-btn" onclick="initAudio()">INITIALISE AUDIO</button>
   <div id="start-status" style="font-size:.62rem;color:#555;letter-spacing:.15em;">click to start audio context</div>
@@ -335,66 +393,81 @@ input.gain-meter-slider::-webkit-slider-thumb {
         <span class="buf-viz-clock" id="buf-clock">0.0s</span>
       </div>
 
-      <!-- DENSITY -->
-      <div class="slider-row" title="Grains per second. 0.5–100, log scale.">
+      <!-- v0.5: ALL of these are now RANGE sliders. Each grain picks a random value
+           within the range. Drag the band laterally to shift; drag-up to widen;
+           drag-down to narrow (eventually collapsing to a single value). Grab the
+           amber/gold edge handles to resize one side. -->
+
+      <!-- DENSITY range (grains/sec, log) -->
+      <div class="slider-row" title="Grains per second. Range sets a randomization band — each grain interval is picked at random from this range. 0.5–100/s, log scale.">
         <div class="slider-label-row">
           <span class="slider-label">DENSITY</span>
-          <span class="ctrl-val" id="param-density-val" data-value="8" title="Click to type a precise value">8 /sec</span>
+          <span class="rs-readout">
+            <span class="rs-low ctrl-val" id="rs-density-low" data-value="6">6</span>
+            <span class="rs-sep">..</span>
+            <span class="rs-high ctrl-val" id="rs-density-high" data-value="10">10/s</span>
+          </span>
         </div>
-        <input type="range" id="param-density-sl" min="0" max="1000" step="any" value="500" oninput="setParamDensityPos(this.value)">
+        <div class="range-slider" id="rs-density"></div>
       </div>
 
-      <!-- LENGTH -->
-      <div class="slider-row" title="Wall-clock grain length. Longer = smoother & more sample audible per grain. 5–2000 ms.">
+      <!-- LENGTH range (ms, log) -->
+      <div class="slider-row" title="Wall-clock grain length, randomized within range. Longer = smoother. 5–2000 ms, log scale.">
         <div class="slider-label-row">
           <span class="slider-label">LENGTH</span>
-          <span class="ctrl-val" id="param-length-val" data-value="120" title="Click to type a precise value in ms">120 ms</span>
+          <span class="rs-readout">
+            <span class="rs-low ctrl-val" id="rs-length-low" data-value="80">80</span>
+            <span class="rs-sep">..</span>
+            <span class="rs-high ctrl-val" id="rs-length-high" data-value="160">160ms</span>
+          </span>
         </div>
-        <input type="range" id="param-length-sl" min="0" max="1000" step="any" value="500" oninput="setParamLengthPos(this.value)">
+        <div class="range-slider" id="rs-length"></div>
       </div>
 
-      <!-- POSITION (lookback in seconds) -->
-      <div class="slider-row" title="How far back in the 12-second buffer the grain reads from. 0 = live now; 11 = ~max past.">
+      <!-- POSITION range (seconds back) — replaces v0.4's separate POSITION + SPREAD -->
+      <div class="slider-row" title="Where in the 12s buffer to read from. The range is the lookback window: each grain picks a random offset inside it. 0 s = now; ~12 s = oldest.">
         <div class="slider-label-row">
           <span class="slider-label">POSITION</span>
-          <span class="ctrl-val" id="param-position-val" data-value="0.5" title="Click to type a precise value">0.50 s back</span>
+          <span class="rs-readout">
+            <span class="rs-low ctrl-val" id="rs-position-low" data-value="0.2">0.2</span>
+            <span class="rs-sep">..</span>
+            <span class="rs-high ctrl-val" id="rs-position-high" data-value="0.8">0.8s</span>
+          </span>
         </div>
-        <input type="range" id="param-position-sl" min="0.02" max="11.5" step="0.01" value="0.5" oninput="setParamPosition(this.value)">
+        <div class="range-slider" id="rs-position"></div>
       </div>
 
-      <!-- SPREAD -->
-      <div class="slider-row" title="Random jitter ± around POSITION. Each grain picks a fresh offset.">
-        <div class="slider-label-row">
-          <span class="slider-label">SPREAD</span>
-          <span class="ctrl-val" id="param-spread-val" data-value="0.5" title="Click to type a precise value">0.50 s</span>
-        </div>
-        <input type="range" id="param-spread-sl" min="0" max="11" step="0.01" value="0.5" oninput="setParamSpread(this.value)">
-      </div>
-
-      <!-- PITCH (with coarse/fine toggle, mirroring fx-processor's pitch shifter) -->
-      <div class="slider-row">
+      <!-- PITCH range (semitones) with coarse/fine toggle. In COARSE the random pick quantizes to integer semitones. -->
+      <div class="slider-row" title="Grain playback pitch in semitones, randomized within range. COARSE = quantize to integer semitones; FINE = any value (0.01 semitone resolution).">
         <div class="slider-label-row">
           <span class="slider-label">PITCH</span>
           <span style="display:flex;align-items:center;gap:6px;">
             <button id="param-pitch-mode" onclick="togglePitchMode()"
-              title="Coarse = 1 semitone steps · Fine = 0.05 semitone steps (cents-level)"
+              title="COARSE = each grain quantizes to an integer semitone in the range · FINE = continuous"
               style="padding:1px 6px;font-size:.55rem;font-family:Courier New,monospace;
                      background:transparent;border:1px solid #383838;color:#888;
                      cursor:pointer;border-radius:2px;letter-spacing:.05em;transition:all .15s;">COARSE</button>
-            <span class="ctrl-val" id="param-pitch-val" data-value="0">+0 semis</span>
+            <span class="rs-readout">
+              <span class="rs-low ctrl-val" id="rs-pitch-low" data-value="0">+0</span>
+              <span class="rs-sep">..</span>
+              <span class="rs-high ctrl-val" id="rs-pitch-high" data-value="0">+0 semis</span>
+            </span>
           </span>
         </div>
-        <input type="range" id="param-pitch-sl" min="-24" max="24" step="1" value="0" oninput="setParamPitch(this.value)"
-               title="Drag to set grain playback pitch in semitones">
+        <div class="range-slider" id="rs-pitch"></div>
       </div>
 
-      <!-- PAN SPREAD -->
-      <div class="slider-row" title="How wide each grain pans randomly. 0% = mono center; 100% = full L↔R random.">
+      <!-- PAN range (-1..+1) — was symmetric pan-spread; now an explicit (low, high) range that allows skewed/biased panning -->
+      <div class="slider-row" title="Pan range — each grain picks a random pan inside the range. Default is symmetric around center; you can skew right or left by shifting the band.">
         <div class="slider-label-row">
-          <span class="slider-label">PAN SPREAD</span>
-          <span class="ctrl-val" id="param-panspread-val" data-value="0.4" title="Click to type 0–100%">40%</span>
+          <span class="slider-label">PAN</span>
+          <span class="rs-readout">
+            <span class="rs-low ctrl-val" id="rs-pan-low" data-value="-0.4">L40</span>
+            <span class="rs-sep">..</span>
+            <span class="rs-high ctrl-val" id="rs-pan-high" data-value="0.4">R40</span>
+          </span>
         </div>
-        <input type="range" id="param-panspread-sl" min="0" max="1" step="0.01" value="0.4" oninput="setParamPanSpread(this.value)">
+        <div class="range-slider" id="rs-pan"></div>
       </div>
 
       <!-- GRAIN GAIN — output of grain engine into the master mix -->
@@ -549,13 +622,15 @@ let shufflerEnabled = false;
 let grainOutGainNode = null;  // master gain for all grain output
 let grainTimer = null;
 const liveGrains = [];        // currently-playing BufferSourceNodes (for the soft cap)
+// v0.5: every param is now a {lowVal, highVal} range. Each grain picks a random
+// value within the range. Collapsed range (low === high) acts like a single value.
+// POSITION absorbs v0.4's separate SPREAD — the range itself is the spread window.
 const params = {
-  density: 8,         // grains/sec
-  lengthMs: 120,
-  positionSec: 0.5,
-  spreadSec: 0.5,
-  pitchSemis: 0,
-  panSpread: 0.4,
+  density:  { lowVal: 6,    highVal: 10  },  // grains/sec
+  lengthMs: { lowVal: 80,   highVal: 160 },
+  position: { lowVal: 0.2,  highVal: 0.8 },  // seconds back (lookback window)
+  pitch:    { lowVal: 0,    highVal: 0   },  // semitones
+  pan:      { lowVal: -0.4, highVal: 0.4 },  // -1..+1
 };
 
 // Output / mute / state
@@ -572,21 +647,44 @@ const REC_SOFT_CAP_MS = 30*60*1000;
 const REC_HARD_CAP_MS = 60*60*1000;
 const REC_OPUS_BITRATE = 192000;
 
-/* ══════════ FACTORY PRESETS ══════════ */
+/* ══════════ FACTORY PRESETS (v0.5: range-shaped) ══════════
+   Each preset is an object of {density, lengthMs, position, pitch, pan} where
+   each is {lowVal, highVal}. Collapsed (low === high) means the preset fixes
+   that param to a single value.
+   POSITION range replaces v0.4's positionSec±spreadSec — the range IS the spread.
+   PAN range can now be asymmetric (e.g. mostly to one side). */
 const FACTORY_PRESETS = [
-  // slot index 0 → home (defaults). Slots 1..8 are factory.
-  { name: 'home',    density:8,  lengthMs:120, positionSec:0.5, spreadSec:0.5, pitchSemis:0,   panSpread:0.4 },
-  { name: 'stutter', density:30, lengthMs:40,  positionSec:0.08, spreadSec:0.06, pitchSemis:0,  panSpread:0.1 },
-  { name: 'octave',  density:18, lengthMs:80,  positionSec:0.5, spreadSec:0.4, pitchSemis:12,   panSpread:0.5 },
-  { name: 'sub',     density:4,  lengthMs:300, positionSec:1.5, spreadSec:0.8, pitchSemis:-12,  panSpread:0.3 },
-  { name: 'sparkle', density:50, lengthMs:20,  positionSec:0.3, spreadSec:0.4, pitchSemis:7,    panSpread:0.9 },
-  { name: 'drone',   density:2,  lengthMs:800, positionSec:6,   spreadSec:0.3, pitchSemis:0,    panSpread:0.5 },
-  { name: 'glitch',  density:25, lengthMs:50,  positionSec:0.6, spreadSec:2.5, pitchSemis:0,    panSpread:0.7 },
-  { name: 'wayback', density:12, lengthMs:200, positionSec:9,   spreadSec:1.2, pitchSemis:-5,   panSpread:0.55 },
-  { name: 'whisper', density:6,  lengthMs:600, positionSec:3,   spreadSec:0.6, pitchSemis:5,    panSpread:0.7 },
+  { name:'home',
+    density:{lowVal:6, highVal:10}, lengthMs:{lowVal:80, highVal:160},
+    position:{lowVal:0.2, highVal:0.8}, pitch:{lowVal:0, highVal:0}, pan:{lowVal:-0.4, highVal:0.4} },
+  { name:'stutter',
+    density:{lowVal:25, highVal:35}, lengthMs:{lowVal:30, highVal:50},
+    position:{lowVal:0.04, highVal:0.14}, pitch:{lowVal:0, highVal:0}, pan:{lowVal:-0.08, highVal:0.08} },
+  { name:'octave',
+    density:{lowVal:14, highVal:22}, lengthMs:{lowVal:60, highVal:100},
+    position:{lowVal:0.2, highVal:0.9}, pitch:{lowVal:12, highVal:12}, pan:{lowVal:-0.5, highVal:0.5} },
+  { name:'sub',
+    density:{lowVal:3, highVal:6}, lengthMs:{lowVal:240, highVal:380},
+    position:{lowVal:0.8, highVal:2.4}, pitch:{lowVal:-12, highVal:-12}, pan:{lowVal:-0.3, highVal:0.3} },
+  { name:'sparkle',
+    density:{lowVal:40, highVal:60}, lengthMs:{lowVal:15, highVal:30},
+    position:{lowVal:0.05, highVal:0.7}, pitch:{lowVal:5, highVal:12}, pan:{lowVal:-0.9, highVal:0.9} },
+  { name:'drone',
+    density:{lowVal:1.5, highVal:2.5}, lengthMs:{lowVal:700, highVal:900},
+    position:{lowVal:5.7, highVal:6.3}, pitch:{lowVal:0, highVal:0}, pan:{lowVal:-0.5, highVal:0.5} },
+  { name:'glitch',
+    density:{lowVal:18, highVal:32}, lengthMs:{lowVal:30, highVal:80},
+    position:{lowVal:0.05, highVal:3.2}, pitch:{lowVal:-2, highVal:2}, pan:{lowVal:-0.7, highVal:0.7} },
+  { name:'wayback',
+    density:{lowVal:8, highVal:16}, lengthMs:{lowVal:160, highVal:260},
+    position:{lowVal:7.8, highVal:10.2}, pitch:{lowVal:-7, highVal:-3}, pan:{lowVal:-0.6, highVal:0.6} },
+  { name:'whisper',
+    density:{lowVal:4, highVal:8}, lengthMs:{lowVal:500, highVal:700},
+    position:{lowVal:2.5, highVal:3.5}, pitch:{lowVal:3, highVal:7}, pan:{lowVal:-0.7, highVal:0.7} },
 ];
 
-const USER_SLOT_KEY = 'buffer-shuffler:userSlots:v01';
+// userSlots schema bumped v01→v02 because the param shape changed; v01 entries are ignored.
+const USER_SLOT_KEY = 'buffer-shuffler:userSlots:v02';
 let userSlots = (() => { try { return JSON.parse(localStorage.getItem(USER_SLOT_KEY)||'{}'); } catch { return {}; } })();
 function saveUserSlots(){ localStorage.setItem(USER_SLOT_KEY, JSON.stringify(userSlots)); }
 
@@ -676,21 +774,20 @@ async function _initAudio(){
 
   // ── DOM / UI ──
   buildPresetRow();
+  // Show board BEFORE building range sliders so their initial layout has real
+  // dimensions (clientWidth would be 0 while board is display:none, breaking
+  // the handle position math).
+  document.getElementById('start-screen').style.display = 'none';
+  document.getElementById('board').style.display = 'flex';
+  initSliders();
   bindEditables();
   setSrcWave(srcWaveSel);
   setSrcFreqPos(freqLog.toPos(srcFreqHz));
   setSrcGainDb(srcGainDb);
-  applyParams(); // sync sliders → state
   startMeterLoop();
   startBufVizLoop();
   startLatencyReadout();
-
-  // Show board
-  document.getElementById('start-screen').style.display = 'none';
-  document.getElementById('board').style.display = 'flex';
-
-  // Default active preset highlight
-  loadPreset(0);
+  loadPreset(0); // home — also highlights the slot
 
   console.log('Buffer Shuffler ready. sampleRate=', sampleRate, 'bufferLen=', bufferLen);
 }
@@ -833,83 +930,275 @@ function setSrcPassthru(amount){
   if (srcPassthruGain) srcPassthruGain.gain.value = parseFloat(amount);
 }
 
-/* ══════════ SHUFFLER PARAMS ══════════ */
-function setParamDensityPos(pos){
-  params.density = densityLog.toD(parseFloat(pos));
-  const el = document.getElementById('param-density-val');
-  el.textContent = round2(params.density) + ' /sec';
-  el.dataset.value = params.density;
-  // If the loop is running, restart so cadence updates immediately
-  if (shufflerEnabled) restartGrainLoop();
-}
-function setParamDensity(d){
-  d = clamp(parseFloat(d), densityLog.minD, densityLog.maxD);
-  document.getElementById('param-density-sl').value = densityLog.toPos(d);
-  setParamDensityPos(densityLog.toPos(d));
-}
-function setParamLengthPos(pos){
-  params.lengthMs = lengthLog.toMs(parseFloat(pos));
-  const el = document.getElementById('param-length-val');
-  el.textContent = round2(params.lengthMs) + ' ms';
-  el.dataset.value = params.lengthMs;
-}
-function setParamLengthMs(ms){
-  ms = clamp(parseFloat(ms), lengthLog.minMs, lengthLog.maxMs);
-  document.getElementById('param-length-sl').value = lengthLog.toPos(ms);
-  setParamLengthPos(lengthLog.toPos(ms));
-}
-function setParamPosition(sec){
-  params.positionSec = clamp(parseFloat(sec), 0.02, BUFFER_SECONDS - 0.5);
-  const el = document.getElementById('param-position-val');
-  el.textContent = round2(params.positionSec) + ' s back';
-  el.dataset.value = params.positionSec;
-}
-function setParamSpread(sec){
-  params.spreadSec = clamp(parseFloat(sec), 0, BUFFER_SECONDS - 1);
-  const el = document.getElementById('param-spread-val');
-  el.textContent = round2(params.spreadSec) + ' s';
-  el.dataset.value = params.spreadSec;
-}
+/* ══════════ SHUFFLER PARAMS (v0.5: range-shaped) ══════════
+   Each param is a {lowVal, highVal} range. Each grain triggers `randomInRange()`
+   to pick its actual value at that moment. The range-slider widget below drives
+   the UI; the engine just reads `params.foo.lowVal` and `params.foo.highVal`. */
+
 let pitchFineMode = false;
+
+// Random within [low, high] in user units. For pitch in COARSE mode, quantizes
+// to the nearest integer semitone within the range.
+function randomInRange(p, paramName){
+  if (p.lowVal === p.highVal) return p.lowVal;
+  let v = p.lowVal + Math.random() * (p.highVal - p.lowVal);
+  if (paramName === 'pitch' && !pitchFineMode) {
+    // Pick a uniform random integer in [ceil(low), floor(high)] inclusive.
+    const lo = Math.ceil(p.lowVal);
+    const hi = Math.floor(p.highVal);
+    if (hi < lo) return Math.round(p.lowVal); // range too narrow for any integer; fall back
+    v = lo + Math.floor(Math.random() * (hi - lo + 1));
+  }
+  return v;
+}
+
+// Range slider widget. opts: { elem, scale:'log'|'linear', unitMin, unitMax,
+// fmt(v), onChange({lowVal,highVal}), onCommit() }. Returns { setRange, getRange,
+// fireDot(v) }.
+function rangeSlider(opts){
+  const { elem, unitMin, unitMax, scale = 'linear', fmt, onChange, onCommit } = opts;
+  let lowVal = opts.lowVal, highVal = opts.highVal;
+
+  const toPos = (v) => {
+    if (scale === 'log') return Math.log(v / unitMin) / Math.log(unitMax / unitMin);
+    return (v - unitMin) / (unitMax - unitMin);
+  };
+  const toVal = (p) => {
+    p = clamp(p, 0, 1);
+    if (scale === 'log') return unitMin * Math.pow(unitMax / unitMin, p);
+    return unitMin + p * (unitMax - unitMin);
+  };
+
+  // Build inner DOM
+  elem.innerHTML = `
+    <div class="rs-track"></div>
+    <div class="rs-band" data-rs="band"></div>
+    <div class="rs-fire-dot" data-rs="fire"></div>
+    <div class="rs-handle rs-handle-low" data-rs="low"></div>
+    <div class="rs-handle rs-handle-high" data-rs="high"></div>
+  `;
+  const band = elem.querySelector('[data-rs="band"]');
+  const fireDot = elem.querySelector('[data-rs="fire"]');
+  const lowH = elem.querySelector('[data-rs="low"]');
+  const highH = elem.querySelector('[data-rs="high"]');
+
+  function refresh(){
+    let lp = toPos(lowVal), hp = toPos(highVal);
+    if (lp > hp) [lp, hp] = [hp, lp];
+    lowH.style.left = (lp * 100) + '%';
+    highH.style.left = (hp * 100) + '%';
+    band.style.left = (lp * 100) + '%';
+    band.style.width = ((hp - lp) * 100) + '%';
+    band.classList.toggle('collapsed', Math.abs(hp - lp) < 0.001);
+    if (onChange) onChange({ lowVal, highVal });
+  }
+
+  // Drag handling. mode = 'low' | 'high' | 'band' (with X-shift + Y-widen).
+  let drag = null;
+  function startDrag(e, mode){
+    drag = {
+      mode, pointerId: e.pointerId,
+      startX: e.clientX, startY: e.clientY,
+      startLowPos: toPos(lowVal),
+      startHighPos: toPos(highVal),
+    };
+    elem.setPointerCapture(e.pointerId);
+    e.preventDefault(); e.stopPropagation();
+  }
+  function moveDrag(e){
+    if (!drag) return;
+    const r = elem.getBoundingClientRect();
+    const dxPx = e.clientX - drag.startX;
+    const dyPx = e.clientY - drag.startY;
+    const dxPos = dxPx / r.width;
+    let lp = drag.startLowPos, hp = drag.startHighPos;
+
+    if (drag.mode === 'low') {
+      lp = clamp(drag.startLowPos + dxPos, 0, 1);
+      if (lp > hp) lp = hp;
+    } else if (drag.mode === 'high') {
+      hp = clamp(drag.startHighPos + dxPos, 0, 1);
+      if (hp < lp) hp = lp;
+    } else {
+      // 'band': X shifts laterally, Y widens (up) / narrows (down)
+      // Width adjustment: dy in pixels mapped to position-space units
+      const widthDelta = -dyPx / r.width; // up = positive
+      const center = (drag.startLowPos + drag.startHighPos) / 2 + dxPos;
+      let halfWidth = (drag.startHighPos - drag.startLowPos) / 2 + widthDelta;
+      if (halfWidth < 0) halfWidth = 0;
+      lp = center - halfWidth;
+      hp = center + halfWidth;
+      // Clamp both to [0, 1] while preserving width if possible
+      if (lp < 0) { hp -= lp; lp = 0; }
+      if (hp > 1) { lp -= (hp - 1); hp = 1; }
+      lp = clamp(lp, 0, 1); hp = clamp(hp, 0, 1);
+    }
+    lowVal = toVal(lp); highVal = toVal(hp);
+    refresh();
+  }
+  function endDrag(e){
+    if (!drag) return;
+    try { elem.releasePointerCapture(drag.pointerId); } catch{}
+    drag = null;
+    if (onCommit) onCommit({ lowVal, highVal });
+  }
+  lowH.addEventListener('pointerdown', e => startDrag(e, 'low'));
+  highH.addEventListener('pointerdown', e => startDrag(e, 'high'));
+  band.addEventListener('pointerdown', e => startDrag(e, 'band'));
+  // Click on track outside the band: shift band so its nearest edge meets the click point
+  elem.addEventListener('pointerdown', (e) => {
+    if (drag) return;
+    if (e.target.dataset.rs) return; // already handled
+    const r = elem.getBoundingClientRect();
+    const clickPos = clamp((e.clientX - r.left) / r.width, 0, 1);
+    const lp = toPos(lowVal), hp = toPos(highVal);
+    // Move whichever edge is closer
+    const closerLow = Math.abs(clickPos - lp) < Math.abs(clickPos - hp);
+    if (closerLow) lowVal = toVal(clickPos); else highVal = toVal(clickPos);
+    if (lowVal > highVal) [lowVal, highVal] = [highVal, lowVal];
+    refresh();
+    if (onCommit) onCommit({ lowVal, highVal });
+  });
+  elem.addEventListener('pointermove', moveDrag);
+  elem.addEventListener('pointerup', endDrag);
+  elem.addEventListener('pointercancel', endDrag);
+
+  refresh();
+
+  return {
+    setRange(low, high) {
+      lowVal = clamp(low, unitMin, unitMax);
+      highVal = clamp(high, unitMin, unitMax);
+      if (lowVal > highVal) [lowVal, highVal] = [highVal, lowVal];
+      refresh();
+    },
+    getRange() { return { lowVal, highVal }; },
+    fireDot(v) {
+      // Brief flash at value `v` showing where a grain just picked
+      const p = toPos(v);
+      fireDot.style.left = (clamp(p, 0, 1) * 100) + '%';
+      fireDot.classList.remove('fire'); // restart animation
+      void fireDot.offsetWidth;          // force reflow
+      fireDot.classList.add('fire');
+      // Auto-fade via CSS transition
+      requestAnimationFrame(() => fireDot.classList.remove('fire'));
+    },
+  };
+}
+
+// Live registry of slider instances keyed by param name. Built in initSliders().
+const rsInstances = {};
+
+function initSliders(){
+  // Build readout updaters per param
+  function readout(param, paramName, fmt) {
+    return ({ lowVal, highVal }) => {
+      params[paramName] = { lowVal, highVal };
+      const lo = document.getElementById(`rs-${paramName}-low`);
+      const hi = document.getElementById(`rs-${paramName}-high`);
+      if (lo) { lo.textContent = fmt(lowVal, true); lo.dataset.value = lowVal; }
+      if (hi) { hi.textContent = fmt(highVal, false); hi.dataset.value = highVal; }
+    };
+  }
+
+  // DENSITY (log, 0.5–100/s)
+  rsInstances.density = rangeSlider({
+    elem: document.getElementById('rs-density'),
+    unitMin: 0.5, unitMax: 100, scale: 'log',
+    lowVal: params.density.lowVal, highVal: params.density.highVal,
+    fmt: (v, isLow) => round2(v) + (isLow ? '' : '/s'),
+    onChange: readout('density','density', (v,isLow) => round2(v) + (isLow ? '' : '/s')),
+    onCommit: () => { if (shufflerEnabled) restartGrainLoop(); },
+  });
+
+  // LENGTH (log, 5–2000 ms)
+  rsInstances.lengthMs = rangeSlider({
+    elem: document.getElementById('rs-length'),
+    unitMin: 5, unitMax: 2000, scale: 'log',
+    lowVal: params.lengthMs.lowVal, highVal: params.lengthMs.highVal,
+    fmt: (v, isLow) => round2(v) + (isLow ? '' : 'ms'),
+    onChange: ({lowVal,highVal}) => {
+      params.lengthMs = {lowVal, highVal};
+      const lo = document.getElementById('rs-length-low');
+      const hi = document.getElementById('rs-length-high');
+      if (lo) { lo.textContent = round2(lowVal); lo.dataset.value = lowVal; }
+      if (hi) { hi.textContent = round2(highVal) + 'ms'; hi.dataset.value = highVal; }
+    },
+  });
+
+  // POSITION (linear-ish, 0.02 .. 11.5 sec lookback)
+  rsInstances.position = rangeSlider({
+    elem: document.getElementById('rs-position'),
+    unitMin: 0.02, unitMax: 11.5, scale: 'linear',
+    lowVal: params.position.lowVal, highVal: params.position.highVal,
+    fmt: (v, isLow) => round2(v) + (isLow ? '' : 's'),
+    onChange: ({lowVal,highVal}) => {
+      params.position = {lowVal, highVal};
+      const lo = document.getElementById('rs-position-low');
+      const hi = document.getElementById('rs-position-high');
+      if (lo) { lo.textContent = round2(lowVal); lo.dataset.value = lowVal; }
+      if (hi) { hi.textContent = round2(highVal) + 's'; hi.dataset.value = highVal; }
+    },
+  });
+
+  // PITCH (linear, -24..+24 semitones). Quantization happens at grain trigger time.
+  rsInstances.pitch = rangeSlider({
+    elem: document.getElementById('rs-pitch'),
+    unitMin: -24, unitMax: 24, scale: 'linear',
+    lowVal: params.pitch.lowVal, highVal: params.pitch.highVal,
+    fmt: (v, isLow) => (v>=0?'+':'') + (pitchFineMode ? v.toFixed(2) : Math.round(v)) + (isLow ? '' : ' semis'),
+    onChange: ({lowVal,highVal}) => {
+      // In COARSE mode, snap edges to integer semitones (visual). The randomization
+      // also quantizes per-grain inside randomInRange().
+      if (!pitchFineMode) {
+        lowVal = Math.round(lowVal); highVal = Math.round(highVal);
+      }
+      params.pitch = {lowVal, highVal};
+      const lo = document.getElementById('rs-pitch-low');
+      const hi = document.getElementById('rs-pitch-high');
+      const fmt = (v, suffix) => (v>=0?'+':'') + (pitchFineMode ? v.toFixed(2) : Math.round(v)) + suffix;
+      if (lo) { lo.textContent = fmt(lowVal, ''); lo.dataset.value = lowVal; }
+      if (hi) { hi.textContent = fmt(highVal, ' semis'); hi.dataset.value = highVal; }
+    },
+  });
+
+  // PAN (linear, -1..+1)
+  rsInstances.pan = rangeSlider({
+    elem: document.getElementById('rs-pan'),
+    unitMin: -1, unitMax: 1, scale: 'linear',
+    lowVal: params.pan.lowVal, highVal: params.pan.highVal,
+    fmt: () => '',
+    onChange: ({lowVal,highVal}) => {
+      params.pan = {lowVal, highVal};
+      const lo = document.getElementById('rs-pan-low');
+      const hi = document.getElementById('rs-pan-high');
+      const fmtPan = (v) => Math.abs(v) < 0.02 ? 'C' : (v < 0 ? 'L' : 'R') + Math.round(Math.abs(v)*100);
+      if (lo) { lo.textContent = fmtPan(lowVal); lo.dataset.value = lowVal; }
+      if (hi) { hi.textContent = fmtPan(highVal); hi.dataset.value = highVal; }
+    },
+  });
+}
+
 function togglePitchMode(){
   pitchFineMode = !pitchFineMode;
-  const sl = document.getElementById('param-pitch-sl');
   const btn = document.getElementById('param-pitch-mode');
   if (pitchFineMode) {
-    sl.step = '0.05';
     btn.textContent = 'FINE';
     btn.style.borderColor = '#5a4a2a';
     btn.style.color = '#c8a854';
   } else {
-    sl.step = '1';
     btn.textContent = 'COARSE';
     btn.style.borderColor = '#383838';
     btn.style.color = '#888';
-    // Snap current value to integer when going back to coarse
-    const snapped = Math.round(params.pitchSemis);
-    if (snapped !== params.pitchSemis) {
-      sl.value = snapped;
-      setParamPitch(snapped);
-    }
+    // Snap pitch range edges to nearest integer
+    const r = rsInstances.pitch.getRange();
+    rsInstances.pitch.setRange(Math.round(r.lowVal), Math.round(r.highVal));
   }
+  // Refresh readout strings (they format differently in coarse vs fine)
+  const r = rsInstances.pitch.getRange();
+  rsInstances.pitch.setRange(r.lowVal, r.highVal);
 }
-function setParamPitch(s){
-  let v = clamp(parseFloat(s), -36, 36);
-  // In fine mode, allow up to 2-decimal precision; in coarse, snap to integer
-  if (!pitchFineMode) v = Math.round(v);
-  else v = Math.round(v * 20) / 20; // 0.05 step granularity
-  params.pitchSemis = v;
-  const el = document.getElementById('param-pitch-val');
-  const formatted = pitchFineMode ? v.toFixed(2) : Math.round(v).toString();
-  el.textContent = (v>=0?'+':'') + formatted + ' semis';
-  el.dataset.value = v;
-}
-function setParamPanSpread(p){
-  params.panSpread = clamp(parseFloat(p), 0, 1);
-  const el = document.getElementById('param-panspread-val');
-  el.textContent = Math.round(params.panSpread*100) + '%';
-  el.dataset.value = params.panSpread;
-}
+
 function setGrainGainDb(db){
   const v = clamp(parseFloat(db), -60, 12);
   if (grainOutGainNode) grainOutGainNode.gain.value = dbToGain(v);
@@ -917,20 +1206,14 @@ function setGrainGainDb(db){
   el.textContent = round2(v) + ' dB';
   el.dataset.value = v;
 }
+
 function applyParams(){
-  // Push current `params` to UI sliders (used after preset load)
-  document.getElementById('param-density-sl').value = densityLog.toPos(params.density);
-  setParamDensityPos(densityLog.toPos(params.density));
-  document.getElementById('param-length-sl').value = lengthLog.toPos(params.lengthMs);
-  setParamLengthPos(lengthLog.toPos(params.lengthMs));
-  document.getElementById('param-position-sl').value = params.positionSec;
-  setParamPosition(params.positionSec);
-  document.getElementById('param-spread-sl').value = params.spreadSec;
-  setParamSpread(params.spreadSec);
-  document.getElementById('param-pitch-sl').value = params.pitchSemis;
-  setParamPitch(params.pitchSemis);
-  document.getElementById('param-panspread-sl').value = params.panSpread;
-  setParamPanSpread(params.panSpread);
+  // Push current `params` to all range sliders (used after preset load).
+  rsInstances.density.setRange(params.density.lowVal, params.density.highVal);
+  rsInstances.lengthMs.setRange(params.lengthMs.lowVal, params.lengthMs.highVal);
+  rsInstances.position.setRange(params.position.lowVal, params.position.highVal);
+  rsInstances.pitch.setRange(params.pitch.lowVal, params.pitch.highVal);
+  rsInstances.pan.setRange(params.pan.lowVal, params.pan.highVal);
 }
 
 /* ══════════ GRAIN ENGINE ══════════ */
@@ -958,9 +1241,14 @@ function scheduleNextGrain(){
   if (!shufflerEnabled) return;
   // Trigger one grain
   triggerGrain();
-  // Schedule next based on current density (with mild jitter so it doesn't sound mechanical)
-  const baseInterval = 1000 / Math.max(0.1, params.density);
-  const jitter = (Math.random() - 0.5) * baseInterval * 0.18;
+  // Schedule next based on a random density picked within the range. Each
+  // grain effectively gets its own cadence, which gives the cloud a more
+  // organic feel than a fixed interval.
+  const density = Math.max(0.1, randomInRange(params.density, 'density'));
+  const baseInterval = 1000 / density;
+  // Small additional micro-jitter (5%) keeps the timing from feeling robotic
+  // even when density range is collapsed to a single value.
+  const jitter = (Math.random() - 0.5) * baseInterval * 0.05;
   grainTimer = setTimeout(scheduleNextGrain, baseInterval + jitter);
 }
 // v0.4: Raised-cosine envelope generator. Returns a Float32Array shaped like
@@ -996,27 +1284,28 @@ function makeRaisedCosineEnvelope(lenSec, fadeSec){
 
 function triggerGrain(){
   if (!captureBuffer) return;
-  // Need at least RING_FILL_MIN_SEC of audio captured so we don't read from silence
   const capturedSec = totalSamplesCaptured / sampleRate;
   if (capturedSec < RING_FILL_MIN_SEC) return;
 
-  // Cap simultaneous grains to keep the engine responsive
-  // (clean up any expired grains before counting)
+  // Cap simultaneous grains
   for (let i = liveGrains.length - 1; i >= 0; i--) {
     if (liveGrains[i].__expired) liveGrains.splice(i,1);
   }
   if (liveGrains.length >= GRAIN_GAIN_LIMIT) return;
 
-  // Pick offset within position ± spread, then convert to read-start sample
-  const offsetSec = params.positionSec + (Math.random() - 0.5) * 2 * params.spreadSec;
-  const safeOffset = clamp(offsetSec, 0.005, Math.min(capturedSec, BUFFER_SECONDS - 0.05));
+  // v0.5: pick each grain's parameters from their respective ranges
+  const grainOffsetSec = randomInRange(params.position, 'position');
+  const grainLengthMs  = randomInRange(params.lengthMs, 'lengthMs');
+  const grainPitchSt   = randomInRange(params.pitch,    'pitch');
+  const grainPan       = randomInRange(params.pan,      'pan');
+
+  const safeOffset = clamp(grainOffsetSec, 0.005, Math.min(capturedSec, BUFFER_SECONDS - 0.05));
   let startSample = writeIdx - Math.floor(safeOffset * sampleRate);
   while (startSample < 0) startSample += bufferLen;
   startSample = startSample % bufferLen;
   const startSec = startSample / sampleRate;
 
-  // playback rate from semitones
-  const rate = Math.pow(2, params.pitchSemis / 12);
+  const rate = Math.pow(2, grainPitchSt / 12);
 
   const src = rawCtx.createBufferSource();
   src.buffer = captureBuffer;
@@ -1026,22 +1315,22 @@ function triggerGrain(){
   env.gain.value = 0;
 
   const pan = rawCtx.createStereoPanner();
-  pan.pan.value = (Math.random() - 0.5) * 2 * params.panSpread;
+  pan.pan.value = clamp(grainPan, -1, 1);
 
   src.connect(env); env.connect(pan); pan.connect(grainOutGainNode);
 
-  // Length is in source-time. Played-time depends on rate. We want the GRAIN to last
-  // params.lengthMs in WALL CLOCK (so the engine cadence is predictable). Source needs
-  // to play (lengthMs * rate) ms of source audio over (lengthMs) ms of wall clock.
-  const lenSec = params.lengthMs / 1000;
+  const lenSec = grainLengthMs / 1000;
   const sourceLenSec = lenSec * rate;
 
-  // v0.4: raised-cosine fade-in/fade-out via setValueCurveAtTime. Same adaptive
-  // fadeMs as v0.3 but the shape is C¹-continuous (smooth derivative at edges)
-  // instead of linear corners — substantially less clicky for short grains.
-  // Builds the curve on the fly so each grain gets its proper fade ratio.
-  const fadeMs = clamp(params.lengthMs * 0.15, 1.5, 8);
+  // v0.4: raised-cosine fade-in/fade-out via setValueCurveAtTime.
+  const fadeMs = clamp(grainLengthMs * 0.15, 1.5, 8);
   const fadeSec = fadeMs / 1000;
+
+  // v0.5: pulse fire-dot indicators on each range slider showing this grain's pick
+  if (rsInstances.position) rsInstances.position.fireDot(grainOffsetSec);
+  if (rsInstances.lengthMs) rsInstances.lengthMs.fireDot(grainLengthMs);
+  if (rsInstances.pitch)    rsInstances.pitch.fireDot(grainPitchSt);
+  if (rsInstances.pan)      rsInstances.pan.fireDot(grainPan);
   const t0 = rawCtx.currentTime;
   const tEnd = t0 + lenSec;
   env.gain.setValueAtTime(0, t0);
@@ -1099,36 +1388,31 @@ function startBufVizLoop(){
     if (!wrap) return;
     const w = wrap.clientWidth;
     if (w > 0) {
-      // writeIdx is "now" — show it as the right edge of the bar (always at 100%).
-      // But for stylistic clarity, show the writeIdx position as it moves through the buffer.
-      // We treat the bar as the FULL ring, with writeIdx where we currently are.
+      // writeIdx is "now" sweeping through the ring
       const writePct = (writeIdx / bufferLen) * 100;
       writeMark.style.left = writePct + '%';
 
-      // Position mark: writeIdx − positionSec (samples)
-      let posSample = writeIdx - Math.floor(params.positionSec * sampleRate);
-      while (posSample < 0) posSample += bufferLen;
-      posSample = posSample % bufferLen;
-      const posPct = (posSample / bufferLen) * 100;
-      posMark.style.left = posPct + '%';
-
-      // Spread band: from posSample − spread to posSample + spread (wraps)
-      const spreadSamples = Math.floor(params.spreadSec * sampleRate);
-      const left = ((posSample - spreadSamples) % bufferLen + bufferLen) % bufferLen;
-      const right = ((posSample + spreadSamples) % bufferLen + bufferLen) % bufferLen;
-      const leftPct = (left / bufferLen) * 100;
-      const rightPct = (right / bufferLen) * 100;
-      // Handle wrap by drawing a single band when no wrap, otherwise hide for simplicity
-      if (left <= right) {
-        spreadBand.style.left = leftPct + '%';
-        spreadBand.style.width = (rightPct - leftPct) + '%';
-        spreadBand.style.display = '';
+      // v0.5: position is now a {lowVal, highVal} range. The position MARK is
+      // hidden (no longer a single point) and the SPREAD BAND now covers the
+      // entire read window — from (writeIdx - highVal*sr) to (writeIdx - lowVal*sr).
+      // (Higher lookback = further back in time = further behind writeIdx.)
+      posMark.style.display = 'none';
+      const lowSamples = Math.floor(params.position.lowVal * sampleRate);
+      const highSamples = Math.floor(params.position.highVal * sampleRate);
+      // Read range goes from (writeIdx - highSamples) [oldest] to (writeIdx - lowSamples) [newest]
+      let bandStart = ((writeIdx - highSamples) % bufferLen + bufferLen) % bufferLen;
+      let bandEnd   = ((writeIdx - lowSamples)  % bufferLen + bufferLen) % bufferLen;
+      const startPct = (bandStart / bufferLen) * 100;
+      const endPct   = (bandEnd   / bufferLen) * 100;
+      if (bandStart <= bandEnd) {
+        spreadBand.style.left = startPct + '%';
+        spreadBand.style.width = (endPct - startPct) + '%';
       } else {
-        // Wrap case: just show from leftPct to 100% (simplification)
-        spreadBand.style.left = leftPct + '%';
-        spreadBand.style.width = (100 - leftPct) + '%';
-        spreadBand.style.display = '';
+        // Wraps the ring boundary — draw start→100% (simplification; the rest wraps)
+        spreadBand.style.left = startPct + '%';
+        spreadBand.style.width = (100 - startPct) + '%';
       }
+      spreadBand.style.display = '';
     }
     if (clockEl) clockEl.textContent = round2(totalSamplesCaptured / sampleRate) + 's captured';
     requestAnimationFrame(tick);
@@ -1145,7 +1429,7 @@ function buildPresetRow(){
     const btn = document.createElement('button');
     btn.className = 'preset-slot factory';
     btn.dataset.slot = String(i);
-    btn.title = `${p.name}: density=${p.density}/s, length=${p.lengthMs}ms, pos=${p.positionSec}s, spread=${p.spreadSec}s, pitch=${p.pitchSemis}st\nClick to recall · Shift+click to overwrite this slot`;
+    btn.title = `${p.name}\n  density ${p.density.lowVal}–${p.density.highVal}/s\n  length ${p.lengthMs.lowVal}–${p.lengthMs.highVal} ms\n  position ${p.position.lowVal}–${p.position.highVal} s back\n  pitch ${p.pitch.lowVal}..${p.pitch.highVal} semis\n  pan ${p.pan.lowVal}..${p.pan.highVal}\nClick to recall · Shift+click to overwrite`;
     btn.onclick = (e) => {
       if (e.shiftKey) saveUserSlot(i);
       else loadPreset(i);
@@ -1177,7 +1461,7 @@ function refreshUserSlotLabels(){
       btn.classList.remove('empty');
       const p = userSlots[i].params;
       btn.innerHTML = `<span class="preset-num">${i - 8}</span>USR`;
-      btn.title = `User slot ${i - 8}: density=${round2(p.density)}/s, length=${round2(p.lengthMs)}ms, pos=${round2(p.positionSec)}s, pitch=${round2(p.pitchSemis)}st\nClick to recall · Shift+click to overwrite`;
+      btn.title = `User slot ${i - 8} (saved)\n  density ${round2(p.density.lowVal)}–${round2(p.density.highVal)}/s\n  length ${round2(p.lengthMs.lowVal)}–${round2(p.lengthMs.highVal)} ms\n  position ${round2(p.position.lowVal)}–${round2(p.position.highVal)} s\n  pitch ${round2(p.pitch.lowVal)}..${round2(p.pitch.highVal)} semis\nClick to recall · Shift+click to overwrite`;
     } else {
       btn.classList.add('empty');
       btn.innerHTML = `<span class="preset-num">${i - 8}</span>—`;
@@ -1480,6 +1764,8 @@ function makeEditable(el, parseFn, applyFn){
   });
 }
 function bindEditables(){
+  // v0.5: range-slider readouts have two values (low, high). Click either to type.
+  // The single-value editables that survive: src freq/gain, output gain, grain-out gain.
   makeEditable(document.getElementById('src-freq-val'),
     v => parseFloat(v.replace(/[^\d.\-]/g,'')) * (String(v).toLowerCase().includes('k') ? 1000 : 1),
     v => setSrcFreqHz(v));
@@ -1489,31 +1775,39 @@ function bindEditables(){
   makeEditable(document.getElementById('output-gain-val'),
     v => parseFloat(v.replace(/[^\d.\-]/g,'')),
     v => { document.getElementById('output-gain-db').value = v; setOutputGainDb(v); });
-  makeEditable(document.getElementById('param-density-val'),
-    v => parseFloat(v.replace(/[^\d.\-]/g,'')),
-    v => setParamDensity(v));
-  makeEditable(document.getElementById('param-length-val'),
-    v => parseFloat(v.replace(/[^\d.\-]/g,'')),
-    v => setParamLengthMs(v));
-  makeEditable(document.getElementById('param-position-val'),
-    v => parseFloat(v.replace(/[^\d.\-]/g,'')),
-    v => { document.getElementById('param-position-sl').value = v; setParamPosition(v); });
-  makeEditable(document.getElementById('param-spread-val'),
-    v => parseFloat(v.replace(/[^\d.\-]/g,'')),
-    v => { document.getElementById('param-spread-sl').value = v; setParamSpread(v); });
-  makeEditable(document.getElementById('param-pitch-val'),
-    v => parseFloat(v.replace(/[^\d.\-]/g,'')),
-    v => { document.getElementById('param-pitch-sl').value = v; setParamPitch(v); });
-  makeEditable(document.getElementById('param-panspread-val'),
-    v => {
-      const s = String(v).replace(/%/g,'').trim();
-      const n = parseFloat(s);
-      return Number.isNaN(n) ? null : (n>1 ? n/100 : n);
-    },
-    v => { document.getElementById('param-panspread-sl').value = v; setParamPanSpread(v); });
   makeEditable(document.getElementById('param-graingain-val'),
     v => parseFloat(v.replace(/[^\d.\-]/g,'')),
     v => { document.getElementById('param-graingain-sl').value = v; setGrainGainDb(v); });
+  // Click-to-type on each range slider's low/high readout.
+  bindRangeReadout('density');
+  bindRangeReadout('length');   // element ids use 'length' but state key is 'lengthMs'
+  bindRangeReadout('position');
+  bindRangeReadout('pitch');
+  bindRangeReadout('pan');
+}
+function bindRangeReadout(uiName){
+  const stateKey = uiName === 'length' ? 'lengthMs' : uiName;
+  const lo = document.getElementById(`rs-${uiName}-low`);
+  const hi = document.getElementById(`rs-${uiName}-high`);
+  const parser = (s) => {
+    const t = String(s).trim().toUpperCase();
+    if (uiName === 'pan') {
+      if (t === 'C') return 0;
+      if (t.startsWith('L')) return -parseFloat(t.slice(1)) / 100;
+      if (t.startsWith('R')) return parseFloat(t.slice(1)) / 100;
+    }
+    return parseFloat(String(s).replace(/[^\d.\-]/g, ''));
+  };
+  if (lo) makeEditable(lo, parser, v => {
+    if (Number.isNaN(v)) return;
+    const r = rsInstances[stateKey].getRange();
+    rsInstances[stateKey].setRange(v, Math.max(v, r.highVal));
+  });
+  if (hi) makeEditable(hi, parser, v => {
+    if (Number.isNaN(v)) return;
+    const r = rsInstances[stateKey].getRange();
+    rsInstances[stateKey].setRange(Math.min(v, r.lowVal), v);
+  });
 }
 </script>
 </body>
