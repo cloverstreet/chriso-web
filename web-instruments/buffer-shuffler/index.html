@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Buffer Shuffler — v0.6.1</title>
+<title>Buffer Shuffler — v0.7</title>
 <!-- Tone.js intentionally NOT loaded in v0.2: the buffer-shuffler engine is pure
      Web Audio. AudioWorkletNode's constructor requires a real BaseAudioContext,
      and Tone.js 14.8.49's wrapper isn't one — so we use a bare AudioContext. -->
@@ -318,7 +318,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 </head>
 <body>
 
-<div id="version-badge">BUFFER SHUFFLER · v0.6.1</div>
+<div id="version-badge">BUFFER SHUFFLER · v0.7</div>
 
 <div id="start-screen">
   <div style="font-size:.78rem;letter-spacing:.28em;color:#666;">BUFFER SHUFFLER — TEST CASE</div>
@@ -349,19 +349,20 @@ input.gain-meter-slider::-webkit-slider-thumb {
 
       <!-- Sig gen controls (visible when SIG GEN active) -->
       <div id="src-sig-ctrls">
-        <div class="ctrl-inline" title="Waveform of the built-in oscillator. (white-noise mode falls back to sawtooth in v0.3 — real noise source coming.)">
+        <div class="ctrl-inline" title="Waveform: 4 oscillator shapes plus stereo white/pink noise. In noise modes the FREQ slider becomes a 1-pole-ish lowpass cutoff.">
           <label>WAVE</label>
           <select id="src-wave" onchange="setSrcWave(this.value)">
             <option value="sine">Sine</option>
             <option value="triangle">Triangle</option>
             <option value="sawtooth">Sawtooth</option>
             <option value="square">Square</option>
-            <option value="noise">White noise</option>
+            <option value="white">White noise</option>
+            <option value="pink">Pink noise</option>
           </select>
         </div>
-        <div class="slider-row" title="Oscillator frequency, log scale 20 Hz – 20 kHz. Click value to type exactly.">
+        <div class="slider-row" title="In oscillator modes: pitch (20 Hz – 20 kHz log).&#10;In noise modes: lowpass cutoff. Click value to type exactly.">
           <div class="slider-label-row">
-            <span class="slider-label">FREQ</span>
+            <span class="slider-label" id="src-freq-label">FREQ</span>
             <span class="ctrl-val" id="src-freq-val" data-value="220">220 Hz</span>
           </div>
           <input type="range" id="src-freq-sl" min="0" max="1000" step="any" value="347" oninput="setSrcFreqPos(this.value)">
@@ -663,6 +664,9 @@ let srcGainNode = null;     // user-controlled gain on the source
 let srcPassthruGain = null; // how much source goes direct to output (-inf by default — only grains heard)
 let srcPassAnL = null, srcPassAnR = null, srcPassSplit = null; // analyser tap for the SRC → OUT meter
 let srcOsc = null, srcNoise = null, srcWaveSel = 'sine', srcFreqHz = 220;
+let srcFilter = null;                            // 1-pole-ish biquad: lowpass for noise, allpass (transparent) for osc
+let srcNoiseBufWhite = null, srcNoiseBufPink = null; // pre-rendered stereo loops
+const NOISE_BUF_SECONDS = 4;
 let micStream = null, micSourceNode = null, currentMicDeviceId = '';
 
 // Capture
@@ -814,13 +818,23 @@ async function _initAudio(){
   srcMeterBridge.connect(srcPassSplit);
 
   // Sig gen built into source path; mic added on demand.
-  // Run the mono oscillator through a StereoPanner (always 2-channel output)
-  // so the capture stream + monitor output are stereo from the very first node.
+  // Chain: [srcOsc | srcNoise] → srcFilter → srcStereoUp → srcGainNode
+  // srcFilter doubles as a lowpass cutoff in noise modes (where the freq
+  // slider drives its cutoff) and as a transparent allpass in osc modes.
   srcOsc = rawCtx.createOscillator(); srcOsc.type = srcWaveSel; srcOsc.frequency.value = srcFreqHz;
   srcOsc.start();
-  const srcStereoUp = rawCtx.createStereoPanner(); srcStereoUp.pan.value = 0; // center: ch0 → L, R copy
-  srcOsc.connect(srcStereoUp);
+  srcFilter = rawCtx.createBiquadFilter();
+  srcFilter.type = 'allpass';   // transparent for osc waveforms
+  srcFilter.frequency.value = srcFreqHz;
+  srcFilter.Q.value = 0.707;
+  const srcStereoUp = rawCtx.createStereoPanner(); srcStereoUp.pan.value = 0;
+  srcOsc.connect(srcFilter);
+  srcFilter.connect(srcStereoUp);
   srcStereoUp.connect(srcGainNode);
+
+  // Pre-render noise loops so switching to white/pink is instant.
+  srcNoiseBufWhite = makeNoiseBuffer(rawCtx, 'white', NOISE_BUF_SECONDS);
+  srcNoiseBufPink  = makeNoiseBuffer(rawCtx, 'pink',  NOISE_BUF_SECONDS);
 
   // ── Capture worklet ──
   // Tone 14.8.49 hides ScriptProcessor; AudioWorklet is the only viable path.
@@ -926,17 +940,16 @@ function setSource(mode){
   document.getElementById('src-sig-ctrls').style.display = mode==='sig' ? '' : 'none';
 
   if (mode === 'mic') {
-    // Disconnect sig gen, request mic
+    // Disconnect sig gen + any noise source, then request mic.
     if (srcOsc) try { srcOsc.disconnect(); } catch{}
+    stopNoiseSource();
     requestMic().then(()=>{
       enumerateMicDevices();
     });
   } else {
-    // Disconnect mic, reconnect sig gen
+    // Disconnect mic, reconnect sig gen by re-applying the current waveform.
     if (micSourceNode) try { micSourceNode.disconnect(); } catch{}
-    if (srcOsc) {
-      try { srcOsc.connect(srcGainNode); } catch{}
-    }
+    setSrcWave(srcWaveSel);
   }
 }
 async function requestMic(deviceId){
@@ -951,6 +964,8 @@ async function requestMic(deviceId){
     };
     micStream = await navigator.mediaDevices.getUserMedia(constraints);
     micSourceNode = rawCtx.createMediaStreamSource(micStream);
+    // Mic bypasses srcFilter (no cutoff applied to live input); it goes
+    // straight to the gain stage like before so the chain is unchanged.
     micSourceNode.connect(srcGainNode);
     currentMicDeviceId = deviceId || '';
   } catch(e){
@@ -977,24 +992,90 @@ function changeMicDevice(){
   const id = document.getElementById('src-mic-device').value;
   requestMic(id || undefined);
 }
+function isNoiseWave(w){ return w === 'white' || w === 'pink'; }
+
+function makeNoiseBuffer(ctx, type, durationSec){
+  const sr = ctx.sampleRate;
+  const len = Math.max(1, Math.floor(sr * durationSec));
+  const buf = ctx.createBuffer(2, len, sr);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = buf.getChannelData(ch);
+    if (type === 'white') {
+      for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * 0.6;
+    } else {
+      // Paul Kellet's economy pink filter — close-enough 1/f.
+      let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;
+      for (let i = 0; i < len; i++) {
+        const white = Math.random() * 2 - 1;
+        b0 = 0.99886 * b0 + white * 0.0555179;
+        b1 = 0.99332 * b1 + white * 0.0750759;
+        b2 = 0.96900 * b2 + white * 0.1538520;
+        b3 = 0.86650 * b3 + white * 0.3104856;
+        b4 = 0.55000 * b4 + white * 0.5329522;
+        b5 = -0.7616 * b5 - white * 0.0168980;
+        const pink = b0+b1+b2+b3+b4+b5+b6 + white*0.5362;
+        b6 = white * 0.115926;
+        data[i] = pink * 0.18; // ~unit-ish RMS, headroom for cutoff lift
+      }
+    }
+  }
+  return buf;
+}
+
+function startNoiseSource(which){
+  // Stop any running noise source, swap in a fresh BufferSource (BufferSources
+  // are one-shot — must be re-created after stop()).
+  stopNoiseSource();
+  if (!srcFilter) return;
+  const buf = which === 'pink' ? srcNoiseBufPink : srcNoiseBufWhite;
+  if (!buf) return;
+  srcNoise = rawCtx.createBufferSource();
+  srcNoise.buffer = buf;
+  srcNoise.loop = true;
+  // Random offset so reloads don't always start at the same crackle pattern
+  try { srcNoise.start(0, Math.random() * buf.duration); }
+  catch{ try { srcNoise.start(); } catch{} }
+  srcNoise.connect(srcFilter);
+}
+
+function stopNoiseSource(){
+  if (!srcNoise) return;
+  try { srcNoise.disconnect(); } catch{}
+  try { srcNoise.stop(); } catch{}
+  srcNoise = null;
+}
+
 function setSrcWave(w){
   srcWaveSel = w;
   if (!srcOsc) return;
-  if (w === 'noise') {
-    // Approximate noise via fast random oscillator — Tone does this via AudioBufferSourceNode + noise buffer.
-    // For simplicity, swap to a 'square' with very low freq + lots of harmonics. Or: use a Noise via worklet.
-    // Cheapest: just play sawtooth at very high random — not really noise. Skip noise via osc, use a
-    // dedicated noise source instead.
-    // NOTE: v0.1 doesn't yet implement a true noise source — falling back to sawtooth for now.
-    srcOsc.type = 'sawtooth';
+  const lbl = document.getElementById('src-freq-label');
+  if (isNoiseWave(w)) {
+    // Disconnect oscillator from the filter; route noise into it instead.
+    try { srcOsc.disconnect(); } catch{}
+    if (srcFilter) {
+      srcFilter.type = 'lowpass';
+      srcFilter.frequency.value = srcFreqHz;
+      srcFilter.Q.value = 0.707;
+    }
+    startNoiseSource(w);
+    if (lbl) lbl.textContent = 'CUTOFF';
   } else {
+    // Stop any noise, restore oscillator → filter chain (allpass = transparent).
+    stopNoiseSource();
     srcOsc.type = w;
+    try { srcOsc.connect(srcFilter); } catch{}
+    if (srcFilter) srcFilter.type = 'allpass';
+    if (lbl) lbl.textContent = 'FREQ';
   }
 }
 function setSrcFreqPos(pos){
   const hz = freqLog.toHz(parseFloat(pos));
   srcFreqHz = hz;
   if (srcOsc) srcOsc.frequency.value = hz;
+  // FREQ slider drives the filter cutoff in noise modes (lowpass), and is a
+  // no-op-on-tone in osc modes since the filter is allpass — but we still
+  // update srcFilter.frequency so toggling between modes is seamless.
+  if (srcFilter) srcFilter.frequency.value = hz;
   const el = document.getElementById('src-freq-val');
   el.textContent = hz>=1000 ? round2(hz/1000)+' kHz' : round2(hz)+' Hz';
   el.dataset.value = hz;
