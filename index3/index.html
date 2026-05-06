@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>—</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    touch-action: none;
+    overscroll-behavior: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  body {
+    background: #050608;
+    font-family: 'Iowan Old Style', 'Palatino', 'Georgia', serif;
+    color: #aab4c0;
+  }
+  canvas#still, canvas#storm {
+    display: block;
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+  }
+  canvas#still { z-index: 1; }
+  canvas#storm { z-index: 2; mix-blend-mode: screen; }
+
+  #title {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 6;
+    pointer-events: none;
+    font-style: italic;
+    font-weight: 400;
+    font-size: clamp(20px, 3vw, 36px);
+    letter-spacing: 0.45em;
+    color: #aebcd0;
+    text-transform: lowercase;
+    white-space: nowrap;
+    opacity: 0.8;
+    text-shadow: 0 0 22px rgba(170,180,200,0.25);
+    transition: opacity 1.2s, color 1.2s, text-shadow 1.2s, letter-spacing 1.2s;
+  }
+
+  .nav-link {
+    position: fixed;
+    color: #8a9ab2;
+    font-size: clamp(13px, 1.4vw, 17px);
+    font-style: italic;
+    letter-spacing: 0.18em;
+    text-decoration: none;
+    z-index: 10;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    line-height: 1.5;
+    text-transform: lowercase;
+    transition: color 0.8s, opacity 1s, letter-spacing 0.8s;
+    white-space: nowrap;
+  }
+  .nav-link:hover {
+    color: #ffffff;
+    letter-spacing: 0.30em;
+  }
+  .nav-link .sublabel {
+    display: block;
+    font-size: 0.62em;
+    opacity: 0.6;
+    margin-top: 0.3em;
+    letter-spacing: 0.1em;
+  }
+
+  /* Storm-state class added/removed on body — drives big stylistic shifts */
+  body.storm #title {
+    color: #ffe7c8;
+    letter-spacing: 0.06em;
+    font-style: normal;
+    font-weight: 900;
+    opacity: 1;
+    text-shadow:
+      -3px 0 #ff00aa,
+       3px 0 #00ffe7,
+       0 0 30px rgba(255,231,200,0.5);
+    animation: storm-jitter 0.08s steps(2) infinite;
+  }
+  body.storm .nav-link {
+    color: #ffffff;
+  }
+  @keyframes storm-jitter {
+    0%   { transform: translate(-50%, -50%); }
+    50%  { transform: translate(-50.4%, -49.4%); }
+    100% { transform: translate(-49.6%, -50.6%); }
+  }
+</style>
+</head>
+<body>
+<canvas id="still"></canvas>
+<canvas id="storm"></canvas>
+<div id="title">christopher overstreet</div>
+<a class="nav-link" href="/about/"                 style="left:13vw; top:42vh;">about</a>
+<a class="nav-link" href="/calendar/"              style="left:87vw; top:30vh;">recommended events<span class="sublabel">public calendar</span></a>
+<a class="nav-link" href="/lessons/"               style="left:16vw; top:78vh;">lessons</a>
+<a class="nav-link" href="/web-instruments/"       style="left:84vw; top:74vh;">playables<span class="sublabel">in progress</span></a>
+<a class="nav-link" href="/thesomethingnightclub/" style="left:50vw; top:90vh;">the something nightclub<span class="sublabel">doors open · 2 a.m.</span></a>
+
+<script>
+// ── Bi-polar engine ────────────────────────────────────────────────────
+// Two visual layers (still + storm) and two audio buses, crossfaded by
+// a phase variable that auto-cycles every 60–110 s. Cursor energy biases
+// the timing toward storm; long stillness biases back toward still.
+
+const stillC = document.getElementById('still');
+const stormC = document.getElementById('storm');
+const sctx = stillC.getContext('2d');
+const tctx = stormC.getContext('2d');
+
+const dpr = Math.min(window.devicePixelRatio || 1, 2);
+let W, H;
+
+function resize() {
+  W = window.innerWidth;
+  H = window.innerHeight;
+  for (const c of [stillC, stormC]) {
+    c.width  = W * dpr;
+    c.height = H * dpr;
+    c.style.width  = W + 'px';
+    c.style.height = H + 'px';
+    c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  sctx.fillStyle = '#050608';
+  sctx.fillRect(0, 0, W, H);
+}
+resize();
+window.addEventListener('resize', resize);
+
+let phase = 0;            // 0 = still, 1 = storm
+let phaseTarget = 0;
+let phaseT = 0;           // seconds in current target
+let nextFlip = 35 + Math.random() * 30;   // first storm comes earlier
+
+let mx = -9999, my = -9999, mxL = mx, myL = my, mSpeed = 0;
+document.addEventListener('pointermove', e => {
+  mx = e.clientX; my = e.clientY;
+});
+
+// Smooth easing — sigmoid
+function easeSig(x) {
+  // map 0..1 → 0..1 with S curve
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  return x*x*(3 - 2*x);
+}
+
+// Particle pool reused for storm
+const N_PART = (() => {
+  const isPhone = Math.min(window.innerWidth, window.innerHeight) < 600;
+  return isPhone ? 700 : 1400;
+})();
+const particles = [];
+for (let i = 0; i < N_PART; i++) {
+  particles.push({
+    x: Math.random()*W, y: Math.random()*H,
+    vx: 0, vy: 0,
+    hue: Math.random()*360
+  });
+}
+
+// Build attractor points for storm phase letterforms
+let attractors = [];
+function rebuildAttractors() {
+  const off = document.createElement('canvas');
+  off.width = W; off.height = H;
+  const o = off.getContext('2d');
+  o.fillStyle = '#fff';
+  const fs = Math.min(W * 0.06, 70);
+  o.font = `900 ${fs}px "Helvetica Neue", system-ui, sans-serif`;
+  o.textAlign = 'center';
+  o.textBaseline = 'middle';
+  o.fillText('CHRISTOPHER OVERSTREET', W/2, H/2);
+  const data = o.getImageData(0, 0, W, H).data;
+  attractors = [];
+  const step = Math.max(3, Math.floor(W / 380));
+  for (let y = 0; y < H; y += step) {
+    for (let x = 0; x < W; x += step) {
+      if (data[(y*W + x)*4] > 100) attractors.push([x, y]);
+    }
+  }
+}
+rebuildAttractors();
+window.addEventListener('resize', rebuildAttractors);
+
+let frame = 0;
+let lastTick = performance.now();
+
+function step() {
+  requestAnimationFrame(step);
+  frame++;
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - lastTick) / 1000);
+  lastTick = now;
+  phaseT += dt;
+
+  // Cursor speed accumulator
+  const dx = mx - mxL, dy = my - myL;
+  mSpeed = mSpeed * 0.86 + Math.min(160, Math.sqrt(dx*dx + dy*dy)) * 0.14;
+  mxL = mx; myL = my;
+
+  // Cursor energy biases: lots of activity hastens a storm; long
+  // calm hastens return to still.
+  const energyBias = (mSpeed - 18) * 0.08;     // negative when calm
+  const flipDue = phaseT > nextFlip - energyBias;
+  if (flipDue) {
+    phaseTarget = phaseTarget < 0.5 ? 1 : 0;
+    phaseT = 0;
+    nextFlip = phaseTarget > 0.5
+      ? 22 + Math.random() * 16     // storms last 22–38s
+      : 55 + Math.random() * 50;    // stillness lasts 55–105s
+    document.body.classList.toggle('storm', phaseTarget > 0.5);
+  }
+
+  // Ease phase toward target
+  phase += (phaseTarget - phase) * 0.018;
+  const stillAmt = 1 - easeSig(phase);
+  const stormAmt = easeSig(phase);
+
+  // ── Still layer ─────────────────────────────────────────────────────
+  // Concentric circles of slowly-orbiting node points; trail decays.
+  // Visible when stillAmt > 0; alpha tracks stillAmt.
+  sctx.fillStyle = `rgba(5,6,8, ${0.08 * stillAmt + 0.02})`;
+  sctx.fillRect(0, 0, W, H);
+
+  if (stillAmt > 0.04) {
+    sctx.strokeStyle = `rgba(174,188,208, ${0.12 * stillAmt})`;
+    sctx.lineWidth = 0.6;
+
+    const cx = W * 0.5, cy = H * 0.5;
+    const rings = 7;
+    for (let r = 0; r < rings; r++) {
+      const radius = 60 + r * Math.min(W, H) * 0.045;
+      const nodes = 12 + r * 4;
+      const baseRot = frame * 0.0012 * (r % 2 ? 1 : -1) + r * 0.7;
+
+      sctx.beginPath();
+      for (let i = 0; i <= nodes; i++) {
+        const a = baseRot + (i / nodes) * Math.PI * 2;
+        // Tiny breath modulation
+        const breath = Math.sin(frame * 0.004 + r * 0.3) * 4;
+        const x = cx + Math.cos(a) * (radius + breath);
+        const y = cy + Math.sin(a) * (radius + breath);
+        if (i === 0) sctx.moveTo(x, y); else sctx.lineTo(x, y);
+      }
+      sctx.stroke();
+
+      // Hairline radial spokes once every few rings
+      if (r % 3 === 1) {
+        for (let i = 0; i < nodes; i++) {
+          const a = baseRot + (i / nodes) * Math.PI * 2;
+          const x1 = cx + Math.cos(a) * radius;
+          const y1 = cy + Math.sin(a) * radius;
+          const x2 = cx + Math.cos(a) * (radius + 18);
+          const y2 = cy + Math.sin(a) * (radius + 18);
+          sctx.beginPath();
+          sctx.moveTo(x1, y1);
+          sctx.lineTo(x2, y2);
+          sctx.stroke();
+        }
+      }
+    }
+  }
+
+  // ── Storm layer ─────────────────────────────────────────────────────
+  if (stormAmt > 0.04) {
+    // Trail decay scaled with phase
+    tctx.globalCompositeOperation = 'source-over';
+    tctx.fillStyle = `rgba(0,0,0, ${0.06 + 0.10 * stormAmt})`;
+    tctx.fillRect(0, 0, W, H);
+
+    tctx.globalCompositeOperation = 'lighter';
+    const tn = frame * 0.012;
+    const cursorActive = mx > -9000;
+
+    // Letter attractor pulse during storm — every ~5 s assemble briefly
+    const stormCyc = (phaseT % 6) / 6;
+    const attractWeight = stormCyc > 0.55 && stormCyc < 0.85
+      ? Math.min(1, (stormCyc - 0.55) * 5) * (stormCyc < 0.75 ? 1 : Math.max(0, 1 - (stormCyc - 0.75)*8))
+      : 0;
+
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      // Cheap curl noise
+      const a = Math.sin(p.x*0.011 + tn*0.4)*0.4
+              + Math.sin(p.y*0.017 + tn*0.3)*0.3;
+      const b = Math.sin(p.x*0.014 + tn*0.7)*0.3
+              + Math.sin(p.y*0.009 + tn*0.5)*0.4;
+
+      let ax = b * 1.5, ay = -a * 1.5;
+
+      if (cursorActive) {
+        const px = mx - p.x, py = my - p.y;
+        const d = Math.max(40, Math.sqrt(px*px + py*py));
+        const k = 60 / d;
+        ax += (px / d) * k;
+        ay += (py / d) * k;
+      }
+
+      if (attractWeight > 0 && attractors.length) {
+        const at = attractors[i % attractors.length];
+        const tx = at[0] - p.x, ty = at[1] - p.y;
+        const adst = Math.max(2, Math.sqrt(tx*tx + ty*ty));
+        ax += (tx / adst) * attractWeight * Math.min(40, adst) * 0.18;
+        ay += (ty / adst) * attractWeight * Math.min(40, adst) * 0.18;
+      }
+
+      p.vx = (p.vx + ax) * 0.92;
+      p.vy = (p.vy + ay) * 0.92;
+      p.x += p.vx * dt * 60;
+      p.y += p.vy * dt * 60;
+
+      if (p.x < 0) p.x += W;
+      if (p.x > W) p.x -= W;
+      if (p.y < 0) p.y += H;
+      if (p.y > H) p.y -= H;
+
+      p.hue = (p.hue + 0.7) % 360;
+      const speed = Math.sqrt(p.vx*p.vx + p.vy*p.vy);
+      const al = (0.18 + Math.min(0.6, speed * 0.07)) * stormAmt;
+      const hd = (p.hue * 0.5 + 280) % 360;
+      tctx.fillStyle = `hsla(${hd},92%,62%,${al})`;
+      tctx.fillRect(p.x, p.y, 1.4, 1.4);
+    }
+
+    // Strobe glitch flashes
+    if (Math.random() < 0.05 * stormAmt) {
+      const y = Math.random() * H;
+      const h = 2 + Math.random() * 24;
+      tctx.globalAlpha = 0.5 * stormAmt;
+      tctx.fillStyle = ['#fff', '#ff00aa', '#00ffe7', '#ffe700'][Math.floor(Math.random()*4)];
+      tctx.fillRect(0, y, W, h);
+      tctx.globalAlpha = 1;
+    }
+  } else {
+    // Fade storm canvas to transparent during still
+    tctx.clearRect(0, 0, W, H);
+  }
+}
+step();
+
+
+// ── Audio: still bus + storm bus, crossfaded by phase ─────────────────
+let actx, master, stillBus, stormBus;
+let droneStill, droneStorm, fmModOsc, fmModGain;
+let grainGainStill, grainGainStorm, grainBuf;
+let crackleGain;
+let started = false;
+
+function startAudio() {
+  if (started) return;
+  started = true;
+  actx = new (window.AudioContext || window.webkitAudioContext)();
+
+  master = actx.createGain();
+  master.gain.value = 0.18;
+  master.connect(actx.destination);
+
+  stillBus = actx.createGain();
+  stormBus = actx.createGain();
+  stillBus.gain.value = 1;
+  stormBus.gain.value = 0;
+  stillBus.connect(master);
+  stormBus.connect(master);
+
+  // ── Still bus: pure sines, slow, harmonic ───────────────────────────
+  droneStill = actx.createGain();
+  droneStill.gain.value = 0.08;
+  droneStill.connect(stillBus);
+  for (const r of [1, 1.5, 2, 3, 4]) {
+    const o = actx.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = 48 * r;
+    o.detune.value = (Math.random() - 0.5) * 4;
+    const g = actx.createGain();
+    g.gain.value = 0.55 / (r * r);
+    o.connect(g); g.connect(droneStill);
+    o.start();
+  }
+
+  grainGainStill = actx.createGain();
+  grainGainStill.gain.value = 0.13;
+  grainGainStill.connect(stillBus);
+
+  // ── Storm bus: sawtooth FM drone, dense grains, ring-mod noise ─────
+  droneStorm = actx.createGain();
+  droneStorm.gain.value = 0.06;
+  droneStorm.connect(stormBus);
+  fmModOsc = actx.createOscillator();
+  fmModOsc.type = 'sine';
+  fmModOsc.frequency.value = 1.4;
+  fmModGain = actx.createGain();
+  fmModGain.gain.value = 12;
+  fmModOsc.connect(fmModGain);
+  fmModOsc.start();
+  for (const r of [1, 1.5, 2.04]) {
+    const o = actx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.value = 50 * r;
+    o.detune.value = (Math.random() - 0.5) * 18;
+    fmModGain.connect(o.frequency);
+    const lpf = actx.createBiquadFilter();
+    lpf.type = 'lowpass';
+    lpf.frequency.value = 1300;
+    const g = actx.createGain();
+    g.gain.value = 0.55 / (r * r);
+    o.connect(lpf); lpf.connect(g); g.connect(droneStorm);
+    o.start();
+  }
+
+  grainGainStorm = actx.createGain();
+  grainGainStorm.gain.value = 0.16;
+  grainGainStorm.connect(stormBus);
+
+  crackleGain = actx.createGain();
+  crackleGain.gain.value = 0.0;
+  crackleGain.connect(stormBus);
+
+  // Shared grain buffer
+  grainBuf = actx.createBuffer(2, actx.sampleRate * 5, actx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = grainBuf.getChannelData(ch);
+    for (let i = 0; i < d.length; i++) {
+      const prev = i > 0 ? d[i-1] : 0;
+      d[i] = prev * 0.92 + (Math.random()*2-1) * 0.25;
+    }
+  }
+
+  scheduleGrainStill();
+  scheduleGrainStorm();
+  scheduleCrackle();
+}
+
+function scheduleGrainStill() {
+  if (!actx) return;
+  const wait = 4500 + Math.random() * 9000;
+  setTimeout(() => {
+    if (!actx) return;
+    const dur = 2.5 + Math.random() * 4.0;
+    const t0 = actx.currentTime + 0.05;
+    const src = actx.createBufferSource();
+    src.buffer = grainBuf;
+    src.playbackRate.value = 0.35 + Math.random() * 0.2;
+    src.detune.value = (Math.random() - 0.5) * 50;
+
+    const start = Math.random() * (grainBuf.duration - dur - 0.1);
+
+    const lpf = actx.createBiquadFilter();
+    lpf.type = 'lowpass';
+    lpf.frequency.value = 700 + Math.random() * 1400;
+    lpf.Q.value = 0.7;
+
+    const env = actx.createGain();
+    env.gain.setValueAtTime(0, t0);
+    env.gain.linearRampToValueAtTime(0.42, t0 + dur*0.4);
+    env.gain.linearRampToValueAtTime(0, t0 + dur);
+
+    const pan = actx.createStereoPanner();
+    pan.pan.value = (Math.random() - 0.5) * 0.85;
+
+    src.connect(lpf); lpf.connect(env); env.connect(pan); pan.connect(grainGainStill);
+    src.start(t0, start, dur);
+    src.stop(t0 + dur + 0.2);
+
+    scheduleGrainStill();
+  }, wait);
+}
+
+function scheduleGrainStorm() {
+  if (!actx) return;
+  const wait = 70 + Math.random() * 120;
+  setTimeout(() => {
+    if (!actx) return;
+    const dur = 0.05 + Math.random() * 0.20;
+    const t0 = actx.currentTime + 0.01;
+    const src = actx.createBufferSource();
+    src.buffer = grainBuf;
+    src.playbackRate.value = 0.45 + Math.random() * 1.6;
+    src.detune.value = (Math.random() - 0.5) * 200;
+
+    const start = Math.random() * (grainBuf.duration - dur - 0.01);
+
+    const lpf = actx.createBiquadFilter();
+    lpf.type = Math.random() < 0.5 ? 'bandpass' : 'highpass';
+    lpf.frequency.value = 600 + Math.random() * 4000;
+    lpf.Q.value = 0.8 + Math.random() * 4;
+
+    const env = actx.createGain();
+    env.gain.setValueAtTime(0, t0);
+    env.gain.linearRampToValueAtTime(0.55, t0 + dur*0.25);
+    env.gain.linearRampToValueAtTime(0, t0 + dur);
+
+    const pan = actx.createStereoPanner();
+    pan.pan.value = Math.max(-1, Math.min(1, (Math.random() - 0.5) * 1.6));
+
+    src.connect(lpf); lpf.connect(env); env.connect(pan); pan.connect(grainGainStorm);
+    src.start(t0, start, dur);
+    src.stop(t0 + dur + 0.05);
+
+    scheduleGrainStorm();
+  }, wait);
+}
+
+function scheduleCrackle() {
+  if (!actx) return;
+  setTimeout(() => {
+    if (!actx) return;
+    const t0 = actx.currentTime + 0.01;
+    const dur = 0.005 + Math.random() * 0.020;
+    const src = actx.createBufferSource();
+    src.buffer = grainBuf;
+    src.playbackRate.value = 1 + Math.random() * 0.5;
+
+    const env = actx.createGain();
+    env.gain.setValueAtTime(0, t0);
+    env.gain.linearRampToValueAtTime(0.5, t0 + dur*0.2);
+    env.gain.linearRampToValueAtTime(0, t0 + dur);
+
+    const hpf = actx.createBiquadFilter();
+    hpf.type = 'highpass';
+    hpf.frequency.value = 2200;
+
+    const pan = actx.createStereoPanner();
+    pan.pan.value = Math.max(-1, Math.min(1, (Math.random() - 0.5) * 1.4));
+
+    src.connect(hpf); hpf.connect(env); env.connect(pan); pan.connect(crackleGain);
+    src.start(t0, Math.random() * grainBuf.duration * 0.9, dur);
+    src.stop(t0 + dur + 0.05);
+
+    scheduleCrackle();
+  }, 40 + Math.random() * 100);
+}
+
+// Crossfade buses based on phase, plus speed-driven storm flavor
+setInterval(() => {
+  if (!actx) return;
+  const stillAmt = 1 - easeSig(phase);
+  const stormAmt = easeSig(phase);
+  stillBus.gain.linearRampToValueAtTime(stillAmt, actx.currentTime + 0.4);
+  stormBus.gain.linearRampToValueAtTime(stormAmt, actx.currentTime + 0.4);
+
+  const speedNorm = Math.min(1, mSpeed / 100);
+  crackleGain.gain.linearRampToValueAtTime(
+    (0.04 + speedNorm * 0.10) * stormAmt, actx.currentTime + 0.2);
+  fmModGain.gain.linearRampToValueAtTime(
+    (4 + speedNorm * 18) * stormAmt, actx.currentTime + 0.2);
+}, 90);
+
+// Hover swell
+document.querySelectorAll('.nav-link').forEach(a => {
+  let osc = null, og = null;
+  a.addEventListener('pointerenter', () => {
+    if (!actx) return;
+    osc = actx.createOscillator();
+    og  = actx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 260 * (1 + Math.random() * 0.3);
+    og.gain.setValueAtTime(0, actx.currentTime);
+    og.gain.linearRampToValueAtTime(0.025, actx.currentTime + 0.4);
+    osc.connect(og); og.connect(master);
+    osc.start();
+  });
+  a.addEventListener('pointerleave', () => {
+    if (!actx || !osc) return;
+    og.gain.cancelScheduledValues(actx.currentTime);
+    og.gain.setValueAtTime(og.gain.value, actx.currentTime);
+    og.gain.linearRampToValueAtTime(0, actx.currentTime + 0.5);
+    osc.stop(actx.currentTime + 0.55);
+    osc = null;
+  });
+});
+
+function tryStart() { startAudio(); }
+document.addEventListener('pointerdown', tryStart, { once: true });
+document.addEventListener('pointermove', tryStart, { once: true });
+document.addEventListener('touchstart', tryStart, { once: true, passive: true });
+</script>
+</body>
+</html>

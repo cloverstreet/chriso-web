@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>christopher overstreet</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    touch-action: none;
+    overscroll-behavior: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  body {
+    background:
+      radial-gradient(ellipse at 50% 55%, #1a1015 0%, #0a070a 65%, #050304 100%);
+    font-family: 'Iowan Old Style', 'Palatino', 'Hoefler Text', 'EB Garamond', 'Garamond', 'Georgia', serif;
+    color: #c8b894;
+  }
+  canvas#harmonograph {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+  }
+  /* Subtle film of darkness so newer ink rises to the top */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 6;
+    background:
+      radial-gradient(ellipse at 50% 50%, transparent 30%, rgba(0,0,0,0.35) 100%);
+  }
+  #title {
+    position: fixed;
+    top: 9vh;
+    left: 50%;
+    transform: translateX(-50%);
+    font-style: italic;
+    font-weight: 400;
+    font-size: clamp(18px, 2.4vw, 30px);
+    letter-spacing: 0.5em;
+    color: #d9c79a;
+    z-index: 8;
+    pointer-events: none;
+    opacity: 0.82;
+    text-transform: lowercase;
+    white-space: nowrap;
+    text-shadow: 0 0 18px rgba(217,199,154,0.18);
+  }
+  #subtitle {
+    position: fixed;
+    top: calc(9vh + 2.6em);
+    left: 50%;
+    transform: translateX(-50%);
+    font-style: italic;
+    font-size: clamp(10px, 0.9vw, 13px);
+    letter-spacing: 0.42em;
+    color: #8a7c64;
+    z-index: 8;
+    pointer-events: none;
+    opacity: 0.55;
+    text-transform: lowercase;
+    white-space: nowrap;
+  }
+  .nav-link {
+    position: fixed;
+    color: #b09a78;
+    font-style: italic;
+    font-size: clamp(13px, 1.4vw, 17px);
+    letter-spacing: 0.18em;
+    text-decoration: none;
+    z-index: 10;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    line-height: 1.5;
+    transition: color 0.6s ease, letter-spacing 0.6s ease, opacity 0.6s ease;
+    opacity: 0.85;
+    text-transform: lowercase;
+    white-space: nowrap;
+  }
+  .nav-link::before {
+    content: '·';
+    display: block;
+    color: #6b5a44;
+    font-size: 1.6em;
+    margin-bottom: -0.1em;
+    transition: opacity 0.6s ease, transform 0.9s ease;
+  }
+  .nav-link:hover {
+    color: #f0e0c0;
+    letter-spacing: 0.30em;
+    opacity: 1;
+  }
+  .nav-link:hover::before {
+    opacity: 0.45;
+    transform: translateY(-5px);
+  }
+  .nav-link .sublabel {
+    display: block;
+    font-size: 0.6em;
+    opacity: 0.6;
+    margin-top: 0.3em;
+    letter-spacing: 0.1em;
+  }
+  /* A faint horizontal hairline at the visual baseline */
+  .baseline {
+    position: fixed;
+    bottom: 4vh; left: 12vw; right: 12vw;
+    height: 1px;
+    background: linear-gradient(90deg,
+      transparent, rgba(217,199,154,0.18), transparent);
+    z-index: 4;
+    pointer-events: none;
+    animation: drift 38s ease-in-out infinite;
+  }
+  @keyframes drift {
+    0%, 100% { transform: translateX(-2%); opacity: 0.55; }
+    50%      { transform: translateX(2%);  opacity: 0.85; }
+  }
+</style>
+</head>
+<body>
+<canvas id="harmonograph"></canvas>
+<div id="title">christopher overstreet</div>
+<div id="subtitle">composer · performer</div>
+<div class="baseline"></div>
+<a class="nav-link" href="/about/"               style="left:13vw; top:42vh;">about</a>
+<a class="nav-link" href="/calendar/"            style="left:87vw; top:30vh;">recommended events<span class="sublabel">public calendar</span></a>
+<a class="nav-link" href="/lessons/"             style="left:16vw; top:78vh;">lessons</a>
+<a class="nav-link" href="/web-instruments/"     style="left:84vw; top:74vh;">playables<span class="sublabel">in progress</span></a>
+<a class="nav-link" href="/thesomethingnightclub/" style="left:50vw; top:90vh;">the something nightclub<span class="sublabel">doors open · 2 a.m.</span></a>
+
+<script>
+// ── Harmonograph ──────────────────────────────────────────────────────
+// Two coupled pendulums each summing two slightly irrational frequencies.
+// Damping per cycle. The trail accumulates over thousands of frames into
+// rosette shapes that never quite repeat. Cursor lightly perturbs phase.
+const cv  = document.getElementById('harmonograph');
+const ctx = cv.getContext('2d');
+const dpr = Math.min(window.devicePixelRatio || 1, 2);
+let W, H;
+
+function resize() {
+  W = window.innerWidth;
+  H = window.innerHeight;
+  cv.width  = W * dpr;
+  cv.height = H * dpr;
+  cv.style.width  = W + 'px';
+  cv.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#0a070a';
+  ctx.fillRect(0, 0, W, H);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Pendulum frequencies (slightly irrational ratios); damping is per
+// internal step. Periodically refresh amplitude so the curve doesn't
+// fully die — old ink stays as a quiet under-trace.
+const FREQS = {
+  ax: [2.013, 3.005],
+  ay: [2.997, 5.011]
+};
+let phaseAX = [0, Math.PI/2.7];
+let phaseAY = [Math.PI/3.1, Math.PI];
+let dampPerStep = 0.99988;
+let amp  = 1.0;
+let t    = 0;
+let prevX = null, prevY = null;
+let cursorWarp = 0, mxN = 0, myN = 0;
+let mx = -1, my = -1;
+
+document.addEventListener('pointermove', e => {
+  mx = e.clientX; my = e.clientY;
+  mxN = (mx / W) - 0.5;
+  myN = (my / H) - 0.5;
+});
+
+let frame = 0;
+function step() {
+  requestAnimationFrame(step);
+  frame++;
+
+  // Cursor warp eases in/out so the curve is responsive but never twitchy
+  cursorWarp += (mxN * 1.4 - cursorWarp) * 0.012;
+
+  // Slow base color shift across deep gold → rose gold → pale parchment
+  const colorPhase = (Math.sin(frame * 0.0007) * 0.5 + 0.5);
+  const r = 200 + colorPhase * 35;   // 200..235
+  const g = 175 + colorPhase * 25;   // 175..200
+  const b = 130 + (1 - colorPhase) * 30;
+  const inkAlpha = 0.038 + 0.014 * Math.sin(frame * 0.0021);
+
+  ctx.strokeStyle = `rgba(${r|0},${g|0},${b|0},${inkAlpha})`;
+  ctx.lineWidth = 0.7;
+  ctx.lineCap   = 'round';
+
+  const radius = Math.min(W, H) * 0.36;
+  const cx0 = W * 0.5, cy0 = H * 0.5;
+
+  // 28 segments per frame — dense enough to feel continuous,
+  // sparse enough to stay performance-friendly on phones
+  for (let s = 0; s < 28; s++) {
+    t += 0.0014;
+    amp *= dampPerStep;
+    if (amp < 0.04) {
+      amp = 1.0;
+      // Reset the canvas only very, very rarely — most of the time
+      // we want to layer ink. Once every ~12 cycles, freshen.
+      if (Math.random() < 0.085) {
+        ctx.fillStyle = 'rgba(10,7,10,0.55)';
+        ctx.fillRect(0, 0, W, H);
+      }
+    }
+
+    const xv = Math.cos(t * FREQS.ax[0] + phaseAX[0] + cursorWarp)        * 0.55
+             + Math.cos(t * FREQS.ax[1] + phaseAX[1] - cursorWarp * 0.6)  * 0.45;
+    const yv = Math.sin(t * FREQS.ay[0] + phaseAY[0] + cursorWarp * 0.7)  * 0.55
+             + Math.sin(t * FREQS.ay[1] + phaseAY[1])                      * 0.45;
+
+    const cx = cx0 + xv * radius * amp;
+    const cy = cy0 + yv * radius * amp;
+
+    if (prevX !== null) {
+      ctx.beginPath();
+      ctx.moveTo(prevX, prevY);
+      ctx.lineTo(cx, cy);
+      ctx.stroke();
+    }
+    prevX = cx; prevY = cy;
+  }
+
+  // Very slow continuous fade so the picture breathes (older ink dims
+  // gradually rather than persisting forever and saturating)
+  ctx.fillStyle = 'rgba(10,7,10,0.0085)';
+  ctx.fillRect(0, 0, W, H);
+}
+step();
+
+
+// ── Audio ─────────────────────────────────────────────────────────────
+// Drone (44 Hz fund + harmonics), high pad triad through bandpass,
+// sparse long grains. Cursor speed gently swells the drone; mouse-Y
+// opens the pad's bandpass (top of viewport = bright, bottom = dark).
+let actx = null;
+let master, droneGain, padGain, padFilter, grainGain, grainBuf;
+let started = false;
+let cursorSpeed = 0, cursorSpeedSm = 0;
+let lastEx = null, lastEy = null;
+
+document.addEventListener('pointermove', e => {
+  if (lastEx !== null) {
+    const dx = e.clientX - lastEx, dy = e.clientY - lastEy;
+    cursorSpeed = Math.min(180, Math.sqrt(dx*dx + dy*dy));
+  }
+  lastEx = e.clientX; lastEy = e.clientY;
+});
+
+function startAudio() {
+  if (started) return;
+  started = true;
+  actx = new (window.AudioContext || window.webkitAudioContext)();
+
+  master = actx.createGain();
+  master.gain.value = 0.16;
+  master.connect(actx.destination);
+
+  // Drone — fundamental + fifth + octave + double-octave, all sine
+  droneGain = actx.createGain();
+  droneGain.gain.value = 0.07;
+  droneGain.connect(master);
+  const fund = 44;
+  for (const r of [1, 1.5, 2, 3]) {
+    const o = actx.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = fund * r;
+    // Tiny detune for slow beating
+    o.detune.value = (Math.random() - 0.5) * 4;
+    const g = actx.createGain();
+    g.gain.value = 0.55 / (r * r);
+    o.connect(g); g.connect(droneGain);
+    o.start();
+  }
+
+  // High pad: triangle triad through a bandpass
+  padFilter = actx.createBiquadFilter();
+  padFilter.type = 'bandpass';
+  padFilter.frequency.value = 1100;
+  padFilter.Q.value = 3.4;
+  padGain = actx.createGain();
+  padGain.gain.value = 0;
+  padFilter.connect(padGain);
+  padGain.connect(master);
+  for (const f of [264, 330, 396]) {  // C-E-G in just intonation
+    const o = actx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.value = f;
+    o.detune.value = (Math.random() - 0.5) * 6;
+    o.connect(padFilter);
+    o.start();
+  }
+
+  // Grain bus + soft noise buffer
+  grainGain = actx.createGain();
+  grainGain.gain.value = 0.16;
+  grainGain.connect(master);
+
+  grainBuf = actx.createBuffer(2, actx.sampleRate * 5, actx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = grainBuf.getChannelData(ch);
+    for (let i = 0; i < d.length; i++) {
+      // Pink-ish noise: low-pass random walk
+      const prev = i > 0 ? d[i-1] : 0;
+      d[i] = prev * 0.96 + (Math.random()*2-1) * 0.18;
+    }
+  }
+  scheduleGrain();
+}
+
+function scheduleGrain() {
+  if (!actx) return;
+  const wait = 5 + Math.random() * 11;          // 5–16 s between grains
+  setTimeout(() => {
+    if (!actx) return;
+    const dur = 2.5 + Math.random() * 4.5;       // long grains
+    const t0  = actx.currentTime + 0.05;
+    const src = actx.createBufferSource();
+    src.buffer = grainBuf;
+    src.playbackRate.value = 0.35 + Math.random() * 0.22;
+    src.detune.value = (Math.random() - 0.5) * 60;
+
+    const start = Math.random() * (grainBuf.duration - dur - 0.1);
+
+    const lpf = actx.createBiquadFilter();
+    lpf.type = 'lowpass';
+    lpf.frequency.value = 600 + Math.random() * 1400;
+    lpf.Q.value = 0.7;
+
+    const env = actx.createGain();
+    env.gain.setValueAtTime(0, t0);
+    env.gain.linearRampToValueAtTime(0.45, t0 + dur * 0.35);
+    env.gain.linearRampToValueAtTime(0,    t0 + dur);
+
+    const pan = actx.createStereoPanner();
+    pan.pan.value = (Math.random() - 0.5) * 0.85;
+
+    src.connect(lpf); lpf.connect(env); env.connect(pan); pan.connect(grainGain);
+    src.start(t0, start, dur);
+    src.stop(t0 + dur + 0.2);
+
+    scheduleGrain();
+  }, wait * 1000);
+}
+
+// Modulate drone + pad with cursor each animation tick
+setInterval(() => {
+  if (!actx) return;
+  cursorSpeedSm += (cursorSpeed - cursorSpeedSm) * 0.08;
+  cursorSpeed   *= 0.85;
+
+  const droneTarget = 0.055 + Math.min(0.07, cursorSpeedSm * 0.0007);
+  droneGain.gain.linearRampToValueAtTime(droneTarget, actx.currentTime + 0.4);
+
+  if (my > 0) {
+    const yNorm = 1 - my / H;                 // 1 at top, 0 at bottom
+    const padTarget = yNorm * 0.04;
+    padGain.gain.linearRampToValueAtTime(padTarget, actx.currentTime + 0.4);
+    padFilter.frequency.linearRampToValueAtTime(
+      450 + yNorm * 2200, actx.currentTime + 0.4);
+  }
+}, 90);
+
+// Hover swell on links — a single soft sine fades in on hover
+document.querySelectorAll('.nav-link').forEach(a => {
+  let osc = null, og = null;
+  a.addEventListener('pointerenter', () => {
+    if (!actx) return;
+    osc = actx.createOscillator();
+    og  = actx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 220 * (1 + Math.random() * 0.3);
+    og.gain.setValueAtTime(0, actx.currentTime);
+    og.gain.linearRampToValueAtTime(0.025, actx.currentTime + 0.6);
+    osc.connect(og); og.connect(master);
+    osc.start();
+  });
+  a.addEventListener('pointerleave', () => {
+    if (!actx || !osc) return;
+    og.gain.cancelScheduledValues(actx.currentTime);
+    og.gain.setValueAtTime(og.gain.value, actx.currentTime);
+    og.gain.linearRampToValueAtTime(0, actx.currentTime + 0.7);
+    osc.stop(actx.currentTime + 0.75);
+    osc = null;
+  });
+});
+
+function tryStart() { startAudio(); }
+document.addEventListener('pointerdown', tryStart, { once: true });
+document.addEventListener('pointermove', tryStart, { once: true });
+document.addEventListener('touchstart', tryStart, { once: true, passive: true });
+</script>
+</body>
+</html>
