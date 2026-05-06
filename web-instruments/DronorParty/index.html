@@ -137,6 +137,7 @@ body {
 }
 .module.in-out  { width:155px; }
 .module.fx      { width:265px; }
+.module.ringmod { width:170px; }   /* v0.12: ring modulator inserted between dronor and delay */
 .module.dronor  { width:620px; }   /* v0.9: widened to fit 4 string strips */
 
 .mod-head {
@@ -288,8 +289,8 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
 </head>
 <body>
 
-<div id="version-badge">DronorParty v0.11</div>
-<div id="stage-indicator">stage 2-12 / HUMANIZE + OFFSET · S-HUM removed · PITCH RATIO</div>
+<div id="version-badge">DronorParty v0.12</div>
+<div id="stage-indicator">v2 / RING MOD · bidirectional OFFSET · factory presets full</div>
 
 <div id="start-screen">
   <h1>DronorParty</h1>
@@ -351,6 +352,33 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
       <!-- Three string strips -->
       <div class="strings-row" id="strings-row">
         <!-- populated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── RING MOD ──────────────────────────────────────────────────────
+       v0.12 — multiplies the dronor bus by a sine carrier. Adds bell-like
+       overtones at low carrier freqs (50-300 Hz), metallic shimmer at high
+       (1k+ Hz). Default OFF. -->
+  <div class="col-wrap">
+    <div class="module ringmod" id="mod-ringmod">
+      <div class="mod-head" title="Ring modulator. Dronor bus × sin(2π·FREQ·t). Low FREQ adds bell tones; high FREQ adds metallic shimmer; sub-audio FREQ (under ~20 Hz) acts like tremolo.">
+        <div class="mod-title">RING MOD</div>
+        <button class="byp-btn off" data-bypass="ringmod" title="Toggle ring mod on/off. When OFF, dry=1 / wet=0 (bypassed); slider settings are kept.">OFF</button>
+      </div>
+      <div class="slider-row" title="Carrier frequency (log-scaled, 5 Hz to 5 kHz). Low values = bell-like / sub-tones. High values = metallic / radio-like.">
+        <div class="slider-label-row">
+          <span class="slider-label">FREQ</span>
+          <span class="ctrl-val" id="rm-freq-val">100 Hz</span>
+        </div>
+        <input type="range" id="rm-freq" min="0" max="1" step="0.0001" value="0.4338">
+      </div>
+      <div class="slider-row" title="Wet/dry crossfade. 0% = pure dry. 100% = pure ring-modulated. 30-50% is usually the sweet spot.">
+        <div class="slider-label-row">
+          <span class="slider-label">AMOUNT</span>
+          <span class="ctrl-val" id="rm-amt-val">30%</span>
+        </div>
+        <input type="range" id="rm-amt" min="0" max="1" step="0.01" value="0.3">
       </div>
     </div>
   </div>
@@ -446,9 +474,9 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
 </div>
 
 <div class="foot">
-  v0.10: 4 strings · 8 dronor + 6 delay presets · custom drag · self-contained (inlined gain-meter CSS).
-  Pluck step = 8th note. Defaults: gain -6 dB · decay 0.975 · brightness 1500 Hz · output -3 dB.<br>
-  Pending: mic input audio (when actual input routing is needed).
+  v0.12: ring modulator (between dronor bus and delay) · bidirectional OFFSET (-50..+50%) ·
+  factory presets reset full state (not just tuning).<br>
+  Pluck step = 8th note. Defaults: gain -6 dB · decay 0.975 · brightness 1500 Hz · output -3 dB.
 </div>
 
 <script>
@@ -535,8 +563,31 @@ for (let i = 0; i < STRING_COUNT; i++) {
 // User-saved presets capture the FULL per-string state (ratio, divisor,
 // pattern, intensity, brightness, decay, gain, pan, humanize) plus tuning
 // system, so they're full musical patches not just tuning.
-function makeTuningPreset(name, tuningSystem, ratios) {
-  return { name, tuningSystem, ratios: ratios.slice(), full: null, factory: true };
+// Default per-string "full" state for factory presets. These match the
+// initial state defaults — so loading a factory preset = "reset everything
+// to defaults, with this tuning system." Without this `full` field, factory
+// presets only restored tuning, leaving prior divisors/patterns/etc intact —
+// confusing if you'd been editing strings and expected a preset to reset.
+function defaultStringFull(i) {
+  return {
+    divisor:    DEFAULT_DIVISORS[i],
+    offset:     0,
+    humanize:   0,
+    pattern:    DEFAULT_PATTERN,
+    intensity:  1.0,
+    brightness: 1500,
+    decay:      0.975,
+    gain:       -6,
+    pan:        0,
+  };
+}
+function makeTuningPreset(name, tuningSystem, ratios, withDefaults = true) {
+  const preset = { name, tuningSystem, ratios: ratios.slice(), full: null, factory: true };
+  if (withDefaults) {
+    preset.full = [];
+    for (let i = 0; i < STRING_COUNT; i++) preset.full.push(defaultStringFull(i));
+  }
+  return preset;
 }
 const tuningPresets = [
   makeTuningPreset('12-ET',  '12-ET',   TUNINGS['12-ET'].slice()),
@@ -585,7 +636,7 @@ function loadTuningPreset(idx) {
       const inpPan = $(`[data-pan="${i}"]`);         if (inpPan)  inpPan.value  = s.pan;
       // Update the readouts
       const v = sel => document.querySelector(sel);
-      const vOff = v(`[data-offset-val="${i}"]`);    if (vOff) vOff.textContent = s.offset + '%';
+      const vOff = v(`[data-offset-val="${i}"]`);    if (vOff) vOff.textContent = (s.offset > 0 ? '+' : '') + s.offset + '%';
       const vHum = v(`[data-hum-val="${i}"]`);       if (vHum) vHum.textContent = s.humanize + '%';
       const vInt = v(`[data-intensity-val="${i}"]`); if (vInt) vInt.textContent = s.intensity.toFixed(2);
       const vBri = v(`[data-bright-val="${i}"]`);    if (vBri) vBri.textContent = Math.round(s.brightness) + ' Hz';
@@ -725,12 +776,12 @@ function buildStringStrips() {
         </div>
         <input type="range" data-hum="${idx}" min="0" max="100" step="1" value="${s.humanize}">
       </div>
-      <div class="slider-row" title="Time offset — fixed shift applied to EVERY pluck on this string, as a fraction of one step period. 0% = no shift. 50% = always half a step late. Useful for phase-shifting strings against each other while keeping the same divisor.">
+      <div class="slider-row" title="Time offset — fixed shift applied to EVERY pluck on this string. Range -50%…+50% of one step period, centered at 0. Negative = pluck lands earlier than the strict tick; positive = later. Useful for phase-shifting strings against each other.">
         <div class="slider-label-row">
           <span class="slider-label">OFFSET</span>
-          <span class="ctrl-val" data-offset-val="${idx}">${s.offset}%</span>
+          <span class="ctrl-val" data-offset-val="${idx}">${s.offset > 0 ? '+' : ''}${s.offset}%</span>
         </div>
-        <input type="range" data-offset="${idx}" min="0" max="100" step="1" value="${s.offset}">
+        <input type="range" data-offset="${idx}" min="-50" max="50" step="1" value="${s.offset}">
       </div>
       <div class="slider-row" title="Accent pattern. Each digit (0-9) is one pluck strength. 0 = rest (silent step, but pattern advances). Pattern cycles forever. e.g., '4321' = loud-medium-soft-softer-loud-...">
         <div class="slider-label-row">
@@ -850,8 +901,12 @@ function refreshClockDisplay() {
 // ── Audio graph ─────────────────────────────────────────────────────────
 let audioCtx = null;
 let dronorBus = null;          // sums all three strings
+let ringChain = null;          // ring modulator (between dronorBus and delayChain)
+let ringModBypassed = true;    // default OFF
 let delayChain = null;         // simple delay (input → dry+wet w/ feedback → outputGain)
 let delayBypassed = true;      // sliders inactive when bypassed (default OFF)
+const RM_LO_HZ = 5, RM_HI_HZ = 5000;
+const rmSliderToHz = v => RM_LO_HZ * Math.pow(RM_HI_HZ / RM_LO_HZ, v);
 let outputGainNode = null;     // master output gain
 let outputMuted = false;       // master output mute (decoupled from gain slider value)
 let outputLimiter = null;      // hard limiter — prevents Chrome auto-mute on peaks
@@ -982,6 +1037,28 @@ function createKSChain(ctx) {
   return { sumNode, delay, loopFIR, feedback, filter, output, panner, strGain, aL, aR };
 }
 
+// Ring modulator: input → dry → output, input → ringMul → wet → output.
+// ringMul.gain is driven by an OscillatorNode (sine carrier), with the gain's
+// own .value set to 0 so the gain becomes ±carrier — pure multiplication.
+function createRingModChain(ctx) {
+  const input   = ctx.createGain();
+  const dry     = ctx.createGain();    dry.gain.value = 1;   // bypass-safe defaults
+  const wet     = ctx.createGain();    wet.gain.value = 0;
+  const ringMul = ctx.createGain();    ringMul.gain.value = 0;
+  const carrier = ctx.createOscillator();
+  const output  = ctx.createGain();
+  carrier.type = 'sine';
+  carrier.frequency.value = 100;
+  carrier.connect(ringMul.gain);       // carrier (-1..+1) becomes ringMul's gain → multiplication
+  carrier.start();
+  input.connect(dry);
+  input.connect(ringMul);
+  ringMul.connect(wet);
+  dry.connect(output);
+  wet.connect(output);
+  return { input, dry, wet, ringMul, carrier, output };
+}
+
 // Simple delay: input → dry → out, input → delay → wet → out, with feedback loop.
 function createDelayChain(ctx) {
   const input    = ctx.createGain(); input.gain.value = 1;
@@ -1039,7 +1116,26 @@ function rescheduleSchedulerPeriod() {
 function onTick() {
   state.strings.forEach((s) => {
     if (!s.audio || s.bypass) return;
-    if (tickCount % s.divisor !== 0) return;
+    // OFFSET (-50%..+50%) shifts every pluck on this string by a fraction of one
+    // step period. Positive: fire on the strict divisor tick + delay. Negative:
+    // we can't go back in time, so fire on the PREVIOUS divisor tick and delay
+    // by (1 + offset/100) of a step. Net effect: pluck lands at the correct
+    // (earlier) musical position.
+    const stepMs = state.clockPeriod * 1000;
+    let shouldFire = false;
+    let baseDelayMs = 0;
+    if (s.offset >= 0) {
+      if (tickCount % s.divisor !== 0) return;
+      shouldFire = true;
+      baseDelayMs = (s.offset / 100) * stepMs;
+    } else {
+      // Negative offset: fire one tick early relative to the strict divisor tick
+      if ((tickCount + 1) % s.divisor !== 0) return;
+      shouldFire = true;
+      baseDelayMs = (1 + s.offset / 100) * stepMs;   // s.offset is negative, so this is < stepMs
+    }
+    if (!shouldFire) return;
+
     const patLen = Math.max(1, (s.pattern || '4321').length);
     const step   = (s.patternStep || 0) % patLen;
     const digit  = parseInt(s.pattern[step] || '0', 10);
@@ -1049,15 +1145,9 @@ function onTick() {
     strength = Math.max(0, Math.min(1, strength));
     if (strength < 0.001) return;
     const freq = state.rootFreq * s.ratio;
-    let timingMs = 0;
-    // OFFSET — fixed shift for every pluck on this string, as a fraction of
-    // one step period. Useful for phase-shifting strings against each other.
-    if (s.offset > 0) {
-      timingMs += (s.offset / 100) * state.clockPeriod * 1000;
-    }
+    let timingMs = baseDelayMs;
     // HUMANIZE — random per-pluck timing jitter, scaled to this string's
-    // pluck period (divisor × step) so it's audible regardless of tempo.
-    // 100% = up to 1.5× the string's pluck period.
+    // pluck period (divisor × step). 100% = up to 1.5× the string's pluck period.
     if (s.humanize > 0) {
       const stringPeriod = s.divisor * state.clockPeriod;
       timingMs += Math.random() * (s.humanize / 100) * stringPeriod * 1000 * 1.5;
@@ -1180,7 +1270,8 @@ function wireStringControls() {
         break;
       case 'offset':
         s.offset = v;
-        document.querySelector(`[data-offset-val="${i}"]`).textContent = v + '%';
+        document.querySelector(`[data-offset-val="${i}"]`).textContent =
+          (v > 0 ? '+' : '') + v + '%';
         break;
       case 'bright':
         s.brightness = v;
@@ -1306,6 +1397,7 @@ function wireModuleBypass() {
   document.querySelectorAll('.module .byp-btn').forEach(btn => {
     if (btn.id === 'output-mute')             return;
     if (btn.dataset.bypass === 'delay')       return;
+    if (btn.dataset.bypass === 'ringmod')     return;
     if (btn.dataset.stringBypass != null)     return;
     btn.addEventListener('click', e => {
       e.stopPropagation();
@@ -1316,6 +1408,49 @@ function wireModuleBypass() {
         dronorBus.gain.setTargetAtTime(target, audioCtx.currentTime, 0.05);
       }
     });
+  });
+}
+
+function wireRingModControls() {
+  const freq = document.getElementById('rm-freq');
+  const amt  = document.getElementById('rm-amt');
+  const fVal = document.getElementById('rm-freq-val');
+  const aVal = document.getElementById('rm-amt-val');
+  const byp  = document.querySelector('#mod-ringmod [data-bypass="ringmod"]');
+
+  function applyFreq() {
+    ensureRunning();
+    const hz = rmSliderToHz(parseFloat(freq.value));
+    if (ringChain) ringChain.carrier.frequency.setTargetAtTime(hz, audioCtx.currentTime, 0.02);
+    fVal.textContent = (hz < 100 ? hz.toFixed(1) : Math.round(hz)) + ' Hz';
+  }
+  function applyAmt() {
+    ensureRunning();
+    const v = parseFloat(amt.value);
+    if (ringChain && !ringModBypassed) {
+      ringChain.wet.gain.setTargetAtTime(v,     audioCtx.currentTime, 0.02);
+      ringChain.dry.gain.setTargetAtTime(1 - v, audioCtx.currentTime, 0.02);
+    }
+    aVal.textContent = Math.round(v * 100) + '%';
+  }
+  freq.addEventListener('input', applyFreq);
+  amt.addEventListener('input', applyAmt);
+
+  byp.addEventListener('click', e => {
+    e.stopPropagation();
+    ringModBypassed = !ringModBypassed;
+    byp.classList.toggle('off', ringModBypassed);
+    byp.textContent = ringModBypassed ? 'OFF' : 'ON';
+    if (!ringChain) return;
+    const t = audioCtx.currentTime;
+    if (ringModBypassed) {
+      ringChain.wet.gain.setTargetAtTime(0, t, 0.02);
+      ringChain.dry.gain.setTargetAtTime(1, t, 0.02);
+    } else {
+      const v = parseFloat(amt.value);
+      ringChain.wet.gain.setTargetAtTime(v,     t, 0.02);
+      ringChain.dry.gain.setTargetAtTime(1 - v, t, 0.02);
+    }
   });
 }
 
@@ -1426,9 +1561,13 @@ async function startAudio() {
   dronorBus.gain.value = 1;
   state.strings.forEach(s => s.audio.strGain.connect(dronorBus));
 
+  // Ring modulator (defaults bypassed: dry=1, wet=0)
+  ringChain = createRingModChain(audioCtx);
+  dronorBus.connect(ringChain.input);
+
   // Delay chain (defaults bypassed: dry=1, wet=0, fb=0)
   delayChain = createDelayChain(audioCtx);
-  dronorBus.connect(delayChain.input);
+  ringChain.output.connect(delayChain.input);
 
   outputGainNode = audioCtx.createGain();
   outputGainNode.gain.value = dbToGain(parseFloat(
@@ -1463,6 +1602,7 @@ async function startAudio() {
   wireGlobalControls();
   wireStringControls();
   wireOutputControls();
+  wireRingModControls();
   wireDelayControls();
   wirePresetSlots();
   wireModuleBypass();
@@ -1506,7 +1646,7 @@ async function startAudio() {
   startScheduler();
   requestAnimationFrame(meterTick);
 
-  console.log('DronorParty v0.11 — HUMANIZE + OFFSET. sr=', audioCtx.sampleRate,
+  console.log('DronorParty v0.12 — ring mod, bidirectional offset. sr=', audioCtx.sampleRate,
               'ctx=', Tone.context.state, 'maxCh=', audioCtx.destination.maxChannelCount);
 }
 
