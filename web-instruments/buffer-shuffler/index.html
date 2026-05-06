@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Buffer Shuffler — v0.5</title>
+<title>Buffer Shuffler — v0.6</title>
 <!-- Tone.js intentionally NOT loaded in v0.2: the buffer-shuffler engine is pure
      Web Audio. AudioWorkletNode's constructor requires a real BaseAudioContext,
      and Tone.js 14.8.49's wrapper isn't one — so we use a bare AudioContext. -->
@@ -230,6 +230,34 @@ input.gain-meter-slider::-webkit-slider-thumb {
 }
 .activity-led.fire { background:#7abbe0; box-shadow:0 0 6px rgba(122,187,224,.9); }
 
+/* SRC → OUT horizontal gain/meter strip (1D — pan doesn't apply to a send level) */
+.srcout-meter-wrap {
+  position:relative; width:100%; height:22px;
+  background:#060606; border:1px solid #1a1a1a; border-radius:3px;
+  overflow:hidden;
+}
+.srcout-meter-bar { position:absolute; left:0; right:0; top:0; bottom:0; }
+.srcout-meter-level {
+  position:absolute; left:0; height:calc(50% - 1px); top:0; width:0%;
+  background:linear-gradient(to right,#1a5a1a 0%,#2a9a2a 60%,#b89010 80%,#e02020 100%);
+  pointer-events:none; transition:width .04s linear;
+}
+/* 0 dB tick at the same proportional spot as other meter widgets (-60..+6 → 0 = 90.9%) */
+.srcout-meter-wrap::before {
+  content:""; position:absolute; top:0; bottom:0;
+  left:90.9%; width:1px; background:rgba(200,200,100,0.45);
+  pointer-events:none; z-index:2;
+}
+.srcout-meter-wrap input[type="range"] {
+  position:absolute; left:0; top:0; width:100%; height:100%;
+  -webkit-appearance:none; background:transparent; outline:none; cursor:pointer; z-index:3;
+}
+.srcout-meter-wrap input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance:none; width:5px; height:26px;
+  background:#6aaee0; border-radius:1px; cursor:ew-resize;
+  box-shadow:0 0 4px rgba(100,160,220,.6);
+}
+
 /* ── v0.5 RANGE SLIDER WIDGET ─────────────────────────────────── */
 .range-slider {
   position:relative; width:100%; height:22px;
@@ -290,7 +318,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 </head>
 <body>
 
-<div id="version-badge">BUFFER SHUFFLER · v0.5</div>
+<div id="version-badge">BUFFER SHUFFLER · v0.6</div>
 
 <div id="start-screen">
   <div style="font-size:.78rem;letter-spacing:.28em;color:#666;">BUFFER SHUFFLER — TEST CASE</div>
@@ -360,16 +388,23 @@ input.gain-meter-slider::-webkit-slider-thumb {
         <input type="range" id="src-gain-sl" min="-60" max="6" step="0.5" value="-6" oninput="setSrcGainDb(this.value)">
       </div>
 
-      <!-- Mute source so it doesn't pass through directly to output (lets you hear ONLY grains) -->
-      <div class="ctrl-inline" style="margin-top:6px;">
-        <label>SRC → OUT</label>
-        <select id="src-passthru" onchange="setSrcPassthru(this.value)">
-          <option value="0">Muted (only grains heard)</option>
-          <option value="0.5">-6 dB pass-through</option>
-          <option value="1">Unity pass-through</option>
-        </select>
+      <!-- v0.6: SRC → OUT replaced with a gain/meter slider. Capture into the
+           ring buffer is always live regardless of this monitor level. -->
+      <div class="slider-row" title="How much of the source you hear directly mixed with the grain output. Capture into the 12s buffer continues regardless.">
+        <div class="slider-label-row">
+          <span class="slider-label">SRC → OUT</span>
+          <span class="ctrl-val" id="src-passthru-val" data-value="-inf" title="Click to type a precise dB value">-inf dB</span>
+        </div>
+        <div class="srcout-meter-wrap">
+          <div class="srcout-meter-bar">
+            <div class="srcout-meter-level" id="srcout-meter-l"></div>
+            <div class="srcout-meter-level" id="srcout-meter-r" style="top:auto;bottom:0;"></div>
+          </div>
+          <input type="range" id="src-passthru-sl" min="-60" max="6" step="0.1" value="-60"
+                 oninput="setSrcPassthruDb(this.value)"
+                 title="Source-to-output gain (-inf to +6 dB). At -60 dB or lower, you hear only the grains.">
+        </div>
       </div>
-
       <div class="hint" style="margin-top:6px;color:#444;">
         capture into 12-second ring buffer is always live regardless of pass-through
       </div>
@@ -496,6 +531,24 @@ input.gain-meter-slider::-webkit-slider-thumb {
     </div>
   </div>
 
+  <!-- ═════════ INTERPOLATION SPACE (v0.6) ═════════
+       Drag the listener (cyan diamond) — IDW blends placed presets continuously.
+       Click any preset slot button (above) to teleport listener there.
+       Source/input is intentionally NOT part of IS state. -->
+  <div class="col-wrap">
+    <div class="module" id="is-module" style="width:280px;">
+      <div class="mod-head">
+        <span class="mod-title">INTERPOLATION SPACE</span>
+      </div>
+      <canvas id="is-canvas" width="256" height="220"
+              style="width:100%;height:220px;background:#060606;border:1px solid #1a1a1a;border-radius:3px;display:block;cursor:crosshair;touch-action:none;"></canvas>
+      <div class="hint" style="margin-top:6px;line-height:1.5;color:#555;text-align:center;">
+        drag listener · WASD to navigate (shift = sprint)<br>
+        IDW-blended params snap into the range sliders live
+      </div>
+    </div>
+  </div>
+
   <!-- ═════════ OUTPUT ═════════ -->
   <div class="col-wrap">
     <div class="module" id="output-module">
@@ -582,14 +635,15 @@ const freqLog = {
   toPos(hz){ return clamp((Math.log(hz/this.minHz)/Math.log(this.maxHz/this.minHz))*1000,0,1000); },
 };
 const densityLog = {
-  // 0.5 grains/sec to 100 grains/sec
-  minD:0.5, maxD:100,
+  // 0.1 grains/sec to 100 grains/sec (v0.6: lowered from 0.5 — log curve naturally
+  // gives finer control at the low end; extending lower gives more visual room there)
+  minD:0.1, maxD:100,
   toD(pos){ return this.minD*Math.pow(this.maxD/this.minD, pos/1000); },
   toPos(d){ return clamp((Math.log(d/this.minD)/Math.log(this.maxD/this.minD))*1000,0,1000); },
 };
 const lengthLog = {
-  // 5 ms to 2000 ms
-  minMs:5, maxMs:2000,
+  // 5 ms to 12000 ms (v0.6: extended to full 12s buffer length)
+  minMs:5, maxMs:12000,
   toMs(pos){ return this.minMs*Math.pow(this.maxMs/this.minMs, pos/1000); },
   toPos(ms){ return clamp((Math.log(ms/this.minMs)/Math.log(this.maxMs/this.minMs))*1000,0,1000); },
 };
@@ -606,7 +660,8 @@ let outAnL, outAnR, outSplit;
 // Source
 let sourceMode = 'sig';     // 'mic' | 'sig'
 let srcGainNode = null;     // user-controlled gain on the source
-let srcPassthruGain = null; // how much source goes direct to output (mute by default — only grains heard)
+let srcPassthruGain = null; // how much source goes direct to output (-inf by default — only grains heard)
+let srcPassAnL = null, srcPassAnR = null, srcPassSplit = null; // analyser tap for the SRC → OUT meter
 let srcOsc = null, srcNoise = null, srcWaveSel = 'sine', srcFreqHz = 220;
 let micStream = null, micSourceNode = null, currentMicDeviceId = '';
 
@@ -738,8 +793,14 @@ async function _initAudio(){
 
   // ── Source ──
   srcGainNode = rawCtx.createGain(); srcGainNode.gain.value = dbToGain(srcGainDb);
-  srcPassthruGain = rawCtx.createGain(); srcPassthruGain.gain.value = 0; // mute pass-through by default
+  srcPassthruGain = rawCtx.createGain(); srcPassthruGain.gain.value = 0; // -inf by default
   srcGainNode.connect(srcPassthruGain);
+  // Tap for the SRC → OUT meter (drives the colored bar in the slider strip)
+  srcPassSplit = rawCtx.createChannelSplitter(2);
+  srcPassAnL = rawCtx.createAnalyser(); srcPassAnL.fftSize = 1024; srcPassAnL.smoothingTimeConstant = 0.4;
+  srcPassAnR = rawCtx.createAnalyser(); srcPassAnR.fftSize = 1024; srcPassAnR.smoothingTimeConstant = 0.4;
+  srcPassSplit.connect(srcPassAnL, 0); srcPassSplit.connect(srcPassAnR, 1);
+  srcPassthruGain.connect(srcPassSplit);
 
   // Sig gen built into source path; mic added on demand
   srcOsc = rawCtx.createOscillator(); srcOsc.type = srcWaveSel; srcOsc.frequency.value = srcFreqHz;
@@ -788,6 +849,14 @@ async function _initAudio(){
   startBufVizLoop();
   startLatencyReadout();
   loadPreset(0); // home — also highlights the slot
+
+  // ── Interpolation Space (v0.6) ──
+  psSeedFactory();
+  psLoadUserSlotsFromStorage();
+  psSetupCanvas();
+  psSetupKeyboard();
+  // RAF a couple of frames so the canvas gets its real size before first draw
+  requestAnimationFrame(() => requestAnimationFrame(psRedraw));
 
   console.log('Buffer Shuffler ready. sampleRate=', sampleRate, 'bufferLen=', bufferLen);
 }
@@ -926,8 +995,25 @@ function setSrcGainDb(db){
   el.textContent = round2(srcGainDb)+' dB';
   el.dataset.value = srcGainDb;
 }
+// v0.6: SRC → OUT is now a dB-scaled gain slider (was 3-option select).
+// "-inf" represents -60dB or lower; the slider is also clamped to silence below -60.
+function setSrcPassthruDb(db){
+  const v = parseFloat(db);
+  // Below -60 dB → effectively silent
+  const linear = v <= -60 ? 0 : dbToGain(v);
+  if (srcPassthruGain) srcPassthruGain.gain.value = linear;
+  const el = document.getElementById('src-passthru-val');
+  if (el) {
+    el.textContent = v <= -60 ? '-inf dB' : (v >= 0 ? '+' : '') + round2(v) + ' dB';
+    el.dataset.value = v;
+  }
+}
+// Back-compat: any old factory/user state that calls setSrcPassthru(0|0.5|1) still works.
 function setSrcPassthru(amount){
-  if (srcPassthruGain) srcPassthruGain.gain.value = parseFloat(amount);
+  const a = parseFloat(amount);
+  // Map old values back to dB: 0 → -inf, 0.5 → -6, 1 → 0
+  if (a <= 0.001) setSrcPassthruDb(-60);
+  else setSrcPassthruDb(20 * Math.log10(a));
 }
 
 /* ══════════ SHUFFLER PARAMS (v0.5: range-shaped) ══════════
@@ -1101,20 +1187,20 @@ function initSliders(){
     };
   }
 
-  // DENSITY (log, 0.5–100/s)
+  // DENSITY (log, 0.1–100/s — v0.6: lower min for finer low-end control)
   rsInstances.density = rangeSlider({
     elem: document.getElementById('rs-density'),
-    unitMin: 0.5, unitMax: 100, scale: 'log',
+    unitMin: 0.1, unitMax: 100, scale: 'log',
     lowVal: params.density.lowVal, highVal: params.density.highVal,
     fmt: (v, isLow) => round2(v) + (isLow ? '' : '/s'),
     onChange: readout('density','density', (v,isLow) => round2(v) + (isLow ? '' : '/s')),
     onCommit: () => { if (shufflerEnabled) restartGrainLoop(); },
   });
 
-  // LENGTH (log, 5–2000 ms)
+  // LENGTH (log, 5–12000 ms — v0.6: extended to full buffer length)
   rsInstances.lengthMs = rangeSlider({
     elem: document.getElementById('rs-length'),
-    unitMin: 5, unitMax: 2000, scale: 'log',
+    unitMin: 5, unitMax: 12000, scale: 'log',
     lowVal: params.lengthMs.lowVal, highVal: params.lengthMs.highVal,
     fmt: (v, isLow) => round2(v) + (isLow ? '' : 'ms'),
     onChange: ({lowVal,highVal}) => {
@@ -1148,10 +1234,13 @@ function initSliders(){
     lowVal: params.pitch.lowVal, highVal: params.pitch.highVal,
     fmt: (v, isLow) => (v>=0?'+':'') + (pitchFineMode ? v.toFixed(2) : Math.round(v)) + (isLow ? '' : ' semis'),
     onChange: ({lowVal,highVal}) => {
-      // In COARSE mode, snap edges to integer semitones (visual). The randomization
-      // also quantizes per-grain inside randomInRange().
+      // COARSE: snap edges to integer semitones. FINE: quantize to 0.01 (cents-ish)
+      // so dragging gives a clean readout instead of pixel-resolution noise.
       if (!pitchFineMode) {
         lowVal = Math.round(lowVal); highVal = Math.round(highVal);
+      } else {
+        lowVal  = Math.round(lowVal  * 100) / 100;
+        highVal = Math.round(highVal * 100) / 100;
       }
       params.pitch = {lowVal, highVal};
       const lo = document.getElementById('rs-pitch-low');
@@ -1214,6 +1303,375 @@ function applyParams(){
   rsInstances.position.setRange(params.position.lowVal, params.position.highVal);
   rsInstances.pitch.setRange(params.pitch.lowVal, params.pitch.highVal);
   rsInstances.pan.setRange(params.pan.lowVal, params.pan.highVal);
+}
+
+/* ════════════════════════════════════════════════════════════════
+   INTERPOLATION SPACE (v0.6)
+   17 slots — 0 = home (centered), 1–8 = factory presets pre-placed clockwise,
+   9–16 = user slots (placed at the cursor when shift+saved).
+   The listener is a cyan diamond. Drag it or use WASD to move. As the listener
+   moves, all placed slots' param ranges are blended via IDW (inverse-distance
+   weighting, power = 2) and pushed live into the range sliders.
+   Source/input config is NOT part of the IS state — only the 5 grain ranges.
+   ════════════════════════════════════════════════════════════════ */
+
+const PS_SLOTS = 17;          // 0..16
+const PS_IDW_POWER = 2;
+const PS_LISTENER_SIZE = 9;
+const PS_SLOT_SIZE = 7;
+const PS_WASD_PX_PER_FRAME = 3;
+const PS_WASD_SPRINT_MULT = 2.6;
+
+// Each entry: { x, y, params } where x,y are normalized 0–1 canvas coords.
+// `params` is a snapshot of the 5 range params (NO source/input).
+const psData = new Array(PS_SLOTS).fill(null);
+let psCursor = { x: 0.5, y: 0.5 };  // listener position, normalized
+let psSelected = 0;
+const psKeys = { w:false, a:false, s:false, d:false, shift:false };
+let psWasdRAF = null;
+let psDragging = null; // 'listener' | {slot:N} | null
+
+function isParamSnapshot(){
+  // Return a deep-clone of just the IS-relevant params (ranges only)
+  return {
+    density:  { ...params.density },
+    lengthMs: { ...params.lengthMs },
+    position: { ...params.position },
+    pitch:    { ...params.pitch },
+    pan:      { ...params.pan },
+  };
+}
+
+function psSeedFactory(){
+  // Slot 0 — home centered with current defaults
+  psData[0] = { x: 0.5, y: 0.5, params: {
+    density:  { ...FACTORY_PRESETS[0].density },
+    lengthMs: { ...FACTORY_PRESETS[0].lengthMs },
+    position: { ...FACTORY_PRESETS[0].position },
+    pitch:    { ...FACTORY_PRESETS[0].pitch },
+    pan:      { ...FACTORY_PRESETS[0].pan },
+  }};
+  // Slots 1–8: place clockwise starting at 12 o'clock, radius 0.34, with mild jitter
+  for (let i = 1; i <= 8; i++) {
+    const angle = ((i - 1) / 8) * Math.PI * 2 - Math.PI / 2;
+    const jitterA = Math.sin(i * 7.13) * 0.06;
+    const jitterR = Math.cos(i * 11.31) * 0.025;
+    const r = 0.34 + jitterR;
+    const a = angle + jitterA;
+    const fp = FACTORY_PRESETS[i] || FACTORY_PRESETS[0];
+    psData[i] = {
+      x: 0.5 + Math.cos(a) * r,
+      y: 0.5 + Math.sin(a) * r,
+      params: {
+        density:  { ...fp.density },
+        lengthMs: { ...fp.lengthMs },
+        position: { ...fp.position },
+        pitch:    { ...fp.pitch },
+        pan:      { ...fp.pan },
+      },
+    };
+  }
+  // 9–16 (user slots) start unplaced; populated when user shift+clicks a slot button
+}
+
+function psBlendAtCursor(){
+  // IDW over all PLACED slots. Returns blended {density, lengthMs, position, pitch, pan}.
+  const placed = [];
+  for (let i = 0; i < PS_SLOTS; i++) if (psData[i]) placed.push(psData[i]);
+  if (placed.length === 0) return null;
+  // Distance from cursor to each placed slot (normalized canvas units)
+  const dists = placed.map(p => {
+    const dx = p.x - psCursor.x;
+    const dy = p.y - psCursor.y;
+    return Math.max(0.001, Math.sqrt(dx*dx + dy*dy));
+  });
+  const weights = dists.map(d => 1 / Math.pow(d, PS_IDW_POWER));
+  const totalW = weights.reduce((s,w) => s + w, 0);
+  // Blend each {lowVal, highVal} pair
+  const keys = ['density','lengthMs','position','pitch','pan'];
+  const out = {};
+  for (const k of keys) {
+    let lo = 0, hi = 0;
+    for (let i = 0; i < placed.length; i++) {
+      const w = weights[i] / totalW;
+      lo += placed[i].params[k].lowVal * w;
+      hi += placed[i].params[k].highVal * w;
+    }
+    out[k] = { lowVal: lo, highVal: hi };
+  }
+  return out;
+}
+
+function psApplyBlend(){
+  const blend = psBlendAtCursor();
+  if (!blend) return;
+  // Push to range sliders via setRange (which routes through onChange → params update)
+  rsInstances.density.setRange(blend.density.lowVal, blend.density.highVal);
+  rsInstances.lengthMs.setRange(blend.lengthMs.lowVal, blend.lengthMs.highVal);
+  rsInstances.position.setRange(blend.position.lowVal, blend.position.highVal);
+  rsInstances.pitch.setRange(blend.pitch.lowVal, blend.pitch.highVal);
+  rsInstances.pan.setRange(blend.pan.lowVal, blend.pan.highVal);
+}
+
+function psSelectSlot(i){
+  psSelected = i;
+  document.querySelectorAll('.preset-slot').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.slot) === i);
+  });
+  if (psData[i]) {
+    psCursor.x = psData[i].x;
+    psCursor.y = psData[i].y;
+    psApplyBlend();
+  }
+  psRedraw();
+}
+
+function psSaveSlot(slot){
+  if (slot === 0) return; // home is read-only
+  // Place at current listener position. If listener still at exact home (0.5, 0.5)
+  // and we have unplaced user slots, auto-distribute clockwise like fx-processor.
+  const atHome = Math.abs(psCursor.x - 0.5) < 0.005 && Math.abs(psCursor.y - 0.5) < 0.005;
+  let x = psCursor.x, y = psCursor.y;
+  if (atHome && slot >= 9) {
+    const userIdx = slot - 9; // 0..7
+    const angle = (userIdx / 8) * Math.PI * 2 - Math.PI / 2;
+    const r = 0.20;
+    x = 0.5 + Math.cos(angle) * r;
+    y = 0.5 + Math.sin(angle) * r;
+  }
+  psData[slot] = { x, y, params: isParamSnapshot() };
+  // Persist user slots (9–16) to localStorage; factory is in code
+  if (slot >= 9) {
+    userSlots[slot] = { x, y, params: psData[slot].params, savedAt: Date.now() };
+    saveUserSlots();
+  }
+  psSelectSlot(slot);
+  refreshUserSlotLabels();
+  psRedraw();
+}
+
+function psLoadUserSlotsFromStorage(){
+  for (let i = 9; i <= 16; i++) {
+    const u = userSlots[i];
+    if (u && u.params) psData[i] = { x: u.x, y: u.y, params: u.params };
+  }
+}
+
+function psRedraw(){
+  const canvas = document.getElementById('is-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  // Match canvas internal size to its CSS-rendered size
+  const dpr = window.devicePixelRatio || 1;
+  const cw = canvas.clientWidth, ch = canvas.clientHeight;
+  if (canvas.width !== cw * dpr || canvas.height !== ch * dpr) {
+    canvas.width = cw * dpr; canvas.height = ch * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  ctx.clearRect(0, 0, cw, ch);
+
+  // Soft cross-hairs through home
+  ctx.strokeStyle = '#1a1a1a';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(cw * 0.5, 0); ctx.lineTo(cw * 0.5, ch);
+  ctx.moveTo(0, ch * 0.5); ctx.lineTo(cw, ch * 0.5);
+  ctx.stroke();
+
+  // Compute IDW weights for visualizing slot brightness
+  const weights = computePsSlotWeights();
+
+  // Draw slots
+  for (let i = 0; i < PS_SLOTS; i++) {
+    const slot = psData[i];
+    if (!slot) continue;
+    const x = slot.x * cw, y = slot.y * ch;
+    const w = weights ? (weights[i] || 0) : 0;
+    const alpha = 0.35 + 0.6 * w; // dim default, brighter when influential
+    const isUser = i >= 9;
+    const isFactory = i >= 1 && i <= 8;
+    const isHome = i === 0;
+    let color;
+    if (isHome)         color = `rgba(106,174,224,${alpha})`;
+    else if (isFactory) color = `rgba(${190 + 30*w | 0}, ${168 + 20*w | 0}, ${84 + 30*w | 0}, ${alpha})`;
+    else                color = `rgba(${110 + 80*w | 0}, ${190 + 30*w | 0}, ${110 + 50*w | 0}, ${alpha})`;
+    // halo
+    if (w > 0.05) {
+      ctx.fillStyle = color.replace(/,([0-9.]+)\)$/, `,${(0.18 * w).toFixed(3)})`);
+      ctx.beginPath(); ctx.arc(x, y, PS_SLOT_SIZE + 6, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(x, y, PS_SLOT_SIZE, 0, Math.PI * 2); ctx.fill();
+    // Number label
+    ctx.fillStyle = `rgba(220,200,160,${alpha})`;
+    ctx.font = '9px Courier New';
+    ctx.textAlign = 'center';
+    const label = isHome ? '0' : (isFactory ? String(i) : String(i - 8));
+    ctx.fillText(label, x, y + 3);
+    // Selection ring
+    if (i === psSelected) {
+      ctx.strokeStyle = 'rgba(232,200,116,0.8)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(x, y, PS_SLOT_SIZE + 3, 0, Math.PI * 2); ctx.stroke();
+    }
+  }
+
+  // Listener — cyan diamond + crosshair
+  const lx = psCursor.x * cw, ly = psCursor.y * ch;
+  ctx.strokeStyle = 'rgba(106,174,224,0.55)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(lx - 14, ly); ctx.lineTo(lx - 4, ly);
+  ctx.moveTo(lx + 14, ly); ctx.lineTo(lx + 4, ly);
+  ctx.moveTo(lx, ly - 14); ctx.lineTo(lx, ly - 4);
+  ctx.moveTo(lx, ly + 14); ctx.lineTo(lx, ly + 4);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(106,174,224,0.95)';
+  ctx.beginPath();
+  ctx.moveTo(lx, ly - PS_LISTENER_SIZE);
+  ctx.lineTo(lx + PS_LISTENER_SIZE, ly);
+  ctx.lineTo(lx, ly + PS_LISTENER_SIZE);
+  ctx.lineTo(lx - PS_LISTENER_SIZE, ly);
+  ctx.closePath(); ctx.fill();
+}
+
+function computePsSlotWeights(){
+  // Returns weights array (sum to 1) over all PS_SLOTS, indexed by slot.
+  // Empty slots have weight 0.
+  const dists = new Array(PS_SLOTS).fill(0);
+  let totalW = 0;
+  const w = new Array(PS_SLOTS).fill(0);
+  for (let i = 0; i < PS_SLOTS; i++) {
+    if (!psData[i]) continue;
+    const dx = psData[i].x - psCursor.x;
+    const dy = psData[i].y - psCursor.y;
+    const d = Math.max(0.001, Math.sqrt(dx*dx + dy*dy));
+    dists[i] = d;
+    const wt = 1 / Math.pow(d, PS_IDW_POWER);
+    w[i] = wt;
+    totalW += wt;
+  }
+  if (totalW <= 0) return null;
+  for (let i = 0; i < PS_SLOTS; i++) w[i] /= totalW;
+  return w;
+}
+
+function psHitTestSlot(canvasX, canvasY, cw, ch){
+  // Pixel-space hit test for slot dragging; returns slot idx or -1
+  const HIT_RADIUS = PS_SLOT_SIZE + 4;
+  for (let i = 0; i < PS_SLOTS; i++) {
+    if (!psData[i] || i === 0) continue; // can't move home
+    const x = psData[i].x * cw, y = psData[i].y * ch;
+    if ((canvasX - x)**2 + (canvasY - y)**2 < HIT_RADIUS * HIT_RADIUS) return i;
+  }
+  return -1;
+}
+
+function psSetupCanvas(){
+  const canvas = document.getElementById('is-canvas');
+  if (!canvas) return;
+  canvas.addEventListener('pointerdown', e => {
+    const r = canvas.getBoundingClientRect();
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    // Check if we hit a slot first (drag-to-reposition)
+    const slotIdx = psHitTestSlot(x, y, r.width, r.height);
+    if (slotIdx >= 0) {
+      psDragging = { slot: slotIdx };
+      psSelectSlot(slotIdx);
+    } else {
+      // Otherwise drag the listener
+      psDragging = 'listener';
+      psCursor.x = clamp(x / r.width, 0, 1);
+      psCursor.y = clamp(y / r.height, 0, 1);
+      psApplyBlend();
+      psRedraw();
+    }
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (!psDragging) return;
+    const r = canvas.getBoundingClientRect();
+    const x = clamp((e.clientX - r.left) / r.width, 0, 1);
+    const y = clamp((e.clientY - r.top) / r.height, 0, 1);
+    if (psDragging === 'listener') {
+      psCursor.x = x; psCursor.y = y;
+      psApplyBlend();
+    } else if (psDragging.slot != null) {
+      const s = psData[psDragging.slot];
+      if (s) { s.x = x; s.y = y; }
+      // If moving the slot we're sitting on, stay in sync
+      if (psSelected === psDragging.slot) { psCursor.x = x; psCursor.y = y; psApplyBlend(); }
+      // Persist user-slot moves
+      if (psDragging.slot >= 9 && userSlots[psDragging.slot]) {
+        userSlots[psDragging.slot].x = x;
+        userSlots[psDragging.slot].y = y;
+        saveUserSlots();
+      }
+    }
+    psRedraw();
+  });
+  canvas.addEventListener('pointerup', e => {
+    psDragging = null;
+    try { canvas.releasePointerCapture(e.pointerId); } catch{}
+  });
+  canvas.addEventListener('pointercancel', () => psDragging = null);
+}
+
+function psSetupKeyboard(){
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+    const board = document.getElementById('board');
+    if (!board || board.style.display === 'none') return;
+    const k = e.key.toLowerCase();
+    psKeys.shift = e.shiftKey;
+    if (['w','a','s','d'].includes(k)) {
+      e.preventDefault();
+      psKeys[k] = true;
+      if (!psWasdRAF) psWasdRAF = requestAnimationFrame(psWasdLoop);
+    }
+    // Number keys 0-8 (factory) and Shift+0-8 (save user)
+    const codeM = e.code.match(/^Digit(\d)$/);
+    if (codeM) {
+      const num = parseInt(codeM[1]);
+      if (e.shiftKey && num >= 1 && num <= 8) {
+        // Shift + 1..8 → save current state to user slot (idx num + 8)
+        e.preventDefault();
+        psSaveSlot(num + 8);
+      } else if (num >= 0 && num <= 8) {
+        e.preventDefault();
+        psSelectSlot(num);
+      }
+    }
+  });
+  document.addEventListener('keyup', e => {
+    const k = e.key.toLowerCase();
+    psKeys.shift = e.shiftKey;
+    if (['w','a','s','d'].includes(k)) psKeys[k] = false;
+  });
+}
+
+function psWasdLoop(){
+  const canvas = document.getElementById('is-canvas');
+  if (!canvas) { psWasdRAF = null; return; }
+  const cw = canvas.clientWidth, ch = canvas.clientHeight;
+  let dx = 0, dy = 0;
+  if (psKeys.w) dy -= 1;
+  if (psKeys.s) dy += 1;
+  if (psKeys.a) dx -= 1;
+  if (psKeys.d) dx += 1;
+  if (dx === 0 && dy === 0) {
+    psWasdRAF = null;
+    return;
+  }
+  // Normalize diagonal so it doesn't move √2× faster
+  const mag = Math.sqrt(dx*dx + dy*dy);
+  dx /= mag; dy /= mag;
+  const speed = PS_WASD_PX_PER_FRAME * (psKeys.shift ? PS_WASD_SPRINT_MULT : 1);
+  psCursor.x = clamp(psCursor.x + (dx * speed) / cw, 0, 1);
+  psCursor.y = clamp(psCursor.y + (dy * speed) / ch, 0, 1);
+  psApplyBlend();
+  psRedraw();
+  psWasdRAF = requestAnimationFrame(psWasdLoop);
 }
 
 /* ══════════ GRAIN ENGINE ══════════ */
@@ -1478,13 +1936,27 @@ function loadPreset(i){
   document.querySelectorAll('.preset-slot').forEach(b => {
     b.classList.toggle('active', parseInt(b.dataset.slot) === i);
   });
+  // v0.6: also teleport the IS listener to that slot's position (if placed)
+  if (typeof psData !== 'undefined' && psData[i]) {
+    psSelected = i;
+    psCursor.x = psData[i].x;
+    psCursor.y = psData[i].y;
+    if (typeof psRedraw === 'function') psRedraw();
+  }
 }
 function saveUserSlot(i){
   if (i === 0) return;
-  userSlots[i] = { params: {...params}, savedAt: Date.now() };
-  saveUserSlots();
-  refreshUserSlotLabels();
-  loadPreset(i);
+  // v0.6: place this user slot in IS at the listener's current position so
+  // the saved params live where you saved them, not just in the row.
+  if (typeof psSaveSlot === 'function') {
+    // psSaveSlot snapshots params + writes userSlots + persists + refreshes labels
+    psSaveSlot(i);
+  } else {
+    userSlots[i] = { params: {...params}, savedAt: Date.now() };
+    saveUserSlots();
+    refreshUserSlotLabels();
+    loadPreset(i);
+  }
   console.log(`saved current params → slot ${i}`);
 }
 
@@ -1524,6 +1996,15 @@ function startMeterLoop(){
       pk.R = Math.max(pk.R*0.992, rN);
       setMeterBars('out-level-l','out-pk-l', lN, pk.L);
       setMeterBars('out-level-r','out-pk-r', rN, pk.R);
+    }
+    // SRC → OUT meter (horizontal). Show L on top half, R on bottom half.
+    if (srcPassAnL && srcPassAnR) {
+      const sl = dbToNorm(rmsToDb(rmsFromAnalyser(srcPassAnL)));
+      const sr = dbToNorm(rmsToDb(rmsFromAnalyser(srcPassAnR)));
+      const elL = document.getElementById('srcout-meter-l');
+      const elR = document.getElementById('srcout-meter-r');
+      if (elL) elL.style.width = (sl*100).toFixed(1)+'%';
+      if (elR) elR.style.width = (sr*100).toFixed(1)+'%';
     }
     requestAnimationFrame(tick);
   }
