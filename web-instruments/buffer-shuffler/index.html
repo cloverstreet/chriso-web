@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Buffer Shuffler — v0.6</title>
+<title>Buffer Shuffler — v0.6.1</title>
 <!-- Tone.js intentionally NOT loaded in v0.2: the buffer-shuffler engine is pure
      Web Audio. AudioWorkletNode's constructor requires a real BaseAudioContext,
      and Tone.js 14.8.49's wrapper isn't one — so we use a bare AudioContext. -->
@@ -318,7 +318,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 </head>
 <body>
 
-<div id="version-badge">BUFFER SHUFFLER · v0.6</div>
+<div id="version-badge">BUFFER SHUFFLER · v0.6.1</div>
 
 <div id="start-screen">
   <div style="font-size:.78rem;letter-spacing:.28em;color:#666;">BUFFER SHUFFLER — TEST CASE</div>
@@ -792,20 +792,35 @@ async function _initAudio(){
   // We'll insert recordTap *before* outputGainNode at the end (after grain + passthru wiring).
 
   // ── Source ──
-  srcGainNode = rawCtx.createGain(); srcGainNode.gain.value = dbToGain(srcGainDb);
-  srcPassthruGain = rawCtx.createGain(); srcPassthruGain.gain.value = 0; // -inf by default
+  // v0.6.1: force the source bus to be 2-channel stereo so a mono oscillator
+  // gets up-mixed via "speakers" to L+R. Without this, a Gain in default 'max'
+  // mode stays mono internally, and the capture worklet (whose ChannelSplitter
+  // uses 'discrete') sees ch0 only — recorded buffer is L-only and grains
+  // play back mono. Forcing 2ch explicit + 'speakers' on the source-side gains
+  // (and on the splitter feed) gives true stereo end-to-end.
+  const STEREO_OPTS = { channelCount: 2, channelCountMode: 'explicit', channelInterpretation: 'speakers' };
+  srcGainNode = rawCtx.createGain(); Object.assign(srcGainNode, STEREO_OPTS); srcGainNode.gain.value = dbToGain(srcGainDb);
+  srcPassthruGain = rawCtx.createGain(); Object.assign(srcPassthruGain, STEREO_OPTS); srcPassthruGain.gain.value = 0; // -inf by default
   srcGainNode.connect(srcPassthruGain);
   // Tap for the SRC → OUT meter (drives the colored bar in the slider strip)
   srcPassSplit = rawCtx.createChannelSplitter(2);
   srcPassAnL = rawCtx.createAnalyser(); srcPassAnL.fftSize = 1024; srcPassAnL.smoothingTimeConstant = 0.4;
   srcPassAnR = rawCtx.createAnalyser(); srcPassAnR.fftSize = 1024; srcPassAnR.smoothingTimeConstant = 0.4;
   srcPassSplit.connect(srcPassAnL, 0); srcPassSplit.connect(srcPassAnR, 1);
-  srcPassthruGain.connect(srcPassSplit);
+  // Bridge the splitter input through a 2ch-explicit Gain so the splitter sees
+  // a true L/R signal even when the source upstream is technically mono.
+  const srcMeterBridge = rawCtx.createGain(); Object.assign(srcMeterBridge, STEREO_OPTS); srcMeterBridge.gain.value = 1;
+  srcPassthruGain.connect(srcMeterBridge);
+  srcMeterBridge.connect(srcPassSplit);
 
-  // Sig gen built into source path; mic added on demand
+  // Sig gen built into source path; mic added on demand.
+  // Run the mono oscillator through a StereoPanner (always 2-channel output)
+  // so the capture stream + monitor output are stereo from the very first node.
   srcOsc = rawCtx.createOscillator(); srcOsc.type = srcWaveSel; srcOsc.frequency.value = srcFreqHz;
   srcOsc.start();
-  srcOsc.connect(srcGainNode);
+  const srcStereoUp = rawCtx.createStereoPanner(); srcStereoUp.pan.value = 0; // center: ch0 → L, R copy
+  srcOsc.connect(srcStereoUp);
+  srcStereoUp.connect(srcGainNode);
 
   // ── Capture worklet ──
   // Tone 14.8.49 hides ScriptProcessor; AudioWorklet is the only viable path.
@@ -814,7 +829,8 @@ async function _initAudio(){
   // captureBridgeGain = native Gain so source → captureBridge → worklet works
   // even though Tone-side nodes aren't involved here. Stays consistent if we
   // later mix in Tone-driven sources.
-  captureBridgeGain = rawCtx.createGain(); captureBridgeGain.gain.value = 1;
+  // v0.6.1: stereo-explicit so the worklet receives true 2-channel input.
+  captureBridgeGain = rawCtx.createGain(); Object.assign(captureBridgeGain, STEREO_OPTS); captureBridgeGain.gain.value = 1;
   srcGainNode.connect(captureBridgeGain);
   captureBridgeGain.connect(captureWorkletNode);
 
@@ -1375,11 +1391,16 @@ function psSeedFactory(){
 }
 
 function psBlendAtCursor(){
-  // IDW over all PLACED slots. Returns blended {density, lengthMs, position, pitch, pan}.
+  // IDW over all PLACED-and-VALID slots. Returns blended ranges.
   const placed = [];
-  for (let i = 0; i < PS_SLOTS; i++) if (psData[i]) placed.push(psData[i]);
+  for (let i = 0; i < PS_SLOTS; i++) {
+    const s = psData[i];
+    if (!s) continue;
+    if (typeof s.x !== 'number' || typeof s.y !== 'number') continue;
+    if (!isValidIsParams(s.params)) continue;
+    placed.push(s);
+  }
   if (placed.length === 0) return null;
-  // Distance from cursor to each placed slot (normalized canvas units)
   const dists = placed.map(p => {
     const dx = p.x - psCursor.x;
     const dy = p.y - psCursor.y;
@@ -1387,7 +1408,7 @@ function psBlendAtCursor(){
   });
   const weights = dists.map(d => 1 / Math.pow(d, PS_IDW_POWER));
   const totalW = weights.reduce((s,w) => s + w, 0);
-  // Blend each {lowVal, highVal} pair
+  if (!isFinite(totalW) || totalW <= 0) return null;
   const keys = ['density','lengthMs','position','pitch','pan'];
   const out = {};
   for (const k of keys) {
@@ -1450,10 +1471,31 @@ function psSaveSlot(slot){
   psRedraw();
 }
 
+function isValidIsParams(p){
+  if (!p) return false;
+  const keys = ['density','lengthMs','position','pitch','pan'];
+  for (const k of keys) {
+    if (!p[k]) return false;
+    if (typeof p[k].lowVal !== 'number' || typeof p[k].highVal !== 'number') return false;
+    if (!isFinite(p[k].lowVal) || !isFinite(p[k].highVal)) return false;
+  }
+  return true;
+}
 function psLoadUserSlotsFromStorage(){
+  // v0.6: be defensive against legacy localStorage shapes:
+  //   • pre-IS user slots have no x/y → would NaN out the blend
+  //   • pre-v0.5 user slots have scalar params (e.g. density: 4) instead of
+  //     {lowVal, highVal} → would NaN out the blend too
+  // Only restore into psData when the entry has valid x/y AND v0.5+ params.
+  // The slot remains recallable from the preset row regardless.
   for (let i = 9; i <= 16; i++) {
     const u = userSlots[i];
-    if (u && u.params) psData[i] = { x: u.x, y: u.y, params: u.params };
+    if (!u || !u.params) continue;
+    const xOK = typeof u.x === 'number' && isFinite(u.x);
+    const yOK = typeof u.y === 'number' && isFinite(u.y);
+    if (!xOK || !yOK) continue;
+    if (!isValidIsParams(u.params)) continue;
+    psData[i] = { x: u.x, y: u.y, params: u.params };
   }
 }
 
@@ -1537,21 +1579,22 @@ function psRedraw(){
 
 function computePsSlotWeights(){
   // Returns weights array (sum to 1) over all PS_SLOTS, indexed by slot.
-  // Empty slots have weight 0.
-  const dists = new Array(PS_SLOTS).fill(0);
+  // Empty/malformed slots have weight 0.
   let totalW = 0;
   const w = new Array(PS_SLOTS).fill(0);
   for (let i = 0; i < PS_SLOTS; i++) {
-    if (!psData[i]) continue;
-    const dx = psData[i].x - psCursor.x;
-    const dy = psData[i].y - psCursor.y;
+    const s = psData[i];
+    if (!s) continue;
+    if (typeof s.x !== 'number' || typeof s.y !== 'number') continue;
+    if (!isValidIsParams(s.params)) continue;
+    const dx = s.x - psCursor.x;
+    const dy = s.y - psCursor.y;
     const d = Math.max(0.001, Math.sqrt(dx*dx + dy*dy));
-    dists[i] = d;
     const wt = 1 / Math.pow(d, PS_IDW_POWER);
     w[i] = wt;
     totalW += wt;
   }
-  if (totalW <= 0) return null;
+  if (!isFinite(totalW) || totalW <= 0) return null;
   for (let i = 0; i < PS_SLOTS; i++) w[i] /= totalW;
   return w;
 }
