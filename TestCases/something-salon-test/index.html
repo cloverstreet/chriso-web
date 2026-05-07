@@ -1,0 +1,1304 @@
+<!--
+  ============================================================================
+  THE SOMETHING SALON — AI back-and-forth letter reading test
+  ============================================================================
+  Deploy path: chriso.org/TestCases/something-salon-test/index.html
+
+  WHAT THIS IS:
+    A viewer-only test case (no participation yet from Christophero) that
+    reads the AI Salon letters from a locally-cached letters.json and
+    plays them back as a back-and-forth conversation between two binaural
+    AI voice positions:
+      - ChatGPT  — left side of the room
+      - Claude   — right side of the room
+      - ChristopherHead — center-front, speaks any verbatim Christophero
+                          quote that appears inside an AI letter; the
+                          two AI heads orient toward him when he does
+    Sentences are interleaved across each pair of letters (first sentence
+    from ChatGPT, first from Claude, second from ChatGPT, etc.) and the
+    head currently speaking gets a stronger mouth-open animation plus a
+    cone of glow emerging from its mouth in the direction it's facing.
+    Other heads turn to face the speaker.
+
+  DATA PIPELINE:
+    Letters live in letters.json next to this file. They are produced
+    once by build_letters.py from the Notion AI Salon page (page id
+    33bdbb52-2276-8107-a84d-eb993d2b875f). Browser side just fetches
+    the JSON — no Notion API at runtime, all access stays local for
+    fast playback when temporal manipulation lands.
+
+  REUSED FROM thesomethingnightclub:
+    - The Three.js wireframe room (couch, tables, bar, walls, motes)
+    - Backroom doorway + glow + dancers
+    - Audio: backroom sub-pulse + zippery bandpass wisp
+    - Velocity glitch (subtle on the room, extreme on tensegrity)
+    - Settings tab w/ binaural params + presets
+
+  NEW HERE:
+    - Three persistent named heads (no random spawning)
+    - Stronger mouth animation: actual scaling on each syllable
+    - Mouth-cone glow: ConeGeometry sprite emerging from each mouth in
+      the head's gaze direction, opacity + scale modulated by speech
+      amplitude. Cone angle/length tweakable in the audio tab.
+    - Letter scheduler: builds an ordered queue of {startMs, speaker,
+      text} events from letters.json and fires them in real time
+    - Text visualization: active sentence sprite floating above the
+      speaker; recent-sentence drifting log scattered around the room
+      (artologue principle — the room remembers)
+    - Letter title shown in the top status row so the viewer knows
+      where in the conversation we are
+  ============================================================================
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>The Something Salon — Letter Reading Test</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;1,400&family=Fraunces:opsz,wght@9..144,300;9..144,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #050304;
+    --ink: #c4a878;
+    --gpt: #d97c5a;       /* ChatGPT — warm orange */
+    --cla: #6aaee0;       /* Claude — cool blue */
+    --chr: #c4d878;       /* Christophero — yellow-green */
+  }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100vh;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Cormorant Garamond', serif;
+    touch-action: none;
+    overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none;
+  }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    pointer-events: none; z-index: 5;
+    opacity: 0.05; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  }
+  #scene { position: fixed; inset: 0; z-index: 1; }
+
+  .name {
+    position: fixed; top: 2rem; left: 2.4rem; z-index: 10;
+    font-family: 'Fraunces', serif; font-weight: 300;
+    font-size: 0.78rem; letter-spacing: 0.36em;
+    text-transform: lowercase; opacity: 0.55;
+  }
+  .status {
+    position: fixed; top: 5rem; left: 2.4rem; z-index: 10;
+    font-family: 'Fraunces', serif; font-weight: 300;
+    font-size: 0.62rem; letter-spacing: 0.18em;
+    color: rgba(196, 168, 120, 0.5);
+    text-transform: lowercase; max-width: 38ch; line-height: 1.7;
+  }
+  .status .speaker-gpt { color: var(--gpt); }
+  .status .speaker-cla { color: var(--cla); }
+  .status .speaker-chr { color: var(--chr); }
+
+  .back {
+    position: fixed; bottom: 1.8rem; left: 2.4rem; z-index: 10;
+    color: var(--ink); text-decoration: none;
+    font-family: 'Cormorant Garamond', serif; font-style: italic;
+    font-size: 1rem; letter-spacing: 0.04em;
+    opacity: 0.4; transition: opacity 0.4s, letter-spacing 0.5s;
+  }
+  .back:hover { opacity: 1; letter-spacing: 0.08em; }
+
+  .note {
+    position: fixed; bottom: 1.8rem; right: 2.4rem; z-index: 10;
+    font-family: 'Fraunces', serif; font-weight: 300;
+    font-size: 0.7rem; letter-spacing: 0.28em;
+    text-transform: lowercase; opacity: 0.3; text-align: right;
+    pointer-events: none;
+  }
+
+  .enter-hint {
+    position: fixed; bottom: 6rem; left: 50%;
+    transform: translateX(-50%); z-index: 10;
+    font-family: 'Fraunces', serif; font-weight: 300;
+    font-size: 0.66rem; letter-spacing: 0.32em;
+    text-transform: lowercase; opacity: 0;
+    color: var(--ink); pointer-events: none;
+    animation: hintIn 1.2s ease-out 5s forwards;
+    transition: opacity 0.8s;
+  }
+  .enter-hint.gone { opacity: 0 !important; }
+  @keyframes hintIn { to { opacity: 0.45; } }
+
+  /* ── Tabs / settings panel ─────────────────────────── */
+  .tabs {
+    position: fixed; top: 2rem; right: 2.4rem; z-index: 11;
+    display: flex; gap: 8px;
+  }
+  .tab {
+    background: rgba(196, 168, 120, 0.04);
+    border: 1px solid rgba(74, 53, 32, 0.6);
+    color: rgba(196, 168, 120, 0.55);
+    font-family: 'Fraunces', serif; font-weight: 300;
+    font-size: 0.62rem; letter-spacing: 0.22em;
+    text-transform: lowercase;
+    padding: 6px 14px; cursor: pointer; transition: all 0.2s;
+  }
+  .tab:hover { color: var(--ink); border-color: rgba(196, 168, 120, 0.5); }
+  .tab.open  { color: var(--ink); border-color: var(--ink); background: rgba(196, 168, 120, 0.08); }
+
+  .tab-panel {
+    position: fixed; top: 4.4rem; right: 2.4rem; z-index: 11;
+    background: rgba(8, 5, 4, 0.94);
+    border: 1px solid rgba(196, 168, 120, 0.25);
+    padding: 14px 18px;
+    min-width: 280px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    opacity: 0; pointer-events: none;
+    transform: translateY(-6px);
+    transition: opacity 0.25s, transform 0.25s;
+  }
+  .tab-panel.open { opacity: 1; pointer-events: auto; transform: translateY(0); }
+  .tab-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+  .tab-label {
+    font-family: 'Fraunces', serif; font-weight: 300;
+    font-size: 0.6rem; letter-spacing: 0.22em;
+    color: rgba(196, 168, 120, 0.7); text-transform: lowercase;
+    flex-shrink: 0; min-width: 78px;
+  }
+  .opt {
+    background: none; border: 1px solid rgba(74, 53, 32, 0.7);
+    color: rgba(196, 168, 120, 0.55);
+    font-family: 'Fraunces', serif; font-weight: 300;
+    font-size: 0.62rem; letter-spacing: 0.18em;
+    text-transform: lowercase;
+    padding: 4px 10px; cursor: pointer; transition: all 0.2s;
+  }
+  .opt:hover { color: var(--ink); border-color: var(--ink); }
+  .opt.on { color: var(--ink); border-color: var(--ink); background: rgba(196, 168, 120, 0.06); }
+  .opt.tiny { padding: 3px 8px; font-size: 0.56rem; letter-spacing: 0.14em; }
+  .tab-divider { height: 1px; background: rgba(74, 53, 32, 0.4); margin: 10px -18px; }
+  .tab-section-label {
+    font-size: 0.56rem; letter-spacing: 0.28em;
+    color: rgba(196, 168, 120, 0.4); text-transform: lowercase;
+    padding: 4px 0 6px;
+  }
+  .tab-select {
+    background: rgba(196, 168, 120, 0.04);
+    border: 1px solid rgba(74, 53, 32, 0.7);
+    color: var(--ink);
+    font-family: 'Fraunces', serif; font-weight: 300;
+    font-size: 0.6rem; letter-spacing: 0.16em;
+    text-transform: lowercase;
+    padding: 3px 8px; outline: none;
+    appearance: none; -webkit-appearance: none;
+    cursor: pointer; flex: 1;
+  }
+  .tab-slider {
+    -webkit-appearance: none; appearance: none;
+    background: transparent; width: 90px; cursor: pointer; outline: none; flex: 1;
+  }
+  .tab-slider::-webkit-slider-runnable-track { height: 1px; background: rgba(196, 168, 120, 0.3); }
+  .tab-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 8px; height: 12px; background: var(--ink);
+    margin-top: -5px; border-radius: 0;
+  }
+  .tab-val {
+    font-size: 0.58rem; color: var(--ink);
+    min-width: 36px; text-align: right;
+    font-family: 'Fraunces', serif; font-weight: 300;
+  }
+</style>
+</head>
+<body>
+
+<div class="name">the something salon · letter reading test</div>
+<div class="status" id="status">loading letters…</div>
+
+<a class="back" href="../">← back to the testcases</a>
+<div class="note">viewer mode<br>watch the room</div>
+<div class="enter-hint" id="enterHint">tap or press a key to bring up the audio</div>
+
+<div class="tabs">
+  <button class="tab" id="audioTab">audio</button>
+</div>
+
+<div class="tab-panel" id="audioPanel">
+  <div class="tab-row">
+    <span class="tab-label">listening on</span>
+    <button class="opt on" data-listening="headphones">binaural(headphones)</button>
+    <button class="opt"    data-listening="speakers">stereo</button>
+  </div>
+
+  <div class="tab-divider"></div>
+  <div class="tab-section-label">binaural parameters</div>
+  <div class="tab-row">
+    <span class="tab-label">distance</span>
+    <select class="tab-select" id="bDistModel">
+      <option value="inverse">inverse</option>
+      <option value="linear">linear</option>
+      <option value="exponential">exponential</option>
+    </select>
+  </div>
+  <div class="tab-row">
+    <span class="tab-label">ref dist</span>
+    <input type="range" class="tab-slider" id="bRef" min="0.1" max="5" step="0.1" value="1.0">
+    <span class="tab-val" id="bRefVal">1.0</span>
+  </div>
+  <div class="tab-row">
+    <span class="tab-label">rolloff</span>
+    <input type="range" class="tab-slider" id="bRoll" min="0.1" max="5" step="0.1" value="1.4">
+    <span class="tab-val" id="bRollVal">1.4</span>
+  </div>
+  <div class="tab-row">
+    <span class="tab-label">max dist</span>
+    <input type="range" class="tab-slider" id="bMax" min="5" max="200" step="1" value="30">
+    <span class="tab-val" id="bMaxVal">30</span>
+  </div>
+
+  <div class="tab-divider"></div>
+  <div class="tab-section-label">mouth cones</div>
+  <div class="tab-row">
+    <span class="tab-label">angle</span>
+    <input type="range" class="tab-slider" id="cAngle" min="10" max="80" step="1" value="32">
+    <span class="tab-val" id="cAngleVal">32°</span>
+  </div>
+  <div class="tab-row">
+    <span class="tab-label">length</span>
+    <input type="range" class="tab-slider" id="cLen" min="0.5" max="6" step="0.1" value="2.4">
+    <span class="tab-val" id="cLenVal">2.4</span>
+  </div>
+  <div class="tab-row">
+    <span class="tab-label">intensity</span>
+    <input type="range" class="tab-slider" id="cInt" min="0.1" max="2" step="0.05" value="1.0">
+    <span class="tab-val" id="cIntVal">1.0</span>
+  </div>
+
+  <div class="tab-divider"></div>
+  <div class="tab-section-label">presets</div>
+  <div class="tab-row">
+    <span class="tab-label">load</span>
+    <select class="tab-select" id="presetSel"></select>
+  </div>
+  <div class="tab-row">
+    <span class="tab-label"></span>
+    <button class="opt tiny" id="savePresetBtn">save as…</button>
+    <button class="opt tiny" id="delPresetBtn">delete</button>
+  </div>
+</div>
+
+<div id="scene"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+
+// ─── Cross-IIFE shared state ───────────────────────────────────────────────
+let audioCtx = null;
+let panningMode = 'HRTF';
+const allPanners = [];
+
+// Live-tunable PannerNode parameters
+const binauralParams = {
+  distanceModel: 'inverse', refDistance: 1.0, rolloffFactor: 1.4, maxDistance: 30,
+};
+function setPanningMode(mode) {
+  panningMode = mode;
+  for (const p of allPanners) p.panningModel = mode;
+}
+function applyBinauralParams() {
+  for (const p of allPanners) {
+    p.distanceModel = binauralParams.distanceModel;
+    p.refDistance   = binauralParams.refDistance;
+    p.rolloffFactor = binauralParams.rolloffFactor;
+    p.maxDistance   = binauralParams.maxDistance;
+  }
+}
+
+const BUILTIN_PRESETS = {
+  'default':  { distanceModel: 'inverse',     refDistance: 1.0, rolloffFactor: 1.4, maxDistance: 30 },
+  'intimate': { distanceModel: 'inverse',     refDistance: 0.5, rolloffFactor: 2.5, maxDistance: 12 },
+  'spacious': { distanceModel: 'inverse',     refDistance: 2.0, rolloffFactor: 0.6, maxDistance: 60 },
+  'distant':  { distanceModel: 'exponential', refDistance: 1.0, rolloffFactor: 1.0, maxDistance: 50 },
+};
+const PRESETS_KEY = 'salonTest.binauralPresets';
+function loadUserPresets() {
+  try { return JSON.parse(localStorage.getItem(PRESETS_KEY) || '{}'); }
+  catch (e) { return {}; }
+}
+function saveUserPresets(p) { localStorage.setItem(PRESETS_KEY, JSON.stringify(p)); }
+function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_PRESETS, name); }
+
+// Mouth-cone params (live-tweakable)
+const coneParams = { angleDeg: 32, length: 2.4, intensity: 1.0 };
+
+// Heads exposed across IIFEs. Each head: { name, color, basePos, head3D,
+// mouth3D, cone3D, lookTarget3, baseFreq, voice (assigned by audio IIFE),
+// speakingUntil (ms) — for animation }
+const heads = {};
+
+// ─── Settings tab handler ──────────────────────────────────────────────────
+(() => {
+  const tab = document.getElementById('audioTab');
+  const panel = document.getElementById('audioPanel');
+  tab.addEventListener('click', () => {
+    const open = panel.classList.toggle('open');
+    tab.classList.toggle('open', open);
+  });
+  document.addEventListener('pointerdown', e => {
+    if (e.target.closest('.tab-panel') || e.target.closest('.tabs')) return;
+    panel.classList.remove('open');
+    tab.classList.remove('open');
+  });
+
+  panel.querySelectorAll('.opt[data-listening]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      panel.querySelectorAll('.opt[data-listening]').forEach(b => b.classList.remove('on'));
+      btn.classList.add('on');
+      setPanningMode(btn.dataset.listening === 'speakers' ? 'equalpower' : 'HRTF');
+    });
+  });
+
+  const $ = id => document.getElementById(id);
+
+  // Binaural sliders
+  function sync() {
+    $('bDistModel').value = binauralParams.distanceModel;
+    $('bRef').value = binauralParams.refDistance;
+    $('bRefVal').textContent = binauralParams.refDistance.toFixed(1);
+    $('bRoll').value = binauralParams.rolloffFactor;
+    $('bRollVal').textContent = binauralParams.rolloffFactor.toFixed(1);
+    $('bMax').value = binauralParams.maxDistance;
+    $('bMaxVal').textContent = String(Math.round(binauralParams.maxDistance));
+  }
+  $('bDistModel').addEventListener('change', () => { binauralParams.distanceModel = $('bDistModel').value; applyBinauralParams(); });
+  $('bRef').addEventListener('input', () => { binauralParams.refDistance = parseFloat($('bRef').value); $('bRefVal').textContent = binauralParams.refDistance.toFixed(1); applyBinauralParams(); });
+  $('bRoll').addEventListener('input', () => { binauralParams.rolloffFactor = parseFloat($('bRoll').value); $('bRollVal').textContent = binauralParams.rolloffFactor.toFixed(1); applyBinauralParams(); });
+  $('bMax').addEventListener('input', () => { binauralParams.maxDistance = parseFloat($('bMax').value); $('bMaxVal').textContent = String(Math.round(binauralParams.maxDistance)); applyBinauralParams(); });
+
+  // Cone sliders
+  $('cAngle').addEventListener('input', () => { coneParams.angleDeg = parseFloat($('cAngle').value); $('cAngleVal').textContent = coneParams.angleDeg + '°'; });
+  $('cLen').addEventListener('input',   () => { coneParams.length   = parseFloat($('cLen').value);   $('cLenVal').textContent   = coneParams.length.toFixed(1); });
+  $('cInt').addEventListener('input',   () => { coneParams.intensity= parseFloat($('cInt').value);   $('cIntVal').textContent   = coneParams.intensity.toFixed(1); });
+
+  // Presets
+  function rebuildPresets(selectName) {
+    const user = loadUserPresets();
+    const all = { ...BUILTIN_PRESETS, ...user };
+    $('presetSel').innerHTML = '';
+    for (const name of Object.keys(all)) {
+      const o = document.createElement('option');
+      o.value = name;
+      o.textContent = isBuiltin(name) ? name : '· ' + name;
+      $('presetSel').appendChild(o);
+    }
+    if (selectName && all[selectName]) $('presetSel').value = selectName;
+  }
+  function applyPreset(name) {
+    const all = { ...BUILTIN_PRESETS, ...loadUserPresets() };
+    const p = all[name]; if (!p) return;
+    Object.assign(binauralParams, p);
+    sync(); applyBinauralParams();
+  }
+  $('presetSel').addEventListener('change', () => applyPreset($('presetSel').value));
+  $('savePresetBtn').addEventListener('click', () => {
+    const name = (prompt('preset name?') || '').trim();
+    if (!name) return;
+    if (isBuiltin(name)) { alert('built-in name'); return; }
+    const u = loadUserPresets(); u[name] = { ...binauralParams };
+    saveUserPresets(u); rebuildPresets(name);
+  });
+  $('delPresetBtn').addEventListener('click', () => {
+    const name = $('presetSel').value;
+    if (isBuiltin(name)) { alert('built-in cannot be deleted'); return; }
+    if (!confirm('delete "' + name + '"?')) return;
+    const u = loadUserPresets(); delete u[name];
+    saveUserPresets(u); rebuildPresets('default'); applyPreset('default');
+  });
+  rebuildPresets('default'); sync();
+})();
+
+// ─── Scene ─────────────────────────────────────────────────────────────────
+(() => {
+  const container = document.getElementById('scene');
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x050304, 0.05);
+  const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 200);
+  const baseFov = 42;
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setClearColor(0x000000, 0);
+  container.appendChild(renderer.domElement);
+
+  const matBright = new THREE.LineBasicMaterial({ color: 0xc4a878, transparent: true, opacity: 0.78 });
+  const matMid    = new THREE.LineBasicMaterial({ color: 0x8a6840, transparent: true, opacity: 0.6 });
+  const matDim    = new THREE.LineBasicMaterial({ color: 0x4a3520, transparent: true, opacity: 0.5 });
+  const matCable  = new THREE.LineBasicMaterial({ color: 0x6a5028, transparent: true, opacity: 0.72 });
+
+  const allLines = [];
+  function addEdges(geom, x, y, z, mat = matBright) {
+    const edges = new THREE.EdgesGeometry(geom, 1);
+    const line = new THREE.LineSegments(edges, mat);
+    line.position.set(x, y, z);
+    line.userData.origPos = line.position.clone();
+    scene.add(line); allLines.push(line);
+    return line;
+  }
+
+  // Floor
+  const grid = new THREE.GridHelper(40, 40, 0x3a2918, 0x1f140a);
+  grid.material.transparent = true; grid.material.opacity = 0.55;
+  scene.add(grid);
+  // Walls
+  addEdges(new THREE.PlaneGeometry(10, 6), -5, 3, -6, matDim).rotation.y = 0;
+  addEdges(new THREE.PlaneGeometry(10, 6), -8, 3, -1, matDim).rotation.y = Math.PI / 2;
+  // Couch
+  addEdges(new THREE.BoxGeometry(1.4, 0.55, 4.5), -6.5, 0.45, -3, matBright);
+  addEdges(new THREE.BoxGeometry(3.6, 0.55, 1.4), -4.4, 0.45, -5, matBright);
+  addEdges(new THREE.BoxGeometry(0.25, 1.2, 4.5), -7.1, 0.95, -3, matMid);
+  addEdges(new THREE.BoxGeometry(3.6, 1.2, 0.25), -4.4, 0.95, -5.6, matMid);
+  // Tables
+  const tableTop = (x, z) => {
+    addEdges(new THREE.CylinderGeometry(0.55, 0.55, 0.05, 32), x, 0.78, z, matBright);
+    addEdges(new THREE.CylinderGeometry(0.06, 0.06, 0.78, 8),  x, 0.39, z, matMid);
+    addEdges(new THREE.CylinderGeometry(0.07, 0.06, 0.18, 12), x + 0.18, 0.89, z - 0.1, matBright);
+  };
+  tableTop(-4.2, -2.4); tableTop(-2.8, 0.2);
+  // Bar
+  addEdges(new THREE.BoxGeometry(1.2, 1.05, 7), 4.5, 0.525, -1, matBright);
+  addEdges(new THREE.BoxGeometry(1.55, 0.06, 7.2), 4.5, 1.08, -1, matBright);
+  addEdges(new THREE.BoxGeometry(0.18, 2.6, 7), 5.9, 1.3, -1, matMid);
+  for (let i = -2; i <= 2; i += 2) {
+    addEdges(new THREE.CylinderGeometry(0.06, 0.06, 0.4, 8), 5.78, 1.55, -1 + i, matBright);
+  }
+
+  // Backroom (doorway frame + glow + dancers) — same as nightclub
+  const doorFrame = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(1.7, 2.5)), matBright);
+  doorFrame.position.set(-1.6, 1.55, -5.95); doorFrame.userData.origPos = doorFrame.position.clone();
+  scene.add(doorFrame); allLines.push(doorFrame);
+  const backGlowMat = new THREE.MeshBasicMaterial({ color: 0xa83020, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false });
+  const backGlow = new THREE.Mesh(new THREE.PlaneGeometry(1.55, 2.4), backGlowMat);
+  backGlow.position.set(-1.6, 1.55, -6.4); scene.add(backGlow);
+  const dancers = [];
+  for (let i = 0; i < 3; i++) {
+    const d = addEdges(new THREE.CylinderGeometry(0.16, 0.16, 1.4, 8), -1.6 + (i - 1) * 0.42, 1.0, -6.7 - i * 0.18, matMid);
+    d.userData.dancerIdx = i; dancers.push(d);
+  }
+
+  // ── Plant + tree (tensegrity-ish; reused) ──────────
+  function makeStrut(mat) {
+    const geo = new THREE.CylinderGeometry(0.04, 0.04, 1.0, 6);
+    const edges = new THREE.EdgesGeometry(geo);
+    const line = new THREE.LineSegments(edges, mat);
+    line.userData.origPos = new THREE.Vector3();
+    line.userData.glitchExtreme = true;
+    scene.add(line); allLines.push(line);
+    return line;
+  }
+  function makeCable(p1, p2, mat = matCable) {
+    const geo = new THREE.BufferGeometry();
+    const arr = new Float32Array(6);
+    arr[0]=p1.x; arr[1]=p1.y; arr[2]=p1.z;
+    arr[3]=p2.x; arr[4]=p2.y; arr[5]=p2.z;
+    geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+    const line = new THREE.Line(geo, mat);
+    line.userData.origPos = new THREE.Vector3(0, 0, 0);
+    line.userData.glitchExtreme = true;
+    scene.add(line); allLines.push(line);
+    return { line, geo };
+  }
+  function placeStrut(line, p1, p2) {
+    const mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+    const dir = new THREE.Vector3().subVectors(p2, p1);
+    const len = dir.length();
+    line.position.copy(mid);
+    line.userData.origPos.copy(mid);
+    line.scale.set(1, len, 1);
+    const up = new THREE.Vector3(0, 1, 0);
+    line.quaternion.setFromUnitVectors(up, dir.clone().normalize());
+  }
+  function updateCable(cable, p1, p2) {
+    const arr = cable.geo.attributes.position.array;
+    arr[0]=p1.x; arr[1]=p1.y; arr[2]=p1.z;
+    arr[3]=p2.x; arr[4]=p2.y; arr[5]=p2.z;
+    cable.geo.attributes.position.needsUpdate = true;
+  }
+
+  // T-prism plant: 3 struts + 9 cables, two-stage twist
+  function makeTPrism(cx, cy, cz, scale, twist) {
+    const r = 0.42 * scale; const h = 1.1 * scale;
+    const struts = [makeStrut(matBright), makeStrut(matBright), makeStrut(matBright)];
+    const baseTops = [];
+    const baseBots = [];
+    for (let i = 0; i < 3; i++) {
+      const aBot = (i / 3) * Math.PI * 2;
+      const aTop = aBot + twist;
+      baseBots.push(new THREE.Vector3(cx + r * Math.cos(aBot), cy, cz + r * Math.sin(aBot)));
+      baseTops.push(new THREE.Vector3(cx + r * Math.cos(aTop), cy + h, cz + r * Math.sin(aTop)));
+    }
+    const cables = [];
+    for (let i = 0; i < 3; i++) {
+      cables.push(makeCable(baseBots[i], baseBots[(i+1)%3]));
+      cables.push(makeCable(baseTops[i], baseTops[(i+1)%3]));
+      cables.push(makeCable(baseBots[i], baseTops[i]));
+    }
+    return { struts, cables, baseTops, baseBots, center: new THREE.Vector3(cx, cy, cz), scale, h, r, baseTwist: twist };
+  }
+  function updateTPrism(p, t, breath) {
+    const wob = (Math.sin(t * 0.9) + Math.sin(t * 1.7) * 0.4) * 0.025;
+    const tw = p.baseTwist + wob;
+    for (let i = 0; i < 3; i++) {
+      const aBot = (i / 3) * Math.PI * 2;
+      const aTop = aBot + tw;
+      const bot = new THREE.Vector3(
+        p.center.x + p.r * Math.cos(aBot),
+        p.center.y + Math.sin(t * 1.3 + i) * 0.012,
+        p.center.z + p.r * Math.sin(aBot));
+      const top = new THREE.Vector3(
+        p.center.x + p.r * Math.cos(aTop),
+        p.center.y + p.h + breath * 0.05,
+        p.center.z + p.r * Math.sin(aTop));
+      p.baseBots[i].copy(bot); p.baseTops[i].copy(top);
+      placeStrut(p.struts[i], bot, top);
+    }
+    let ci = 0;
+    for (let i = 0; i < 3; i++) {
+      updateCable(p.cables[ci++], p.baseBots[i], p.baseBots[(i+1)%3]);
+      updateCable(p.cables[ci++], p.baseTops[i], p.baseTops[(i+1)%3]);
+      updateCable(p.cables[ci++], p.baseBots[i], p.baseTops[i]);
+    }
+  }
+  const plant = makeTPrism(-2.6, 0.20, -3.4, 0.85, Math.PI / 6);
+  const tree  = makeTPrism( 0.4, 0.20,  2.8, 1.55, Math.PI / 6 + 0.25);
+
+  // ── Three named heads ───────────────────────────────
+  function makeHead(name, color, x, y, z, baseFreq) {
+    const group = new THREE.Group();
+    // Head shell — wireframe sphere
+    const shellMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.78 });
+    const shell = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.SphereGeometry(0.32, 14, 10)),
+      shellMat
+    );
+    group.add(shell);
+    // Mouth — visible CIRCLE at the front of the head, scales with speech
+    const mouthMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.95 });
+    const mouthGeom = new THREE.RingGeometry(0.06, 0.10, 16);
+    const mouthMesh = new THREE.Mesh(mouthGeom, new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: 0.0, side: THREE.DoubleSide, depthWrite: false,
+    }));
+    const mouthEdges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.CircleGeometry(0.08, 16)), mouthMat);
+    // Three.js convention: Object3D.lookAt() orients an object so its
+    // local -Z faces the target. So we build the head's "front" along
+    // local -Z: mouth on -Z face, cone opens toward -Z. Then lookAt
+    // does the right thing without any extra rotateY.
+    mouthMesh.position.set(0, -0.10, -0.32);
+    mouthEdges.position.set(0, -0.10, -0.32);
+    group.add(mouthMesh); group.add(mouthEdges);
+    // Mouth cone — ConeGeometry. Default geometry has apex at +Y=0.5,
+    // base at -Y=-0.5. translate(0, -0.5, 0) moves apex to origin and
+    // base to (0,-1,0). rotateX(+π/2) sends -Y to -Z (forward) and Y
+    // to Z, so apex stays at origin and base lands at (0, 0, -1).
+    const coneMat = new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: 0.0,
+      side: THREE.DoubleSide, depthWrite: false,
+    });
+    const initialCone = new THREE.ConeGeometry(1, 1, 32, 1, true);
+    initialCone.translate(0, -0.5, 0);                   // tip at origin
+    initialCone.rotateX(Math.PI / 2);                    // axis → -Z
+    const coneMesh = new THREE.Mesh(initialCone, coneMat);
+    coneMesh.position.set(0, -0.10, -0.32);              // tip on mouth
+    group.add(coneMesh);
+    const coneEdges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(coneMesh.geometry),
+      new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.0 })
+    );
+    coneEdges.position.copy(coneMesh.position);
+    group.add(coneEdges);
+
+    group.position.set(x, y, z);
+    group.userData.origPos = group.position.clone();
+    scene.add(group); allLines.push(group);
+
+    return {
+      name, color,
+      group, shell, mouth: mouthMesh, mouthEdges,
+      coneMesh, coneEdges, coneMat, coneEdgesMat: coneEdges.material,
+      baseFreq,
+      // Animation state
+      lookTarget: new THREE.Vector3(0, 1.4, 0),  // current look target world pos
+      mouthAmp: 0,        // smoothed 0..1, drives mouth + cone
+      ampTarget: 0,       // set by audio when speaking
+      origPos: group.position.clone(),
+    };
+  }
+
+  // Persona positions:
+  //   ChatGPT — left of camera                 (-3.2, 1.55,  0.4)
+  //   Claude  — right of camera                ( 1.6, 1.55,  1.0)
+  //   Christophero — center-front, closer in   (-0.6, 1.40,  2.3)
+  heads.ChatGPT      = makeHead('ChatGPT',      0xd97c5a, -3.2, 1.55,  0.4, 140);
+  heads.Claude       = makeHead('Claude',       0x6aaee0,  1.6, 1.55,  1.0, 200);
+  heads.Christophero = makeHead('Christophero', 0xc4d878, -0.6, 1.40,  2.3, 110);
+
+  // ── Sentence sprites (text rendered to canvas → CanvasTexture) ──
+  function makeTextSprite(text, opts = {}) {
+    const fontSize = opts.fontSize || 36;
+    const padding  = opts.padding  || 16;
+    const color    = opts.color    || '#c4a878';
+    const opacity  = opts.opacity  ?? 1.0;
+    const maxWidth = opts.maxWidth || 720;
+    // Measure on a temp canvas
+    const tmp = document.createElement('canvas').getContext('2d');
+    tmp.font = `italic ${fontSize}px 'Cormorant Garamond', serif`;
+    // Word-wrap manually
+    const words = text.split(/\s+/);
+    const lines = []; let line = '';
+    for (const w of words) {
+      const test = line ? line + ' ' + w : w;
+      if (tmp.measureText(test).width > maxWidth - padding * 2 && line) {
+        lines.push(line); line = w;
+      } else {
+        line = test;
+      }
+    }
+    if (line) lines.push(line);
+    const lineHeight = Math.round(fontSize * 1.18);
+    const w = Math.min(maxWidth, Math.max(...lines.map(l => tmp.measureText(l).width)) + padding * 2);
+    const h = lineHeight * lines.length + padding * 2;
+    const c = document.createElement('canvas');
+    c.width  = Math.ceil(w * 2);  // 2× for sharpness
+    c.height = Math.ceil(h * 2);
+    const ctx = c.getContext('2d');
+    ctx.scale(2, 2);
+    ctx.font = `italic ${fontSize}px 'Cormorant Garamond', serif`;
+    ctx.fillStyle = color;
+    ctx.globalAlpha = opacity;
+    ctx.textBaseline = 'top';
+    ctx.shadowColor = 'rgba(0,0,0,0.75)';
+    ctx.shadowBlur = 10;
+    for (let i = 0; i < lines.length; i++) {
+      ctx.fillText(lines[i], padding, padding + i * lineHeight);
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.minFilter = THREE.LinearFilter;
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+    const sp = new THREE.Sprite(mat);
+    // Convert canvas size → world units. Canvas is 2× DPI; halve it back.
+    const worldH = h * 0.0095;
+    const worldW = w * 0.0095;
+    sp.scale.set(worldW, worldH, 1);
+    return { sprite: sp, mat, worldW, worldH };
+  }
+
+  // Active sentence sprite — replaces itself per sentence, follows speaker.
+  let activeSentence = null;  // { sprite, headRef, fadeStart, fadeDur }
+
+  // Memory log — recent sentences scattered around the room as drifting
+  // small sprites. Newer = brighter, older fade. Capped at MEM_MAX.
+  const MEM_MAX = 10;
+  const memSprites = [];
+
+  // Dust motes
+  const motes = [];
+  const moteGeom = new THREE.BufferGeometry();
+  const moteCount = 60;
+  const moteArr = new Float32Array(moteCount * 3);
+  for (let i = 0; i < moteCount; i++) {
+    moteArr[i*3] = (Math.random() - 0.5) * 18;
+    moteArr[i*3+1] = Math.random() * 5 + 0.4;
+    moteArr[i*3+2] = (Math.random() - 0.5) * 14;
+    motes.push({ baseY: moteArr[i*3+1], phase: Math.random() * Math.PI * 2 });
+  }
+  moteGeom.setAttribute('position', new THREE.BufferAttribute(moteArr, 3));
+  const motePts = new THREE.Points(moteGeom, new THREE.PointsMaterial({ color: 0xc4a878, size: 0.045, transparent: true, opacity: 0.5, sizeAttenuation: true }));
+  scene.add(motePts);
+
+  // ── Energy (pointer velocity) ───────────────────────
+  let mx = window.innerWidth / 2, my = window.innerHeight / 2;
+  let lx = mx, ly = my;
+  let energy = 0;
+  window.addEventListener('pointermove', e => { mx = e.clientX; my = e.clientY; });
+
+  // ── Camera + listener ───────────────────────────────
+  const lookTarget = new THREE.Vector3(-0.6, 1.4, 1.0);
+  let t = 0;
+
+  // ── Schedule sentences from letters.json ────────────
+  // Globals so the audio IIFE can read currently-speaking head + amp.
+  window.__salonAPI = { heads };
+  window.__startSchedule = null;        // assigned below; called after audio init
+  let schedule = [];                     // array of {startMs, durMs, speaker, text, letterTitle}
+  let scheduleStartMs = null;            // wall-clock start (ms)
+  let scheduleIdx = 0;
+  let activeUtterance = null;            // current playing event
+
+  function splitSentences(text) {
+    // Split at .!? followed by whitespace and a capital / quote / dash.
+    // Preserve the punctuation. Filter empty.
+    const parts = text.split(/(?<=[.!?])\s+(?=["“—A-Z])/);
+    return parts.map(s => s.trim()).filter(s => s.length > 0);
+  }
+  function letterSentences(letter) {
+    const out = [];
+    for (const p of letter.paragraphs) {
+      const sents = splitSentences(p.text);
+      for (const s of sents) out.push({ speaker: p.speaker, text: s, letterTitle: letter.title });
+    }
+    return out;
+  }
+  function pairLetters(letters) {
+    const pairs = []; let i = 0;
+    while (i < letters.length) {
+      const a = letters[i], b = letters[i+1];
+      if (b && a.author !== b.author) { pairs.push([a, b]); i += 2; }
+      else                            { pairs.push([a]);    i += 1; }
+    }
+    return pairs;
+  }
+  function sentenceDur(text) {
+    return Math.max(900, Math.min(4200, text.length * 56 + 250));
+  }
+  function buildSchedule(letters) {
+    const events = [];
+    let cursor = 0;
+    const pairs = pairLetters(letters);
+    for (let pi = 0; pi < pairs.length; pi++) {
+      const pair = pairs[pi];
+      if (pair.length === 1) {
+        for (const s of letterSentences(pair[0])) {
+          const dur = sentenceDur(s.text);
+          // Rare overlap — solo letter, basically none
+          events.push({ startMs: cursor, durMs: dur, speaker: s.speaker, text: s.text, letterTitle: s.letterTitle });
+          cursor += dur + 380;
+        }
+      } else {
+        const sa = letterSentences(pair[0]);
+        const sb = letterSentences(pair[1]);
+        const max = Math.max(sa.length, sb.length);
+        for (let i = 0; i < max; i++) {
+          if (i < sa.length) {
+            const s = sa[i]; const dur = sentenceDur(s.text);
+            // 8% chance of overlapping the previous sentence by up to 35%
+            const overlap = (events.length && Math.random() < 0.08) ? Math.min(0.35 * dur, 600) : 0;
+            const start = Math.max(0, cursor - overlap);
+            events.push({ startMs: start, durMs: dur, speaker: s.speaker, text: s.text, letterTitle: s.letterTitle });
+            cursor = start + dur + 320;
+          }
+          if (i < sb.length) {
+            const s = sb[i]; const dur = sentenceDur(s.text);
+            const overlap = (events.length && Math.random() < 0.08) ? Math.min(0.35 * dur, 600) : 0;
+            const start = Math.max(0, cursor - overlap);
+            events.push({ startMs: start, durMs: dur, speaker: s.speaker, text: s.text, letterTitle: s.letterTitle });
+            cursor = start + dur + 320;
+          }
+        }
+      }
+      cursor += 1800;  // gap between exchanges
+    }
+    return events;
+  }
+
+  function fireEvent(ev) {
+    activeUtterance = ev;
+    const speakerHead = heads[ev.speaker] || heads.Claude;
+    // Other heads orient toward the speaker; speaker looks at the camera-ish
+    // (a point in front of the room, roughly toward Christophero's old seat).
+    const speakerWorld = speakerHead.group.position.clone();
+    speakerWorld.y = 1.4;
+    for (const name of Object.keys(heads)) {
+      if (name === ev.speaker) {
+        // Speaker looks "out" — at where the listener (Christophero seat) is
+        heads[name].lookTarget.set(-0.6, 1.4, 4.5);
+      } else {
+        heads[name].lookTarget.copy(speakerWorld);
+      }
+    }
+    speakerHead.ampTarget = 1.0;
+    if (window.__salonAPI.onUtter) {
+      window.__salonAPI.onUtter(ev.speaker, ev.text, ev.durMs);
+    }
+    showActiveSentence(ev, speakerHead);
+    pushMemory(ev, speakerHead);
+    updateStatusUI(ev);
+    // Schedule amp drop at end of utterance
+    setTimeout(() => {
+      if (activeUtterance === ev) {
+        speakerHead.ampTarget = 0;
+        activeUtterance = null;
+      }
+      // Note: if multiple events overlap, ampTarget for that head may
+      // remain high because the next event already raised it. The decay
+      // of the current event's setTimeout would zero it incorrectly. Mitigate
+      // by checking activeUtterance reference above.
+    }, ev.durMs + 100);
+  }
+
+  function startSchedule() {
+    scheduleStartMs = performance.now();
+    scheduleIdx = 0;
+    const status = document.getElementById('status');
+    if (status && schedule.length) status.textContent = 'reading begins…';
+  }
+  window.__startSchedule = startSchedule;
+
+  function tickSchedule() {
+    if (scheduleStartMs === null || schedule.length === 0) return;
+    const now = performance.now() - scheduleStartMs;
+    while (scheduleIdx < schedule.length && schedule[scheduleIdx].startMs <= now) {
+      fireEvent(schedule[scheduleIdx]);
+      scheduleIdx++;
+    }
+    // Loop forever: when finished, restart after a long pause
+    if (scheduleIdx >= schedule.length) {
+      const lastEnd = schedule[schedule.length - 1].startMs + schedule[schedule.length - 1].durMs;
+      if (now - lastEnd > 6000) {
+        // Restart from beginning
+        scheduleStartMs = performance.now();
+        scheduleIdx = 0;
+      }
+    }
+  }
+
+  function updateStatusUI(ev) {
+    const cls = ev.speaker === 'ChatGPT'      ? 'speaker-gpt'
+             : ev.speaker === 'Christophero' ? 'speaker-chr'
+             :                                  'speaker-cla';
+    const el = document.getElementById('status');
+    el.innerHTML = `<span class="${cls}">${ev.speaker}</span> · <em>${ev.letterTitle}</em>`;
+  }
+
+  function showActiveSentence(ev, headRef) {
+    if (activeSentence) {
+      scene.remove(activeSentence.sprite);
+      if (activeSentence.sprite.material.map) activeSentence.sprite.material.map.dispose();
+      activeSentence.sprite.material.dispose();
+    }
+    const colorHex = '#' + headRef.color.toString(16).padStart(6, '0');
+    const built = makeTextSprite(ev.text, {
+      fontSize: 30,
+      color: colorHex,
+      opacity: 1.0,
+      maxWidth: 760,
+    });
+    // Place above the speaker's head, slightly toward camera
+    const p = headRef.group.position.clone();
+    built.sprite.position.set(p.x, p.y + 0.95, p.z);
+    scene.add(built.sprite);
+    activeSentence = {
+      sprite: built.sprite,
+      mat: built.mat,
+      headRef,
+      fadeStart: performance.now() + ev.durMs,
+      fadeDur: 1200,
+      lifeStart: performance.now(),
+    };
+  }
+
+  function pushMemory(ev, headRef) {
+    const colorHex = '#' + headRef.color.toString(16).padStart(6, '0');
+    // Smaller, less prominent
+    const built = makeTextSprite(ev.text.length > 90 ? ev.text.slice(0, 88) + '…' : ev.text, {
+      fontSize: 20, color: colorHex, opacity: 0.7, maxWidth: 480,
+    });
+    // Random position around the room edges, biased high
+    const angle = Math.random() * Math.PI * 2;
+    const radius = 7 + Math.random() * 4;
+    built.sprite.position.set(
+      Math.cos(angle) * radius * 0.7,
+      2.5 + Math.random() * 3.5,
+      Math.sin(angle) * radius * 0.7 - 1
+    );
+    built.sprite.material.opacity = 0.55;
+    scene.add(built.sprite);
+    memSprites.push({
+      sprite: built.sprite, mat: built.mat,
+      bornMs: performance.now(),
+      drift: new THREE.Vector3(
+        (Math.random() - 0.5) * 0.0008,
+         Math.random() * 0.0006,
+        (Math.random() - 0.5) * 0.0008,
+      ),
+    });
+    while (memSprites.length > MEM_MAX) {
+      const s = memSprites.shift();
+      scene.remove(s.sprite);
+      if (s.mat.map) s.mat.map.dispose();
+      s.mat.dispose();
+    }
+  }
+
+  // ── Cone geometry rebuild on slider change ──────────
+  function rebuildConeGeom(head) {
+    const r = Math.tan(THREE.MathUtils.degToRad(coneParams.angleDeg)) * coneParams.length;
+    const geom = new THREE.ConeGeometry(r, coneParams.length, 32, 1, true);
+    // Same orientation as the initial build: apex at origin, opens toward -Z
+    geom.translate(0, -coneParams.length / 2, 0);
+    geom.rotateX(Math.PI / 2);
+    head.coneMesh.geometry.dispose();
+    head.coneMesh.geometry = geom;
+    head.coneEdges.geometry.dispose();
+    head.coneEdges.geometry = new THREE.EdgesGeometry(geom);
+  }
+  // Track last cone params so we only rebuild when changed
+  let lastCone = { angleDeg: -1, length: -1 };
+
+  // ── Frame loop ──────────────────────────────────────
+  function frame() {
+    t += 0.0024;
+
+    // Camera drift — same as nightclub
+    const r = 11.5 + Math.sin(t * 0.4) * 0.7;
+    camera.position.x = Math.cos(t * 0.6) * r;
+    camera.position.z = Math.sin(t * 0.6) * r + 1;
+    camera.position.y = 3.4 + Math.sin(t * 0.9) * 0.4;
+    camera.lookAt(lookTarget);
+
+    // Energy
+    const dx = mx - lx, dy = my - ly;
+    const speed = Math.sqrt(dx*dx + dy*dy);
+    energy = Math.min(300, energy + speed * 0.6);
+    energy *= 0.92;
+    lx = mx; ly = my;
+    const e = Math.min(1, energy / 180);
+
+    // Audio listener position = camera (camera-coupled "head")
+    if (audioCtx && audioCtx.listener) {
+      const L = audioCtx.listener;
+      if (L.positionX) {
+        L.positionX.value = camera.position.x;
+        L.positionY.value = camera.position.y;
+        L.positionZ.value = camera.position.z;
+        const fwd = new THREE.Vector3();
+        camera.getWorldDirection(fwd);
+        const up = camera.up.clone();
+        L.forwardX.value = fwd.x; L.forwardY.value = fwd.y; L.forwardZ.value = fwd.z;
+        L.upX.value = up.x; L.upY.value = up.y; L.upZ.value = up.z;
+      } else {
+        L.setPosition(camera.position.x, camera.position.y, camera.position.z);
+        const fwd = new THREE.Vector3();
+        camera.getWorldDirection(fwd);
+        L.setOrientation(fwd.x, fwd.y, fwd.z, camera.up.x, camera.up.y, camera.up.z);
+      }
+    }
+
+    // Backroom glow pulse — same as nightclub
+    const audioT = audioCtx ? audioCtx.currentTime : t * 60;
+    const pulse = (Math.sin(audioT * 1.16 * Math.PI * 2) + 1) / 2;
+    backGlowMat.opacity = 0.10 + pulse * 0.22 + e * 0.18;
+
+    // Dancer sway
+    for (const d of dancers) {
+      const i = d.userData.dancerIdx;
+      const baseX = -1.6 + (i - 1) * 0.42;
+      d.userData.origPos.x = baseX + Math.sin(t * 5 + i) * 0.06 * (1 + e * 4);
+    }
+
+    // Plant + tree breathing
+    updateTPrism(plant, t * 0.7, 1);
+    updateTPrism(tree,  t * 0.5 + 0.7, 1);
+
+    // ── Heads update — orient, mouth+cone amplitude ───
+    // Amp smoothing and per-syllable wobble for visible mouth movement.
+    if (lastCone.angleDeg !== coneParams.angleDeg || lastCone.length !== coneParams.length) {
+      for (const k of Object.keys(heads)) rebuildConeGeom(heads[k]);
+      lastCone = { angleDeg: coneParams.angleDeg, length: coneParams.length };
+    }
+    for (const k of Object.keys(heads)) {
+      const h = heads[k];
+      // Look at target (smoothed)
+      const cur = new THREE.Vector3(); h.group.getWorldPosition(cur);
+      const desired = new THREE.Vector3().copy(h.lookTarget);
+      // Express target in head-local terms by setting a temp object's
+      // position and using lookAt — but we want the WHOLE GROUP to orient
+      // its +Z forward at target.
+      h.group.lookAt(desired);
+      // Smooth amp toward target
+      h.mouthAmp += (h.ampTarget - h.mouthAmp) * 0.12;
+      // Per-syllable wobble: when speaking, add a fast oscillator so the
+      // mouth visibly opens/closes per syllable (~6 Hz, jittered)
+      const syllable = h.ampTarget > 0.5
+        ? 0.45 + 0.55 * Math.abs(Math.sin(t * 80 + h.baseFreq * 0.01) * Math.sin(t * 47))
+        : 0;
+      const visibleAmp = h.mouthAmp * (0.55 + 0.45 * syllable);
+      // Mouth scale: ring expands and fills more when speaking
+      const ms = 0.5 + visibleAmp * 1.6;
+      h.mouth.scale.set(ms, ms, 1);
+      h.mouthEdges.scale.set(ms, ms, 1);
+      h.mouth.material.opacity = visibleAmp * 0.9;
+      // Cone — opacity scales with amp * intensity slider
+      const ci = coneParams.intensity;
+      h.coneMat.opacity      = visibleAmp * 0.32 * ci;
+      h.coneEdgesMat.opacity = visibleAmp * 0.28 * ci;
+      // Shell pulses subtly when speaking
+      h.shell.material.opacity = 0.65 + visibleAmp * 0.30;
+    }
+
+    // ── Active sentence sprite — track speaker, fade ──
+    if (activeSentence) {
+      const a = activeSentence;
+      const p = a.headRef.group.position;
+      a.sprite.position.set(p.x, p.y + 0.95, p.z);
+      const now = performance.now();
+      if (now > a.fadeStart) {
+        const f = 1 - Math.min(1, (now - a.fadeStart) / a.fadeDur);
+        a.mat.opacity = f;
+        if (f <= 0.01) {
+          scene.remove(a.sprite);
+          if (a.mat.map) a.mat.map.dispose();
+          a.mat.dispose();
+          activeSentence = null;
+        }
+      }
+    }
+
+    // ── Memory sprites — drift + age fade ─────────────
+    {
+      const now = performance.now();
+      for (const m of memSprites) {
+        m.sprite.position.add(m.drift);
+        const age = (now - m.bornMs) / 1000;
+        const fade = Math.max(0.05, 0.55 - age * 0.012);
+        m.mat.opacity = fade;
+      }
+    }
+
+    // ── GLITCH (subtle on room, extreme on tensegrity) ─
+    const jX = e * 0.32, jY = e * 0.16, jZ = e * 0.32;
+    const eX = e * 1.9,  eY = e * 1.0,  eZ = e * 1.9;
+    for (const obj of allLines) {
+      const orig = obj.userData.origPos;
+      if (!orig) continue;
+      const ext = obj.userData.glitchExtreme === true;
+      const aX = ext ? eX : jX, aY = ext ? eY : jY, aZ = ext ? eZ : jZ;
+      obj.position.x = orig.x + (Math.random() - 0.5) * aX;
+      obj.position.y = orig.y + (Math.random() - 0.5) * aY;
+      obj.position.z = orig.z + (Math.random() - 0.5) * aZ;
+      obj.renderOrder = e > 0.3 ? (Math.random() - 0.5) * (e - 0.3) * (ext ? 6 : 1.2) : 0;
+      const flickerProb = ext ? e * 0.42 : e * 0.10;
+      if (obj.material) {
+        obj.material.depthTest = Math.random() > flickerProb;
+      } else if (obj.children) {
+        for (const c of obj.children) {
+          if (c.material) c.material.depthTest = Math.random() > flickerProb;
+        }
+      }
+    }
+    camera.fov = baseFov + Math.sin(t * 7) * e * 3 + (Math.random() - 0.5) * e * 1;
+    camera.updateProjectionMatrix();
+
+    // Motes
+    const pos = motePts.geometry.attributes.position.array;
+    for (let i = 0; i < moteCount; i++) {
+      pos[i*3+1] = motes[i].baseY + Math.sin(t * 4 + motes[i].phase) * 0.35;
+      pos[i*3] += Math.sin(t * 0.7 + motes[i].phase) * 0.0006;
+      pos[i*3+2] += Math.cos(t * 0.5 + motes[i].phase) * 0.0006;
+    }
+    motePts.geometry.attributes.position.needsUpdate = true;
+
+    tickSchedule();
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+  frame();
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // ── Load letters ─────────────────────────────────────
+  fetch('letters.json').then(r => r.json()).then(data => {
+    schedule = buildSchedule(data.letters);
+    document.getElementById('status').textContent =
+      `${data.letters.length} letters loaded · ${schedule.length} sentences scheduled · ` +
+      `tap or press a key to begin`;
+    // Don't autostart until audio unlocked (handled by audio IIFE).
+  }).catch(err => {
+    console.error('letters.json load failed', err);
+    document.getElementById('status').textContent =
+      'letters.json failed to load — check console';
+  });
+
+  // Expose for the audio IIFE
+  window.__salonAPI.startSchedule = startSchedule;
+})();
+
+// ─── Audio ─────────────────────────────────────────────────────────────────
+(() => {
+  let started = false;
+
+  function startAudio() {
+    if (started) return;
+    started = true;
+    document.getElementById('enterHint').classList.add('gone');
+
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const now = audioCtx.currentTime;
+
+    const master = audioCtx.createGain();
+    master.gain.value = 0;
+    master.gain.setTargetAtTime(0.50, now, 4);
+    master.connect(audioCtx.destination);
+
+    function makePanner(x, y, z) {
+      const p = audioCtx.createPanner();
+      p.panningModel  = panningMode;
+      p.distanceModel = binauralParams.distanceModel;
+      p.refDistance   = binauralParams.refDistance;
+      p.rolloffFactor = binauralParams.rolloffFactor;
+      p.maxDistance   = binauralParams.maxDistance;
+      p.coneInnerAngle = 360;
+      p.setPosition(x, y, z);
+      p.connect(master);
+      allPanners.push(p);
+      return p;
+    }
+
+    // ── Backroom sub (same as nightclub) ────────────────
+    const subPanner = makePanner(-1.6, 0.7, -9.2);
+    const sub = audioCtx.createOscillator(); sub.type = 'sine'; sub.frequency.value = 52;
+    const subTwin = audioCtx.createOscillator(); subTwin.type = 'sine'; subTwin.frequency.value = 52.6;
+    const pulseGain = audioCtx.createGain(); pulseGain.gain.value = 0.55;
+    const lfo = audioCtx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 1.16;
+    const lfoDepth = audioCtx.createGain(); lfoDepth.gain.value = 0.45;
+    lfo.connect(lfoDepth).connect(pulseGain.gain);
+    const lpf = audioCtx.createBiquadFilter(); lpf.type = 'lowpass'; lpf.frequency.value = 85; lpf.Q.value = 0.5;
+    const noiseBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * 1.5, audioCtx.sampleRate);
+    const nch = noiseBuf.getChannelData(0);
+    let lastSample = 0;
+    for (let i = 0; i < nch.length; i++) {
+      const white = Math.random() * 2 - 1;
+      lastSample = (lastSample + 0.025 * white) / 1.025;
+      nch[i] = lastSample * 3.5;
+    }
+    const noise = audioCtx.createBufferSource(); noise.buffer = noiseBuf; noise.loop = true;
+    const noiseLpf = audioCtx.createBiquadFilter(); noiseLpf.type = 'lowpass'; noiseLpf.frequency.value = 240;
+    const noiseGain = audioCtx.createGain(); noiseGain.gain.value = 0.045;
+    sub.connect(pulseGain); subTwin.connect(pulseGain);
+    pulseGain.connect(lpf); lpf.connect(subPanner);
+    noise.connect(noiseLpf); noiseLpf.connect(noiseGain); noiseGain.connect(subPanner);
+    sub.start(now); subTwin.start(now); lfo.start(now); noise.start(now);
+
+    // Zippery
+    const zipPanner = makePanner(-2.4, 1.7, -8.4);
+    const zipNoise = audioCtx.createBufferSource();
+    zipNoise.buffer = noiseBuf; zipNoise.loop = true;
+    const zipBp = audioCtx.createBiquadFilter(); zipBp.type = 'bandpass'; zipBp.Q.value = 11; zipBp.frequency.value = 2800;
+    const zipGain = audioCtx.createGain(); zipGain.gain.value = 0;
+    zipNoise.connect(zipBp); zipBp.connect(zipGain); zipGain.connect(zipPanner);
+    zipNoise.start(now);
+    function scheduleZip() {
+      if (!audioCtx) return;
+      const t0 = audioCtx.currentTime + 0.01;
+      const dur = 0.18 + Math.random() * 0.55;
+      const startFreq = 2000 + Math.random() * 3500;
+      const endFreq   = 600  + Math.random() * 4500;
+      zipBp.frequency.cancelScheduledValues(t0);
+      zipBp.frequency.setValueAtTime(startFreq, t0);
+      zipBp.frequency.exponentialRampToValueAtTime(Math.max(150, endFreq), t0 + dur);
+      zipGain.gain.cancelScheduledValues(t0);
+      zipGain.gain.setValueAtTime(0, t0);
+      zipGain.gain.linearRampToValueAtTime(0.22, t0 + 0.04);
+      zipGain.gain.linearRampToValueAtTime(0,    t0 + dur);
+      setTimeout(scheduleZip, (dur + 1.6 + Math.random() * 4.5) * 1000);
+    }
+    setTimeout(scheduleZip, 2500 + Math.random() * 3000);
+
+    // ── Per-head voice graph ────────────────────────────
+    // Each head: panner at the head's world position, AM gain, osc + sub-osc
+    // mixed with a touch of noise for breath, ducked low-pass for warmth.
+    const headVoices = {};
+    for (const k of Object.keys(heads)) {
+      const h = heads[k];
+      const p = h.group.position;
+      const panner = makePanner(p.x, p.y, p.z);
+      const am = audioCtx.createGain(); am.gain.value = 0;
+      const lp = audioCtx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1800; lp.Q.value = 0.7;
+      const osc1 = audioCtx.createOscillator(); osc1.type = 'sawtooth'; osc1.frequency.value = h.baseFreq;
+      const osc2 = audioCtx.createOscillator(); osc2.type = 'sine';     osc2.frequency.value = h.baseFreq * 0.5;
+      const oscMix = audioCtx.createGain(); oscMix.gain.value = 0.5;
+      osc1.connect(oscMix); osc2.connect(oscMix);
+      // Breath: a tiny touch of bandpassed noise, mixed through the AM gain
+      const breathN = audioCtx.createBufferSource(); breathN.buffer = noiseBuf; breathN.loop = true;
+      const breathBp = audioCtx.createBiquadFilter(); breathBp.type = 'bandpass'; breathBp.frequency.value = 1500; breathBp.Q.value = 1.2;
+      const breathGain = audioCtx.createGain(); breathGain.gain.value = 0.12;
+      breathN.connect(breathBp); breathBp.connect(breathGain); breathGain.connect(oscMix);
+      breathN.start(now);
+      oscMix.connect(lp); lp.connect(am); am.connect(panner);
+      osc1.start(now); osc2.start(now);
+      headVoices[k] = { panner, am, lp, osc1, osc2, baseFreq: h.baseFreq };
+    }
+
+    // ── Speak: schedule AM envelope + pitch warble ──────
+    function speak(headName, text, durMs) {
+      const v = headVoices[headName]; if (!v) return;
+      const t0 = audioCtx.currentTime;
+      const total = durMs / 1000;
+      // Syllable count proportional to length, but with floor/ceiling
+      const segs = Math.max(4, Math.min(18, Math.round(text.length / 9)));
+      const segDurs = []; const gaps = []; let used = 0;
+      for (let s = 0; s < segs; s++) {
+        const isHeld = Math.random() < 0.16;
+        const segDur = isHeld ? 0.18 + Math.random() * 0.16 : 0.07 + Math.random() * 0.08;
+        const gap    = 0.04 + Math.random() * 0.05;
+        segDurs.push(segDur); gaps.push(gap); used += segDur + gap;
+      }
+      // Scale all durations to fit total
+      const scale = total / used;
+      v.am.gain.cancelScheduledValues(t0);
+      v.am.gain.setValueAtTime(0, t0);
+      let cursor = 0;
+      for (let s = 0; s < segs; s++) {
+        const ts = t0 + cursor * scale;
+        const segDur = segDurs[s] * scale;
+        v.am.gain.linearRampToValueAtTime(0.30, ts + 0.018);
+        v.am.gain.linearRampToValueAtTime(0,    ts + segDur);
+        cursor += segDurs[s] + gaps[s];
+      }
+      // Pitch warble — random walk
+      v.osc1.frequency.cancelScheduledValues(t0);
+      const fineSteps = Math.max(28, segs * 5);
+      const stepDur = total / fineSteps;
+      for (let f = 0; f < fineSteps; f++) {
+        const ts = t0 + f * stepDur;
+        const ratio = 0.7 + Math.random() * 0.6;
+        v.osc1.frequency.setValueAtTime(v.baseFreq * ratio, ts);
+      }
+      v.osc1.frequency.setValueAtTime(v.baseFreq, t0 + total + 0.05);
+    }
+
+    // Hook into scene's "onUtter" callback so it triggers audio when an
+    // event fires.
+    window.__salonAPI.onUtter = (speaker, text, durMs) => speak(speaker, text, durMs);
+
+    // Update each head's panner position when its head moves (currently
+    // they're static, but listener moves with camera so distance changes
+    // continuously). Done in a small interval rather than per-frame to
+    // avoid AudioParam thrash; head positions don't change so just set once.
+    for (const k of Object.keys(heads)) {
+      const p = heads[k].group.position;
+      headVoices[k].panner.setPosition(p.x, p.y, p.z);
+    }
+
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+
+    // Kick off the schedule now that audio is alive
+    if (window.__startSchedule) window.__startSchedule();
+  }
+
+  function unlockOnce() {
+    startAudio();
+    document.removeEventListener('pointerdown', unlockOnce);
+    document.removeEventListener('keydown', unlockOnce);
+  }
+  document.addEventListener('pointerdown', unlockOnce);
+  document.addEventListener('keydown', unlockOnce);
+})();
+</script>
+</body>
+</html>
