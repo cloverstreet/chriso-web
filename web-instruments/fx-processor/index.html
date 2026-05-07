@@ -363,6 +363,57 @@ input.vfader::-webkit-slider-thumb {
   transition:height .04s;
 }
 .vmeter-peak { position:absolute; width:100%; height:2px; background:rgba(255,255,255,.6); }
+
+/* ─────────── XY GAIN/PAN PAD (v64+) ───────────
+   Standard for all input modules. Replaces the legacy 1D gain-meter strip
+   wherever it was paired with a separate PAN slider.
+   Sizes: compact 96×56 (fx-processor input col), default 120×64, big 200×80.
+   --zero-x: % position of unity gain along X axis. Default 83.33% for −60→+12
+   dB. Override via inline style for other ranges (e.g. 90.9% for −60→+6).    */
+.gp-pad-wrap { display:flex; justify-content:center; padding:1px 0; }
+.gp-pad {
+  position:relative; width:96px; height:56px;
+  background:#060606; border:1px solid #1a1a1a; border-radius:3px;
+  overflow:hidden; cursor:grab; touch-action:none;
+}
+.gp-pad:active { cursor:grabbing; }
+.gp-meter {
+  position:absolute; left:0; height:calc(50% - 1px); width:0%;
+  background:linear-gradient(to right,#1a5a1a 0%,#2a9a2a 58%,#7ab020 70%,#b89010 82%,#c06010 90%,#e02020 100%);
+  pointer-events:none;
+}
+.gp-meter-l { top:0; }
+.gp-meter-r { bottom:0; }
+.gp-zero-line {
+  position:absolute; top:0; bottom:0; left:var(--zero-x, 83.33%);
+  width:1px; background:rgba(200,200,100,.45); pointer-events:none;
+}
+.gp-zero-label {
+  position:absolute; top:50%; left:calc(var(--zero-x, 83.33%) + 2px);
+  transform:translateY(-50%);
+  font-family:'Courier New',monospace; font-size:.46rem;
+  color:rgba(200,200,100,.55); pointer-events:none; line-height:1; z-index:1;
+}
+.gp-center-line {
+  position:absolute; left:0; right:0; top:50%; height:1px;
+  background:rgba(255,255,255,.07); pointer-events:none;
+}
+.gp-cross { position:absolute; pointer-events:none; width:0; height:0; top:0; left:0; }
+.gp-vline { position:absolute; top:-300px; bottom:-300px; left:0; width:1px;
+  background:rgba(106,174,224,.42); transform:translateX(-50%); }
+.gp-hline { position:absolute; left:-400px; right:-400px; top:0; height:1px;
+  background:rgba(106,174,224,.42); transform:translateY(-50%); }
+.gp-puck {
+  position:absolute; width:8px; height:8px; border-radius:50%;
+  background:#6aaee0; border:1px solid rgba(255,255,255,.45);
+  box-shadow:0 0 6px rgba(100,160,220,.85);
+  top:0; left:0; transform:translate(-50%,-50%);
+}
+.gp-readout { display:flex; justify-content:space-between;
+  font-size:.56rem; color:#888; letter-spacing:.04em;
+  margin-top:2px; padding:0 1px; }
+.gp-readout .k { color:#666; letter-spacing:.10em; text-transform:uppercase; }
+
 /* Combined gain+meter slider (output only) */
 .gain-meter-wrap { position:relative; width:22px; height:100%; flex-shrink:0; }
 .gain-meter-bg {
@@ -431,7 +482,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 <!-- Version badge (always visible, top-right) -->
 <div id="version-badge" style="position:fixed;top:8px;right:10px;
      font-family:'Courier New',monospace;font-size:.6rem;letter-spacing:.16em;
-     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v63</div>
+     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v64</div>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
 <!-- START SCREEN                                                   -->
@@ -487,18 +538,27 @@ input.gain-meter-slider::-webkit-slider-thumb {
           </select>
           <div class="ch-note" id="ch-note"></div>
         </div>
-        <!-- PAN -->
-        <div style="margin-bottom:5px;">
-          <div style="display:flex;align-items:center;gap:3px;margin-bottom:1px;">
-            <label style="font-size:.62rem;letter-spacing:.1em;color:#888;">PAN</label>
-            <div style="position:relative;flex:1;">
-              <input type="range" id="mic-pan-sl" min="-1" max="1" step="0.01" value="0"
-                     oninput="setMicPan(this.value)" style="width:100%;">
-              <div style="position:absolute;top:-5px;left:50%;transform:translateX(-50%);
-                          width:1px;height:4px;background:#444;pointer-events:none;"></div>
+        <!-- v64: XY pad replaces separate PAN slider + 1D gain-meter strip.
+             L/R = gain (-60..+12 dB), U/D = pan. Hidden sliders preserved
+             so existing programmatic reads/writes stay valid. -->
+        <input type="range" id="mic-pan-sl"   min="-1" max="1"   step="0.01" value="0"  style="display:none;">
+        <input type="range" id="input-gain-db" min="-60" max="12" step="0.5"  value="0"  style="display:none;">
+        <div class="gp-pad-wrap" style="margin-bottom:4px;"
+             title="Gain (L/R = -60..+12 dB) · Pan (U/D = L..R). Drag to set, dblclick = 0 dB / center, click value to type.">
+          <div class="gp-pad" id="mic-gp-pad">
+            <div class="gp-meter gp-meter-l" id="mic-pad-l"></div>
+            <div class="gp-meter gp-meter-r" id="mic-pad-r"></div>
+            <div class="gp-center-line"></div>
+            <div class="gp-zero-line"></div>
+            <div class="gp-zero-label">0</div>
+            <div class="gp-cross" id="mic-gp-cross">
+              <div class="gp-vline"></div><div class="gp-hline"></div><div class="gp-puck"></div>
             </div>
-            <span class="ctrl-val" id="mic-pan-val" data-value="0" style="font-size:.65rem;min-width:24px;text-align:right;">C</span>
           </div>
+        </div>
+        <div class="gp-readout" style="margin-bottom:4px;">
+          <span><span class="k">gain</span> <span class="ctrl-val" id="input-gain-val" data-value="0" title="Click to type a precise dB value">0 dB</span></span>
+          <span><span class="k">pan</span> <span class="ctrl-val" id="mic-pan-val" data-value="0" title="Click to type pan (L100..R100 or 0)">C</span></span>
         </div>
         <!-- DIRECT → OUT -->
         <div style="margin-bottom:5px;padding-top:5px;border-top:1px solid #1a1a1a;">
@@ -509,24 +569,6 @@ input.gain-meter-slider::-webkit-slider-thumb {
           <input type="range" id="mic-direct-sl" min="0" max="1" step="0.01" value="0"
                  oninput="setMicDirect(this.value)" style="width:100%;">
         </div>
-        <!-- Combined gain+meter slider -->
-        <div style="display:flex;justify-content:center;height:68px;min-height:68px;margin-bottom:4px;">
-          <div class="gain-meter-wrap" style="height:68px;">
-            <div class="gain-meter-bg">
-              <div class="gain-meter-bar">
-                <div class="gain-meter-level" id="mic-level-l" style="height:0%"></div>
-                <div class="gain-meter-peak" id="mic-pk-l" style="bottom:0%"></div>
-              </div>
-              <div class="gain-meter-bar">
-                <div class="gain-meter-level" id="mic-level-r" style="height:0%"></div>
-                <div class="gain-meter-peak" id="mic-pk-r" style="bottom:0%"></div>
-              </div>
-            </div>
-            <input class="gain-meter-slider" type="range" id="input-gain-db"
-              min="-60" max="12" step="0.5" value="0" oninput="setInputGainDb(this.value)">
-          </div>
-        </div>
-        <div style="text-align:center;margin-top:3px;"><span class="ctrl-val" id="input-gain-val" data-value="0" style="font-size:.68rem;">0dB</span></div>
       </div>
 
       <!-- SIGNAL GENERATOR module -->
@@ -569,18 +611,26 @@ input.gain-meter-slider::-webkit-slider-thumb {
           <input type="range" id="test-freq-sl" min="0" max="1000" step="any" value="263"
                  oninput="setTestFreqPos(this.value)" style="width:100%;">
         </div>
-        <!-- Pan (compact) -->
-        <div style="margin-bottom:5px;">
-          <div style="display:flex;align-items:center;gap:3px;margin-bottom:1px;">
-            <label style="font-size:.62rem;letter-spacing:.1em;color:#888;">PAN</label>
-            <div style="position:relative;flex:1;">
-              <input type="range" id="test-pan-sl" min="-1" max="1" step="0.01" value="0"
-                     oninput="setTestPan(this.value)" style="width:100%;">
-              <div style="position:absolute;top:-5px;left:50%;transform:translateX(-50%);
-                          width:1px;height:4px;background:#444;pointer-events:none;"></div>
+        <!-- v64: XY pad replaces separate PAN slider + side-mounted 1D gain-meter.
+             L/R = gain (-60..+6 dB → unity at 90.9%), U/D = pan. Hidden sliders preserved. -->
+        <input type="range" id="test-pan-sl"  min="-1" max="1"   step="0.01" value="0"  style="display:none;">
+        <input type="range" id="test-gain-sl" min="-60" max="6"  step="0.5"  value="-6" style="display:none;">
+        <div class="gp-pad-wrap" style="margin-bottom:4px;"
+             title="Gain (L/R = -60..+6 dB) · Pan (U/D = L..R). Drag to set, dblclick = 0 dB / center, click value to type.">
+          <div class="gp-pad" id="test-gp-pad" style="--zero-x:90.9%;">
+            <div class="gp-meter gp-meter-l" id="test-pad-l"></div>
+            <div class="gp-meter gp-meter-r" id="test-pad-r"></div>
+            <div class="gp-center-line"></div>
+            <div class="gp-zero-line"></div>
+            <div class="gp-zero-label">0</div>
+            <div class="gp-cross" id="test-gp-cross">
+              <div class="gp-vline"></div><div class="gp-hline"></div><div class="gp-puck"></div>
             </div>
-            <span class="ctrl-val" id="test-pan-val" data-value="0" style="font-size:.65rem;min-width:24px;text-align:right;">C</span>
           </div>
+        </div>
+        <div class="gp-readout" style="margin-bottom:4px;">
+          <span><span class="k">gain</span> <span class="ctrl-val" id="test-gain-val" data-value="-6" title="Click to type a precise dB value">-6 dB</span></span>
+          <span><span class="k">pan</span> <span class="ctrl-val" id="test-pan-val" data-value="0" title="Click to type pan (L100..R100 or 0)">C</span></span>
         </div>
         <!-- DIRECT → OUT -->
         <div style="margin-bottom:5px;padding-top:5px;border-top:1px solid #1a1a1a;">
@@ -591,9 +641,8 @@ input.gain-meter-slider::-webkit-slider-thumb {
           <input type="range" id="test-direct-sl" min="0" max="1" step="0.01" value="0"
                  oninput="setTestDirect(this.value)" style="width:100%;">
         </div>
-        <!-- ADSR + gain/meter side by side -->
+        <!-- ADSR (hidden in steady mode) — gain+meter moved into XY pad above -->
         <div style="display:flex;gap:5px;align-items:flex-start;">
-          <!-- ADSR panel (hidden in steady mode) -->
           <div id="siggen-adsr" style="display:none;flex:1;min-width:0;flex-direction:column;">
             <div style="font-size:.54rem;color:#444;letter-spacing:.12em;text-transform:uppercase;margin-bottom:4px;">Envelope</div>
             <div class="adsr-row">
@@ -622,26 +671,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
               <span class="adsr-val ctrl-val" id="pulse-rate-val" data-value="1000">1000</span>
             </div>
           </div>
-          <!-- Gain+meter -->
-          <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">
-            <div style="display:flex;justify-content:center;height:68px;min-height:68px;margin-bottom:3px;">
-              <div class="gain-meter-wrap" style="height:68px;--zero-db:90.9%;">
-                <div class="gain-meter-bg">
-                  <div class="gain-meter-bar">
-                    <div class="gain-meter-level" id="test-level-l" style="height:0%"></div>
-                    <div class="gain-meter-peak" id="test-pk-l" style="bottom:0%"></div>
-                  </div>
-                  <div class="gain-meter-bar">
-                    <div class="gain-meter-level" id="test-level-r" style="height:0%"></div>
-                    <div class="gain-meter-peak" id="test-pk-r" style="bottom:0%"></div>
-                  </div>
-                </div>
-                <input class="gain-meter-slider" type="range" id="test-gain-sl"
-                  min="-60" max="6" step="0.5" value="-6" oninput="setTestGainDb(this.value)">
-              </div>
-            </div>
-            <span class="ctrl-val" id="test-gain-val" data-value="-6" style="font-size:.65rem;">-6dB</span>
-          </div>
+          <!-- v64: gain/meter now lives in the XY pad above; this column is empty in pulsed mode. -->
         </div>
 
       </div>
@@ -1290,6 +1320,9 @@ async function initAudio() {
     setupEditables();
     setupDblClick();
     setupSliderSlew();
+    // v64: bind XY pads (replaces separate gain + pan controls on mic + sig gen).
+    bindGainPanPad('mic-gp-pad',  -60, 12, v => setInputGainDb(v), v => setMicPan(v));
+    bindGainPanPad('test-gp-pad', -60,  6, v => setTestGainDb(v),  v => setTestPan(v));
     showBoard();
     if (!psKeyboardSetup) { psSetupKeyboard(); psKeyboardSetup = true; }
     applyDefaultState(); // apply safe defaults
@@ -1526,6 +1559,8 @@ function setTestPan(v) {
     else el.textContent = 'R' + Math.round(pan*100) + '%';
     el.dataset.value = pan;
   }
+  const sl = document.getElementById('test-pan-sl'); if (sl) sl.value = pan;
+  updateXyCross('test-gp-cross', _readGainDb('test-gain-val', -6), pan, -60, 6);
 }
 
 function setMicPan(v) {
@@ -1538,6 +1573,40 @@ function setMicPan(v) {
     else el.textContent = 'R' + Math.round(pan*100) + '%';
     el.dataset.value = pan;
   }
+  const sl = document.getElementById('mic-pan-sl'); if (sl) sl.value = pan;
+  updateXyCross('mic-gp-cross', _readGainDb('input-gain-val', 0), pan, -60, 12);
+}
+
+// ──────────── XY GAIN/PAN PAD HELPERS (v64+) ────────────
+function _readGainDb(valId, fallback){
+  const el = document.getElementById(valId);
+  if (!el) return fallback;
+  const v = parseFloat(el.dataset.value);
+  return isFinite(v) ? v : fallback;
+}
+function updateXyCross(crossId, gainDb, pan, minDb, maxDb){
+  const cross = document.getElementById(crossId); if (!cross) return;
+  const range = maxDb - minDb;
+  const xPct = Math.max(0, Math.min(100, (gainDb - minDb)/range * 100));
+  const yPct = Math.max(0, Math.min(100, (pan + 1)/2 * 100));
+  cross.style.left = xPct + '%';
+  cross.style.top  = yPct + '%';
+}
+function bindGainPanPad(padId, minDb, maxDb, onGain, onPan){
+  const pad = document.getElementById(padId); if (!pad) return;
+  let dragging = false;
+  function update(e){
+    const r = pad.getBoundingClientRect();
+    const x = Math.max(0, Math.min(r.width,  e.clientX - r.left));
+    const y = Math.max(0, Math.min(r.height, e.clientY - r.top));
+    onGain(minDb + (x / r.width) * (maxDb - minDb));
+    onPan ((y / r.height) * 2 - 1);
+  }
+  pad.addEventListener('pointerdown',  e => { dragging = true; pad.setPointerCapture(e.pointerId); update(e); });
+  pad.addEventListener('pointermove',  e => { if (dragging) update(e); });
+  pad.addEventListener('pointerup',    e => { dragging = false; try { pad.releasePointerCapture(e.pointerId); } catch{} });
+  pad.addEventListener('pointercancel',()=>{ dragging = false; });
+  pad.addEventListener('dblclick',     () => { onGain(0); onPan(0); });
 }
 function setMicDirect(v){
   if(micDirectG) micDirectG.gain.rampTo(parseFloat(v), paramRampTime);
@@ -1616,8 +1685,11 @@ function setTestFreqSemi(st){setTestFreqHz(semiToHz(parseFloat(st)));}
 function setTestGainDb(db){
   const v=parseFloat(db);
   if(testEnabled && testMasterGainTone) testMasterGainTone.gain.rampTo(dbToGain(v),paramRampTime);
-  document.getElementById('test-gain-val').textContent=Math.round(v)+'dB';
+  document.getElementById('test-gain-val').textContent=Math.round(v)+' dB';
   document.getElementById('test-gain-val').dataset.value=v;
+  const sl = document.getElementById('test-gain-sl'); if (sl) sl.value = v;
+  const pan = parseFloat((document.getElementById('test-pan-sl')||{value:0}).value)||0;
+  updateXyCross('test-gp-cross', v, pan, -60, 6);
 }
 
 // ── Analyser RMS helper ──────────────────────────────────────────────
@@ -1650,6 +1722,13 @@ function vMeter(lin, prefix, dbId) {
   vMeterBar(Math.max(0,pct+spread), prefix+'-level-l', prefix+'-pk-l');
   vMeterBar(Math.max(0,pct-spread), prefix+'-level-r', prefix+'-pk-r');
   if (dbId) { const dEl=document.getElementById(dbId); if(dEl) dEl.textContent = lin<SILENCE?'—':fmtDb(db); }
+}
+// v64: horizontal pad meter (drives `width` instead of `height`).
+function setPadBar(id, lin){
+  const el = document.getElementById(id); if (!el) return;
+  const db  = lin < SILENCE ? -Infinity : gainToDb(lin);
+  const pct = lin < SILENCE ? 0 : Math.max(0, Math.min(100, (db+60)/60*100));
+  el.style.width = pct.toFixed(1) + '%';
 }
 
 
@@ -1694,7 +1773,14 @@ function animateMeters(){
   const tL_l = tMono * Math.cos(tTheta);
   const tL_r = tMono * Math.sin(tTheta);
   const mL = getAnalyserRMS(micAnalyser);
-  vMeter(mL, 'mic', 'mic-db');
+  // v64: mic pad bars (driven by width, not height — meter is horizontal in pad).
+  // Apply the same micPanner equal-power split for L/R.
+  const micPan = (micPanner ? micPanner.pan.value : 0);
+  const micTheta = (micPan + 1)/2 * Math.PI/2;
+  const mL_l = mL * Math.cos(micTheta);
+  const mL_r = mL * Math.sin(micTheta);
+  setPadBar('mic-pad-l', mL_l);
+  setPadBar('mic-pad-r', mL_r);
   // Sys capture meter
   if(sysAnalyserL && sysAnalyserR){
     const sL=getAnalyserRMS(sysAnalyserL), sR=getAnalyserRMS(sysAnalyserR);
@@ -1708,8 +1794,9 @@ function animateMeters(){
   const tDb = tMono < SILENCE ? -Infinity : gainToDb(tMono);
   const tPct_l = tL_l < SILENCE ? 0 : Math.max(0, Math.min(100, (gainToDb(tL_l)+60)/60*100));
   const tPct_r = tL_r < SILENCE ? 0 : Math.max(0, Math.min(100, (gainToDb(tL_r)+60)/60*100));
-  vMeterBar(tPct_l, 'test-level-l', 'test-pk-l');
-  vMeterBar(tPct_r, 'test-level-r', 'test-pk-r');
+  // v64: sig gen pad bars (horizontal, width-driven).
+  setPadBar('test-pad-l', tL_l);
+  setPadBar('test-pad-r', tL_r);
   const tdEl = document.getElementById('test-gain-val'); // gain val doubles as db display when not editing
   // Output L/R from stereo meter
   const odb_l = oLin_l < SILENCE ? -Infinity : gainToDb(oLin_l);
@@ -1774,7 +1861,14 @@ function toggleFxBypass(fx){
 }
 
 // ── Parameter setters ─────────────────────────────────────────────
-function setInputGainDb(db){const v=parseFloat(db); if(micGainNode && !inputMuted) micGainNode.gain.rampTo(dbToGain(v),paramRampTime); const el=document.getElementById('input-gain-val'); el.textContent=Math.round(v)+'dB'; el.dataset.value=v;}
+function setInputGainDb(db){
+  const v=parseFloat(db);
+  if(micGainNode && !inputMuted) micGainNode.gain.rampTo(dbToGain(v),paramRampTime);
+  const el=document.getElementById('input-gain-val'); el.textContent=Math.round(v)+' dB'; el.dataset.value=v;
+  const sl = document.getElementById('input-gain-db'); if (sl) sl.value = v;
+  const pan = parseFloat((document.getElementById('mic-pan-sl')||{value:0}).value)||0;
+  updateXyCross('mic-gp-cross', v, pan, -60, 12);
+}
 function setOutputGainDb(db){if(outputGainNode)outputGainNode.gain.rampTo(dbToGain(parseFloat(db)),paramRampTime); const v=parseFloat(db); const el=document.getElementById('output-gain-val'); el.textContent=Math.round(v)+'dB'; el.dataset.value=v;}
 
 // ── Recording: pre-gain mix → file download ──
@@ -1994,8 +2088,11 @@ async function startWavCapture(){
       pcmCapR.push(e.data.r);
     };
     pcmCaptureNode = worklet;
-    recDebug('wav: createGain bridge');
-    const tapBridge = rawCtx.createGain();
+    // CRITICAL: bridge MUST be on the same context as the worklet.
+    // Earlier (v60–v63) created the bridge on rawCtx (the Tone wrapper) while
+    // the worklet was on nativeCtx — silent stall. UI standard: doc.
+    recDebug('wav: createGain bridge on nativeCtx');
+    const tapBridge = nativeCtx.createGain();
     tapBridge.channelCount = 2; tapBridge.channelCountMode = 'explicit';
     recDebug('wav: recordTap → tapBridge');
     recordTap.connect(tapBridge);
@@ -2026,7 +2123,10 @@ function stopWavCaptureAndDownload(){
     if(stEl) stEl.textContent = `no data (chunks=${finalChunks})`;
     pcmCapL=[]; pcmCapR=[]; return;
   }
-  const blob = encodeWavInt16PCM(pcmCapL, pcmCapR, rawCtx.sampleRate);
+  // Use the same nativeCtx sampleRate the worklet was running on — Tone wrapper
+  // and native ctx always share rate, but reaching the native side is canonical.
+  const sr = wavNativeCtx().sampleRate || rawCtx.sampleRate;
+  const blob = encodeWavInt16PCM(pcmCapL, pcmCapR, sr);
   pcmCapL = []; pcmCapR = [];
   triggerDownload(blob, `fx-processor-${recordTimestamp()}.wav`);
   if(stEl) stEl.textContent = `saved ${(blob.size/1024/1024).toFixed(1)}MB`;
