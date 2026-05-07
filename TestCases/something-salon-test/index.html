@@ -244,18 +244,18 @@
   </div>
   <div class="tab-row">
     <span class="tab-label">ref dist</span>
-    <input type="range" class="tab-slider" id="bRef" min="0.1" max="5" step="0.1" value="1.0">
-    <span class="tab-val" id="bRefVal">1.0</span>
+    <input type="range" class="tab-slider" id="bRef" min="0.1" max="5" step="0.1" value="0.7">
+    <span class="tab-val" id="bRefVal">0.7</span>
   </div>
   <div class="tab-row">
     <span class="tab-label">rolloff</span>
-    <input type="range" class="tab-slider" id="bRoll" min="0.1" max="5" step="0.1" value="1.4">
-    <span class="tab-val" id="bRollVal">1.4</span>
+    <input type="range" class="tab-slider" id="bRoll" min="0.1" max="5" step="0.1" value="2.3">
+    <span class="tab-val" id="bRollVal">2.3</span>
   </div>
   <div class="tab-row">
     <span class="tab-label">max dist</span>
-    <input type="range" class="tab-slider" id="bMax" min="5" max="200" step="1" value="30">
-    <span class="tab-val" id="bMaxVal">30</span>
+    <input type="range" class="tab-slider" id="bMax" min="5" max="200" step="1" value="18">
+    <span class="tab-val" id="bMaxVal">18</span>
   </div>
 
   <div class="tab-divider"></div>
@@ -300,9 +300,12 @@ let audioCtx = null;
 let panningMode = 'HRTF';
 const allPanners = [];
 
-// Live-tunable PannerNode parameters
+// Live-tunable PannerNode parameters. Defaults are tighter than the
+// nightclub's so the room reads as more intimate: standing across the
+// room, you barely hear the conversation; sit at the couch and they
+// snap into clarity.
 const binauralParams = {
-  distanceModel: 'inverse', refDistance: 1.0, rolloffFactor: 1.4, maxDistance: 30,
+  distanceModel: 'inverse', refDistance: 0.7, rolloffFactor: 2.3, maxDistance: 18,
 };
 function setPanningMode(mode) {
   panningMode = mode;
@@ -318,8 +321,9 @@ function applyBinauralParams() {
 }
 
 const BUILTIN_PRESETS = {
-  'default':  { distanceModel: 'inverse',     refDistance: 1.0, rolloffFactor: 1.4, maxDistance: 30 },
-  'intimate': { distanceModel: 'inverse',     refDistance: 0.5, rolloffFactor: 2.5, maxDistance: 12 },
+  'default':  { distanceModel: 'inverse',     refDistance: 0.7, rolloffFactor: 2.3, maxDistance: 18 },
+  'intimate': { distanceModel: 'inverse',     refDistance: 0.4, rolloffFactor: 3.0, maxDistance: 9  },
+  'open':     { distanceModel: 'inverse',     refDistance: 1.5, rolloffFactor: 1.0, maxDistance: 40 },
   'spacious': { distanceModel: 'inverse',     refDistance: 2.0, rolloffFactor: 0.6, maxDistance: 60 },
   'distant':  { distanceModel: 'exponential', refDistance: 1.0, rolloffFactor: 1.0, maxDistance: 50 },
 };
@@ -438,6 +442,12 @@ const heads = {};
   const matDim    = new THREE.LineBasicMaterial({ color: 0x4a3520, transparent: true, opacity: 0.5 });
   const matCable  = new THREE.LineBasicMaterial({ color: 0x6a5028, transparent: true, opacity: 0.72 });
 
+  // Room scale — bumped from 1.0 to S so the architecture has more breath
+  // around the conversation cluster. Applied to every coordinate + box
+  // dimension of the static furniture below. Heads + tensegrity flora
+  // use S as well so distances feel consistent.
+  const S = 1.22;
+
   const allLines = [];
   function addEdges(geom, x, y, z, mat = matBright) {
     const edges = new THREE.EdgesGeometry(geom, 1);
@@ -447,46 +457,104 @@ const heads = {};
     scene.add(line); allLines.push(line);
     return line;
   }
+  const sx = (n) => n * S;     // shorthand for scaled coords
+  function box(w, h, d, x, y, z, mat) {
+    return addEdges(new THREE.BoxGeometry(w * S, h * S, d * S), sx(x), sx(y), sx(z), mat);
+  }
 
   // Floor
-  const grid = new THREE.GridHelper(40, 40, 0x3a2918, 0x1f140a);
+  const grid = new THREE.GridHelper(40 * S, 40, 0x3a2918, 0x1f140a);
   grid.material.transparent = true; grid.material.opacity = 0.55;
   scene.add(grid);
-  // Walls
-  addEdges(new THREE.PlaneGeometry(10, 6), -5, 3, -6, matDim).rotation.y = 0;
-  addEdges(new THREE.PlaneGeometry(10, 6), -8, 3, -1, matDim).rotation.y = Math.PI / 2;
-  // Couch
-  addEdges(new THREE.BoxGeometry(1.4, 0.55, 4.5), -6.5, 0.45, -3, matBright);
-  addEdges(new THREE.BoxGeometry(3.6, 0.55, 1.4), -4.4, 0.45, -5, matBright);
-  addEdges(new THREE.BoxGeometry(0.25, 1.2, 4.5), -7.1, 0.95, -3, matMid);
-  addEdges(new THREE.BoxGeometry(3.6, 1.2, 0.25), -4.4, 0.95, -5.6, matMid);
+  // Walls — back-left corner
+  addEdges(new THREE.PlaneGeometry(10 * S, 6 * S), sx(-5), sx(3), sx(-6), matDim).rotation.y = 0;
+  addEdges(new THREE.PlaneGeometry(10 * S, 6 * S), sx(-8), sx(3), sx(-1), matDim).rotation.y = Math.PI / 2;
+  // Couch — long arm + short arm (the conversation cluster sits here)
+  box(1.4, 0.55, 4.5, -6.5, 0.45, -3, matBright);
+  box(3.6, 0.55, 1.4, -4.4, 0.45, -5, matBright);
+  box(0.25, 1.2, 4.5, -7.1, 0.95, -3, matMid);
+  box(3.6, 1.2, 0.25, -4.4, 0.95, -5.6, matMid);
   // Tables
   const tableTop = (x, z) => {
-    addEdges(new THREE.CylinderGeometry(0.55, 0.55, 0.05, 32), x, 0.78, z, matBright);
-    addEdges(new THREE.CylinderGeometry(0.06, 0.06, 0.78, 8),  x, 0.39, z, matMid);
-    addEdges(new THREE.CylinderGeometry(0.07, 0.06, 0.18, 12), x + 0.18, 0.89, z - 0.1, matBright);
+    addEdges(new THREE.CylinderGeometry(0.55 * S, 0.55 * S, 0.05 * S, 32), sx(x), sx(0.78), sx(z), matBright);
+    addEdges(new THREE.CylinderGeometry(0.06 * S, 0.06 * S, 0.78 * S, 8),  sx(x), sx(0.39), sx(z), matMid);
+    addEdges(new THREE.CylinderGeometry(0.07 * S, 0.06 * S, 0.18 * S, 12), sx(x + 0.18), sx(0.89), sx(z - 0.1), matBright);
   };
   tableTop(-4.2, -2.4); tableTop(-2.8, 0.2);
   // Bar
-  addEdges(new THREE.BoxGeometry(1.2, 1.05, 7), 4.5, 0.525, -1, matBright);
-  addEdges(new THREE.BoxGeometry(1.55, 0.06, 7.2), 4.5, 1.08, -1, matBright);
-  addEdges(new THREE.BoxGeometry(0.18, 2.6, 7), 5.9, 1.3, -1, matMid);
+  box(1.2,  1.05, 7,   4.5, 0.525, -1, matBright);
+  box(1.55, 0.06, 7.2, 4.5, 1.08,  -1, matBright);
+  box(0.18, 2.6,  7,   5.9, 1.3,   -1, matMid);
   for (let i = -2; i <= 2; i += 2) {
-    addEdges(new THREE.CylinderGeometry(0.06, 0.06, 0.4, 8), 5.78, 1.55, -1 + i, matBright);
+    addEdges(new THREE.CylinderGeometry(0.06 * S, 0.06 * S, 0.4 * S, 8),
+             sx(5.78), sx(1.55), sx(-1 + i), matBright);
   }
 
+  // ── Bar sign — banner above the bar back-wall ─────────
+  // Floats just in front of the back-bar shelf, facing the room.
+  // Updated by the morph engine in updateSign() each frame.
+  const SIGN_W_WORLD = 4.2 * S;
+  const SIGN_H_WORLD = 0.95 * S;
+  const SIGN_CANVAS_W = 1024;
+  const SIGN_CANVAS_H = 232;
+  const signCanvas = document.createElement('canvas');
+  signCanvas.width = SIGN_CANVAS_W; signCanvas.height = SIGN_CANVAS_H;
+  const signCtx = signCanvas.getContext('2d');
+  const signTex = new THREE.CanvasTexture(signCanvas);
+  signTex.minFilter = THREE.LinearFilter;
+  const signMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(SIGN_W_WORLD, SIGN_H_WORLD),
+    new THREE.MeshBasicMaterial({ map: signTex, transparent: true, opacity: 0.85, depthWrite: false }),
+  );
+  signMesh.position.set(sx(5.78), sx(2.55), sx(-1));
+  signMesh.rotation.y = -Math.PI / 2;   // face room (-X is "out toward room" here)
+  scene.add(signMesh);
+  // Faint frame around the sign to anchor it visually
+  const signFrame = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.PlaneGeometry(SIGN_W_WORLD * 1.04, SIGN_H_WORLD * 1.18)),
+    new THREE.LineBasicMaterial({ color: 0xc4a878, transparent: true, opacity: 0.32 }),
+  );
+  signFrame.position.copy(signMesh.position);
+  signFrame.rotation.copy(signMesh.rotation);
+  signFrame.userData.origPos = signFrame.position.clone();
+  scene.add(signFrame); allLines.push(signFrame);
+
   // Backroom (doorway frame + glow + dancers) — same as nightclub
-  const doorFrame = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(1.7, 2.5)), matBright);
-  doorFrame.position.set(-1.6, 1.55, -5.95); doorFrame.userData.origPos = doorFrame.position.clone();
-  scene.add(doorFrame); allLines.push(doorFrame);
+  const backDoorFrame = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.PlaneGeometry(1.7 * S, 2.5 * S)), matBright);
+  backDoorFrame.position.set(sx(-1.6), sx(1.55), sx(-5.95));
+  backDoorFrame.userData.origPos = backDoorFrame.position.clone();
+  scene.add(backDoorFrame); allLines.push(backDoorFrame);
   const backGlowMat = new THREE.MeshBasicMaterial({ color: 0xa83020, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false });
-  const backGlow = new THREE.Mesh(new THREE.PlaneGeometry(1.55, 2.4), backGlowMat);
-  backGlow.position.set(-1.6, 1.55, -6.4); scene.add(backGlow);
+  const backGlow = new THREE.Mesh(new THREE.PlaneGeometry(1.55 * S, 2.4 * S), backGlowMat);
+  backGlow.position.set(sx(-1.6), sx(1.55), sx(-6.4)); scene.add(backGlow);
   const dancers = [];
   for (let i = 0; i < 3; i++) {
-    const d = addEdges(new THREE.CylinderGeometry(0.16, 0.16, 1.4, 8), -1.6 + (i - 1) * 0.42, 1.0, -6.7 - i * 0.18, matMid);
+    const d = addEdges(new THREE.CylinderGeometry(0.16 * S, 0.16 * S, 1.4 * S, 8),
+                       sx(-1.6 + (i - 1) * 0.42), sx(1.0), sx(-6.7 - i * 0.18), matMid);
     d.userData.dancerIdx = i; dancers.push(d);
   }
+
+  // ── Entry door — front-right of the room ──────────────
+  // A separate doorway frame the camera can pass near. Cool/dim glow
+  // (different from the backroom's hot red), suggesting the way out.
+  const entryX = sx(2.0), entryY = sx(1.7), entryZ = sx(5.4);
+  const entryFrame = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.PlaneGeometry(1.8 * S, 2.6 * S)), matBright);
+  entryFrame.position.set(entryX, entryY, entryZ);
+  entryFrame.rotation.y = Math.PI;     // facing into the room (toward -Z)
+  entryFrame.userData.origPos = entryFrame.position.clone();
+  scene.add(entryFrame); allLines.push(entryFrame);
+  const entryGlowMat = new THREE.MeshBasicMaterial({
+    color: 0x4080a0, transparent: true, opacity: 0.12,
+    side: THREE.DoubleSide, depthWrite: false,
+  });
+  const entryGlow = new THREE.Mesh(new THREE.PlaneGeometry(1.65 * S, 2.45 * S), entryGlowMat);
+  entryGlow.position.set(entryX, entryY, entryZ + 0.5 * S);
+  scene.add(entryGlow);
+  // Two tall thin posts to mark the doorway
+  addEdges(new THREE.BoxGeometry(0.12 * S, 2.7 * S, 0.12 * S), 2.0 - 1.0, 1.7, 5.4, matMid);
+  addEdges(new THREE.BoxGeometry(0.12 * S, 2.7 * S, 0.12 * S), 2.0 + 1.0, 1.7, 5.4, matMid);
 
   // ── Plant + tree (tensegrity-ish; reused) ──────────
   function makeStrut(mat) {
@@ -571,8 +639,9 @@ const heads = {};
       updateCable(p.cables[ci++], p.baseBots[i], p.baseTops[i]);
     }
   }
-  const plant = makeTPrism(-2.6, 0.20, -3.4, 0.85, Math.PI / 6);
-  const tree  = makeTPrism( 0.4, 0.20,  2.8, 1.55, Math.PI / 6 + 0.25);
+  // Plant lives near the conversation cluster; tree out in the open
+  const plant = makeTPrism(sx(-2.4), sx(0.20), sx(-3.4), 0.85 * S, Math.PI / 6);
+  const tree  = makeTPrism(sx( 0.4), sx(0.20), sx( 2.8), 1.55 * S, Math.PI / 6 + 0.25);
 
   // ── Three named heads ───────────────────────────────
   function makeHead(name, color, x, y, z, baseFreq) {
@@ -619,6 +688,14 @@ const heads = {};
     coneEdges.position.copy(coneMesh.position);
     group.add(coneEdges);
 
+    // Invisible hit sphere for hover raycasting — covers the head plus a
+    // little air around it so the label is easy to summon.
+    const hoverHit = new THREE.Mesh(
+      new THREE.SphereGeometry(0.45, 8, 6),
+      new THREE.MeshBasicMaterial({ visible: false })
+    );
+    group.add(hoverHit);
+
     group.position.set(x, y, z);
     group.userData.origPos = group.position.clone();
     scene.add(group); allLines.push(group);
@@ -627,22 +704,71 @@ const heads = {};
       name, color,
       group, shell, mouth: mouthMesh, mouthEdges,
       coneMesh, coneEdges, coneMat, coneEdgesMat: coneEdges.material,
+      hoverHit,
       baseFreq,
       // Animation state
       lookTarget: new THREE.Vector3(0, 1.4, 0),  // current look target world pos
       mouthAmp: 0,        // smoothed 0..1, drives mouth + cone
       ampTarget: 0,       // set by audio when speaking
       origPos: group.position.clone(),
+      // Label refs filled in after makeTextSprite is defined
+      labelShort: null, labelLong: null,
     };
   }
 
-  // Persona positions:
-  //   ChatGPT — left of camera                 (-3.2, 1.55,  0.4)
-  //   Claude  — right of camera                ( 1.6, 1.55,  1.0)
-  //   Christophero — center-front, closer in   (-0.6, 1.40,  2.3)
-  heads.ChatGPT      = makeHead('ChatGPT',      0xd97c5a, -3.2, 1.55,  0.4, 140);
-  heads.Claude       = makeHead('Claude',       0x6aaee0,  1.6, 1.55,  1.0, 200);
-  heads.Christophero = makeHead('Christophero', 0xc4d878, -0.6, 1.40,  2.3, 110);
+  // ── Six heads — config-driven instantiation ─────────
+  // Three conversation heads cluster on the couch (back-left). The
+  // concierge stands at the entry door (front-right), the bouncer at
+  // the backroom doorway, and the bar person behind the counter.
+  // Each head has an `initial` short label (visible by default) and
+  // a `name` full label (revealed on hover via raycaster).
+  // `faceTarget` is the world-space point the head looks at when it's
+  // idle (no one is speaking). When a sentence fires, the active
+  // speaker looks "out" toward the camera/listener seat and all other
+  // heads turn toward the speaker.
+  const headDefs = [
+    // Conversation cluster — couch corner. Long arm of the couch is along
+    // Z at x ≈ -6.5; short arm is at z ≈ -5. The three sit so they form
+    // a small triangle facing each other, all near the corner.
+    { key: 'ChristopherO', initial: 'CO',  name: 'ChristopherO', role: 'conversation',
+      color: 0xc4d878, baseFreq: 110,
+      basePos: [-5.5, 1.5, -3.4], faceTarget: [-4.4, 1.4, -4.6] },
+    { key: 'Claude',       initial: 'Cla', name: 'Claude',       role: 'conversation',
+      color: 0x6aaee0, baseFreq: 200,
+      basePos: [-3.6, 1.5, -4.7], faceTarget: [-5.0, 1.4, -3.6] },
+    { key: 'ChatGPT',      initial: 'GPT', name: 'ChatGPT',      role: 'conversation',
+      color: 0xd97c5a, baseFreq: 140,
+      basePos: [-5.7, 1.5, -4.9], faceTarget: [-4.4, 1.4, -3.8] },
+    // Concierge at entry door — far front-right. Voice is louder when
+    // they call out (handled in audio IIFE via a separate gain).
+    { key: 'Concierge',    initial: 'Cnc', name: 'Concierge',    role: 'concierge',
+      color: 0xa8a09a, baseFreq: 95,
+      basePos: [2.0, 1.85, 4.7], faceTarget: [-2.0, 1.4, -2.0] },
+    // Bouncer at the backroom doorway — silent for now
+    { key: 'Bouncer',      initial: 'Bnc', name: 'Bouncer',      role: 'bouncer',
+      color: 0x9a7050, baseFreq: 90,
+      basePos: [-2.5, 1.75, -5.1], faceTarget: [0.0, 1.4, 0.0] },
+    // Bar person behind the counter
+    { key: 'Bar Person',   initial: 'Bar', name: 'Bar Person',   role: 'bar-person',
+      color: 0xb0a060, baseFreq: 160,
+      basePos: [4.7, 1.55, -1.0], faceTarget: [3.0, 1.4, -1.0] },
+  ];
+  for (const def of headDefs) {
+    const h = makeHead(def.name, def.color,
+                       sx(def.basePos[0]), sx(def.basePos[1]), sx(def.basePos[2]),
+                       def.baseFreq);
+    h.role = def.role;
+    h.initial = def.initial;
+    h.idleFaceTarget = new THREE.Vector3(
+      sx(def.faceTarget[0]), sx(def.faceTarget[1]), sx(def.faceTarget[2]));
+    h.lookTarget.copy(h.idleFaceTarget);
+    heads[def.key] = h;
+  }
+  // Speaker resolution: scheduler-event speaker names map directly to keys
+  // (ChatGPT / Claude / Christophero). For Christophero the canonical key
+  // in the new map is 'ChristopherO' — alias both forms so legacy events
+  // still route correctly.
+  if (heads.ChristopherO) heads.Christophero = heads.ChristopherO;
 
   // ── Sentence sprites (text rendered to canvas → CanvasTexture) ──
   function makeTextSprite(text, opts = {}) {
@@ -702,6 +828,197 @@ const heads = {};
   const MEM_MAX = 10;
   const memSprites = [];
 
+  // ── Head labels — initials by default, full name on hover ───
+  // Each head gets two billboarded sprites (short + long) attached to
+  // its group. The hover raycaster (below) toggles which is visible.
+  function makeHeadLabel(head, initialStr, fullStr) {
+    const ink = '#c4a878';
+    const builtShort = makeTextSprite(initialStr, {
+      fontSize: 22, color: ink, opacity: 0.6,  maxWidth: 200, padding: 10,
+    });
+    const builtLong = makeTextSprite(fullStr, {
+      fontSize: 22, color: ink, opacity: 0.95, maxWidth: 320, padding: 10,
+    });
+    builtShort.sprite.position.set(0, 0.62, 0);
+    builtLong .sprite.position.set(0, 0.62, 0);
+    builtLong.sprite.visible = false;
+    head.group.add(builtShort.sprite);
+    head.group.add(builtLong .sprite);
+    head.labelShort = builtShort.sprite; head.labelShortMat = builtShort.mat;
+    head.labelLong  = builtLong .sprite; head.labelLongMat  = builtLong.mat;
+  }
+  for (const def of headDefs) {
+    const h = heads[def.key];
+    if (h) makeHeadLabel(h, def.initial, def.name);
+  }
+
+  // ── Hover detection — raycast into invisible hoverHit spheres ──
+  const raycaster = new THREE.Raycaster();
+  const ndcMouse = new THREE.Vector2(2, 2);   // off-screen until first move
+  let hoveredHead = null;
+  window.addEventListener('pointermove', e => {
+    ndcMouse.x =  (e.clientX / window.innerWidth ) * 2 - 1;
+    ndcMouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  });
+  function updateHover() {
+    raycaster.setFromCamera(ndcMouse, camera);
+    const targets = [];
+    for (const k of Object.keys(heads)) {
+      const h = heads[k];
+      if (h !== heads.Christophero) continue;  // skip alias dup
+      // (we want all real heads; fall through)
+    }
+    const seen = new Set();
+    for (const k of Object.keys(heads)) {
+      const h = heads[k];
+      if (!h || !h.hoverHit) continue;
+      if (seen.has(h.hoverHit)) continue;
+      seen.add(h.hoverHit);
+      targets.push(h.hoverHit);
+    }
+    const hits = raycaster.intersectObjects(targets, false);
+    let newHover = null;
+    if (hits.length) {
+      const hitObj = hits[0].object;
+      for (const k of Object.keys(heads)) {
+        if (heads[k] && heads[k].hoverHit === hitObj) { newHover = heads[k]; break; }
+      }
+    }
+    if (newHover !== hoveredHead) {
+      if (hoveredHead && hoveredHead.labelShort) {
+        hoveredHead.labelShort.visible = true;
+        hoveredHead.labelLong .visible = false;
+      }
+      hoveredHead = newHover;
+      if (hoveredHead && hoveredHead.labelShort) {
+        hoveredHead.labelShort.visible = false;
+        hoveredHead.labelLong .visible = true;
+      }
+    }
+  }
+
+  // ── Bar sign — phrase bank + morphing engine ────────────
+  // Phrases sourced from:
+  //   - Notion "Creative Vault — Slogans, T-shirts, Band Names, Song
+  //     Ideas, One-Liners" (350dbb52…9fb9…) — confirmed entries
+  //   - AI Salon registry items (badges, criteria, character titles)
+  //   - Mechanus Rex song titles per the GPT memory extract
+  // Periodic refresh = re-edit this array. The morph engine shuffles
+  // its own order, so leave it un-curated.
+  const SIGN_PHRASES = [
+    'sounds like something your AI would write',
+    'amanda knox for president',
+    'producers schoozers',
+    'authorized to mishear internal material',
+    'please address by most recent mishearing',
+    'interim listener for pre-approved spontaneities',
+    'retrospective interpreter of unintended pauses',
+    'demonstrated resilience under conditions of interpretive seepage',
+    'scar tissue trying to wear a necktie',
+    'the chair remembers before the people do',
+    'governance wearing upholstery',
+    'mishearing as institution-building',
+    'conversion of anomaly into bureaucracy',
+    'unauthorized fluency in provisional language',
+    'hears the policy become accent',
+    'no bain to cain',
+    'apetheticism',
+    'bigger than the meta-verse',
+    'may i make a suggestion',
+    'dumbing it down',
+    'factual data',
+    'the commoner’s ballade',
+  ];
+  const GARBLE_POOL = 'abcdefghijklmnopqrstuvwxyz·•—∙·∙·';
+  let signCurrent = SIGN_PHRASES[0];
+  let signTarget  = null;
+  let signTransitionStartMs = 0;
+  let signTransitionDur = 2200;
+  let signNextChangeMs = performance.now() + 5000;
+  function pickSignTarget() {
+    // Pick a different phrase
+    let idx = Math.floor(Math.random() * SIGN_PHRASES.length);
+    if (SIGN_PHRASES[idx] === signCurrent) idx = (idx + 1) % SIGN_PHRASES.length;
+    return SIGN_PHRASES[idx];
+  }
+  function morphChar(a, b, phase) {
+    const garbleProb = Math.sin(Math.max(0, Math.min(1, phase)) * Math.PI) * 0.65;
+    if (Math.random() < garbleProb) {
+      return GARBLE_POOL[Math.floor(Math.random() * GARBLE_POOL.length)];
+    }
+    return phase < 0.5 ? a : b;
+  }
+  function renderSign(text) {
+    const W = SIGN_CANVAS_W, H = SIGN_CANVAS_H;
+    signCtx.clearRect(0, 0, W, H);
+    // Choose font size that fits
+    let fs = 64;
+    let fontStr = `italic 400 ${fs}px 'Cormorant Garamond', serif`;
+    signCtx.font = fontStr;
+    while (signCtx.measureText(text).width > W - 40 && fs > 24) {
+      fs -= 4;
+      fontStr = `italic 400 ${fs}px 'Cormorant Garamond', serif`;
+      signCtx.font = fontStr;
+    }
+    signCtx.textAlign = 'center';
+    signCtx.textBaseline = 'middle';
+    signCtx.fillStyle = 'rgba(196, 168, 120, 0.95)';
+    signCtx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+    signCtx.shadowBlur = 18;
+    signCtx.fillText(text, W / 2, H / 2);
+    signTex.needsUpdate = true;
+  }
+  function updateSign() {
+    const now = performance.now();
+    if (signTarget) {
+      // Transitioning
+      const phase = Math.max(0, Math.min(1, (now - signTransitionStartMs) / signTransitionDur));
+      // Pad the shorter to match the longer
+      const maxLen = Math.max(signCurrent.length, signTarget.length);
+      let out = '';
+      for (let i = 0; i < maxLen; i++) {
+        const ca = i < signCurrent.length ? signCurrent[i] : ' ';
+        const cb = i < signTarget.length  ? signTarget[i]  : ' ';
+        out += morphChar(ca, cb, phase);
+      }
+      renderSign(out.replace(/\s+/g, ' ').trim());
+      if (phase >= 1) {
+        signCurrent = signTarget;
+        signTarget = null;
+        signNextChangeMs = now + 5000 + Math.random() * 4500;  // hold 5–9.5s
+        renderSign(signCurrent);
+      }
+    } else if (now > signNextChangeMs) {
+      // Start a new transition
+      signTarget = pickSignTarget();
+      signTransitionStartMs = now;
+      signTransitionDur = 1800 + Math.random() * 1400;
+    }
+  }
+  renderSign(signCurrent);
+
+  // ── Concierge call-out scheduler — periodically repeats a phrase
+  // the concierge "heard" (drawn from recentSentences). Speaks via
+  // the audio IIFE's calloutConcierge() with a louder amp multiplier.
+  const recentSentences = [];
+  function pushRecent(txt) {
+    recentSentences.push(txt);
+    if (recentSentences.length > 8) recentSentences.shift();
+  }
+  function scheduleCallout() {
+    if (recentSentences.length > 0 && window.__salonAPI && window.__salonAPI.calloutConcierge) {
+      const text = recentSentences[Math.floor(Math.random() * recentSentences.length)];
+      // Trim to a phrase-sized chunk so the callout feels punchy
+      const trimmed = text.length > 70 ? text.slice(0, text.indexOf(' ', 50) > 0 ? text.indexOf(' ', 50) : 70) : text;
+      const dur = Math.min(2400, Math.max(900, trimmed.length * 56));
+      window.__salonAPI.calloutConcierge(trimmed, dur);
+    }
+    setTimeout(scheduleCallout, 35000 + Math.random() * 30000);
+  }
+  // First callout 25–45s after page load; gives the conversation time to
+  // accumulate something for the concierge to "have heard".
+  setTimeout(scheduleCallout, 25000 + Math.random() * 20000);
+
   // Dust motes
   const motes = [];
   const moteGeom = new THREE.BufferGeometry();
@@ -724,7 +1041,9 @@ const heads = {};
   window.addEventListener('pointermove', e => { mx = e.clientX; my = e.clientY; });
 
   // ── Camera + listener ───────────────────────────────
-  const lookTarget = new THREE.Vector3(-0.6, 1.4, 1.0);
+  // Camera looks at the conversation cluster on the couch. With S=1.22,
+  // the cluster center is roughly (-4.6, 1.5, -4.0) in world space.
+  const lookTarget = new THREE.Vector3(sx(-4.6), sx(1.5), sx(-4.0));
   let t = 0;
 
   // ── Schedule sentences from letters.json ────────────
@@ -805,16 +1124,24 @@ const heads = {};
   function fireEvent(ev) {
     activeUtterance = ev;
     const speakerHead = heads[ev.speaker] || heads.Claude;
-    // Other heads orient toward the speaker; speaker looks at the camera-ish
-    // (a point in front of the room, roughly toward Christophero's old seat).
     const speakerWorld = speakerHead.group.position.clone();
-    speakerWorld.y = 1.4;
+    speakerWorld.y = sx(1.4);
+    // Conversation triangle: speaker looks at THEIR idle face target (one of
+    // the other conversation heads — preserves the natural triangle).
+    // Other conversation heads turn toward the speaker.
+    // Non-conversation heads (concierge, bouncer, bar) stay at their idle
+    // face target — they're not part of the back-and-forth.
+    const seen = new Set();
     for (const name of Object.keys(heads)) {
-      if (name === ev.speaker) {
-        // Speaker looks "out" — at where the listener (Christophero seat) is
-        heads[name].lookTarget.set(-0.6, 1.4, 4.5);
+      const h = heads[name];
+      if (!h || seen.has(h)) continue;
+      seen.add(h);
+      if (h === speakerHead) {
+        h.lookTarget.copy(h.idleFaceTarget);
+      } else if (h.role === 'conversation') {
+        h.lookTarget.copy(speakerWorld);
       } else {
-        heads[name].lookTarget.copy(speakerWorld);
+        h.lookTarget.copy(h.idleFaceTarget);
       }
     }
     speakerHead.ampTarget = 1.0;
@@ -823,17 +1150,13 @@ const heads = {};
     }
     showActiveSentence(ev, speakerHead);
     pushMemory(ev, speakerHead);
+    pushRecent(ev.text);
     updateStatusUI(ev);
-    // Schedule amp drop at end of utterance
     setTimeout(() => {
       if (activeUtterance === ev) {
         speakerHead.ampTarget = 0;
         activeUtterance = null;
       }
-      // Note: if multiple events overlap, ampTarget for that head may
-      // remain high because the next event already raised it. The decay
-      // of the current event's setTimeout would zero it incorrectly. Mitigate
-      // by checking activeUtterance reference above.
     }, ev.durMs + 100);
   }
 
@@ -951,10 +1274,13 @@ const heads = {};
     t += 0.0024;
 
     // Camera drift — same as nightclub
-    const r = 11.5 + Math.sin(t * 0.4) * 0.7;
+    // Camera radius scaled with the room. The drift carries the camera
+    // through both ends of the room — across the bar, near the couch,
+    // past the entry — so the binaural intimacy reads as actual change.
+    const r = (11.5 + Math.sin(t * 0.4) * 0.7) * S;
     camera.position.x = Math.cos(t * 0.6) * r;
-    camera.position.z = Math.sin(t * 0.6) * r + 1;
-    camera.position.y = 3.4 + Math.sin(t * 0.9) * 0.4;
+    camera.position.z = Math.sin(t * 0.6) * r + 1 * S;
+    camera.position.y = (3.4 + Math.sin(t * 0.9) * 0.4) * S;
     camera.lookAt(lookTarget);
 
     // Energy
@@ -1100,6 +1426,8 @@ const heads = {};
     motePts.geometry.attributes.position.needsUpdate = true;
 
     tickSchedule();
+    updateSign();
+    updateHover();
     renderer.render(scene, camera);
     requestAnimationFrame(frame);
   }
@@ -1212,9 +1540,17 @@ const heads = {};
     // ── Per-head voice graph ────────────────────────────
     // Each head: panner at the head's world position, AM gain, osc + sub-osc
     // mixed with a touch of noise for breath, ducked low-pass for warmth.
+    // Aliased keys (e.g. 'Christophero' → same head as 'ChristopherO')
+    // share the same voice graph so the speech doesn't double-fire.
     const headVoices = {};
+    const headSeen = new Map();   // head object → canonical key
     for (const k of Object.keys(heads)) {
       const h = heads[k];
+      if (headSeen.has(h)) {
+        headVoices[k] = headVoices[headSeen.get(h)];
+        continue;
+      }
+      headSeen.set(h, k);
       const p = h.group.position;
       const panner = makePanner(p.x, p.y, p.z);
       const am = audioCtx.createGain(); am.gain.value = 0;
@@ -1223,7 +1559,6 @@ const heads = {};
       const osc2 = audioCtx.createOscillator(); osc2.type = 'sine';     osc2.frequency.value = h.baseFreq * 0.5;
       const oscMix = audioCtx.createGain(); oscMix.gain.value = 0.5;
       osc1.connect(oscMix); osc2.connect(oscMix);
-      // Breath: a tiny touch of bandpassed noise, mixed through the AM gain
       const breathN = audioCtx.createBufferSource(); breathN.buffer = noiseBuf; breathN.loop = true;
       const breathBp = audioCtx.createBiquadFilter(); breathBp.type = 'bandpass'; breathBp.frequency.value = 1500; breathBp.Q.value = 1.2;
       const breathGain = audioCtx.createGain(); breathGain.gain.value = 0.12;
@@ -1235,11 +1570,13 @@ const heads = {};
     }
 
     // ── Speak: schedule AM envelope + pitch warble ──────
-    function speak(headName, text, durMs) {
+    // ampMul: amplitude multiplier. The concierge's call-out is louder by
+    // calling speak() with ampMul = 1.7. Default 1.0 = the per-head voice
+    // setting used for normal conversation.
+    function speak(headName, text, durMs, ampMul = 1.0) {
       const v = headVoices[headName]; if (!v) return;
       const t0 = audioCtx.currentTime;
       const total = durMs / 1000;
-      // Syllable count proportional to length, but with floor/ceiling
       const segs = Math.max(4, Math.min(18, Math.round(text.length / 9)));
       const segDurs = []; const gaps = []; let used = 0;
       for (let s = 0; s < segs; s++) {
@@ -1248,19 +1585,18 @@ const heads = {};
         const gap    = 0.04 + Math.random() * 0.05;
         segDurs.push(segDur); gaps.push(gap); used += segDur + gap;
       }
-      // Scale all durations to fit total
       const scale = total / used;
       v.am.gain.cancelScheduledValues(t0);
       v.am.gain.setValueAtTime(0, t0);
       let cursor = 0;
+      const peak = 0.30 * ampMul;
       for (let s = 0; s < segs; s++) {
         const ts = t0 + cursor * scale;
         const segDur = segDurs[s] * scale;
-        v.am.gain.linearRampToValueAtTime(0.30, ts + 0.018);
+        v.am.gain.linearRampToValueAtTime(peak, ts + 0.018);
         v.am.gain.linearRampToValueAtTime(0,    ts + segDur);
         cursor += segDurs[s] + gaps[s];
       }
-      // Pitch warble — random walk
       v.osc1.frequency.cancelScheduledValues(t0);
       const fineSteps = Math.max(28, segs * 5);
       const stepDur = total / fineSteps;
@@ -1275,6 +1611,24 @@ const heads = {};
     // Hook into scene's "onUtter" callback so it triggers audio when an
     // event fires.
     window.__salonAPI.onUtter = (speaker, text, durMs) => speak(speaker, text, durMs);
+
+    // Concierge call-out — louder than the conversation; visually animates
+    // the concierge head (mouth + cone). Used by the scene's scheduleCallout()
+    // every 35–65s, picking a phrase from the recent-sentence buffer.
+    window.__salonAPI.calloutConcierge = (text, durMs) => {
+      speak('Concierge', text, durMs, 1.7);
+      const h = heads.Concierge;
+      if (h) {
+        h.ampTarget = 1.0;
+        // Briefly turn the concierge to face the room so the cone reads
+        const lookOut = new THREE.Vector3(-2.0, 1.4, -2.0);
+        h.lookTarget.copy(lookOut);
+        setTimeout(() => {
+          h.ampTarget = 0;
+          h.lookTarget.copy(h.idleFaceTarget);
+        }, durMs + 200);
+      }
+    };
 
     // Update each head's panner position when its head moves (currently
     // they're static, but listener moves with camera so distance changes
