@@ -138,6 +138,7 @@ body {
 .module.in-out  { width:155px; }
 .module.fx      { width:265px; }
 .module.ringmod { width:170px; }   /* v0.12: ring modulator inserted between dronor and delay */
+.module.reverb  { width:170px; }   /* v0.13: reverb tail at end of the chain */
 .module.dronor  { width:620px; }   /* v0.9: widened to fit 4 string strips */
 
 .mod-head {
@@ -289,8 +290,8 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
 </head>
 <body>
 
-<div id="version-badge">DronorParty v0.12</div>
-<div id="stage-indicator">v2 / RING MOD · bidirectional OFFSET · factory presets full</div>
+<div id="version-badge">DronorParty v0.13</div>
+<div id="stage-indicator">v2 / TEMPO slider · REVERB module</div>
 
 <div id="start-screen">
   <h1>DronorParty</h1>
@@ -342,10 +343,10 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
             <option value="custom">Custom</option>
           </select>
         </div>
-        <div class="gline" title="Pluck step duration. Each pattern digit lasts this long. Default 0.25 s = 8th note at 120 BPM. Strings fire every divisor steps (e.g., div 7 = every 7 eighths = every 1.75 s).">
-          <label>STEP</label>
-          <input type="range" id="clock-period" min="0.04" max="2.0" step="0.001" value="0.25" style="flex:1;">
-          <span class="ctrl-val" id="clock-val" style="min-width:118px; text-align:right;">0.250 s/8th · 120 BPM</span>
+        <div class="gline" title="Tempo in BPM. Slider goes left = slow, right = fast. Default 120 BPM = 0.250 s per 8th note. Strings fire every divisor steps (e.g., div 7 = every 7 eighths).">
+          <label>TEMPO</label>
+          <input type="range" id="tempo-bpm" min="15" max="480" step="1" value="120" style="flex:1;">
+          <span class="ctrl-val" id="clock-val" style="min-width:140px; text-align:right;">120 BPM (0.250 s/8th)</span>
         </div>
       </div>
 
@@ -425,6 +426,32 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
           <span class="ctrl-val" id="dly-wet-val">35%</span>
         </div>
         <input type="range" id="dly-wet" min="0" max="1" step="0.01" value="0.35">
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── REVERB ─────────────────────────────────────────────────────────
+       v0.13 — convolution reverb at the end of the chain. Sits between
+       delay and output. IR is generated noise with exponential decay. -->
+  <div class="col-wrap">
+    <div class="module reverb" id="mod-reverb">
+      <div class="mod-head" title="Convolution reverb at end of chain. IR is procedurally generated decaying noise — adjustable tail length.">
+        <div class="mod-title">REVERB</div>
+        <button class="byp-btn off" data-bypass="reverb" title="Toggle reverb on/off. When OFF, wet=0; settings preserved.">OFF</button>
+      </div>
+      <div class="slider-row" title="Reverb tail length in seconds. 0.5 = small room. 6 = cathedral-ish.">
+        <div class="slider-label-row">
+          <span class="slider-label">TIME</span>
+          <span class="ctrl-val" id="rv-time-val">2.5 s</span>
+        </div>
+        <input type="range" id="rv-time" min="0.3" max="6" step="0.1" value="2.5">
+      </div>
+      <div class="slider-row" title="Reverb wet send level out to master. Dry signal always passes through unchanged.">
+        <div class="slider-label-row">
+          <span class="slider-label">WET</span>
+          <span class="ctrl-val" id="rv-wet-val">35%</span>
+        </div>
+        <input type="range" id="rv-wet" min="0" max="1" step="0.01" value="0.35">
       </div>
     </div>
   </div>
@@ -888,14 +915,14 @@ function commitRootFreq(rawValue) {
   refreshNoteDisplay();
 }
 
-// ── Master clock display ────────────────────────────────────────────────
-// clockPeriod = seconds per pattern step. Pattern digits are interpreted
-// as 8th notes, so implied quarter-note BPM = 60 / (period × 2).
+// ── Master clock / TEMPO display ───────────────────────────────────────
+// Slider value is BPM (left=slow, right=fast); state.clockPeriod is the
+// derived seconds-per-step (8th note period = 30/BPM).
 function refreshClockDisplay() {
   const sec = state.clockPeriod;
   const bpm = 60 / (sec * 2);
   document.getElementById('clock-val').textContent =
-    sec.toFixed(3) + ' s/8th · ' + bpm.toFixed(1) + ' BPM';
+    Math.round(bpm) + ' BPM (' + sec.toFixed(3) + ' s/8th)';
 }
 
 // ── Audio graph ─────────────────────────────────────────────────────────
@@ -903,8 +930,10 @@ let audioCtx = null;
 let dronorBus = null;          // sums all three strings
 let ringChain = null;          // ring modulator (between dronorBus and delayChain)
 let ringModBypassed = true;    // default OFF
-let delayChain = null;         // simple delay (input → dry+wet w/ feedback → outputGain)
+let delayChain = null;         // simple delay (input → dry+wet w/ feedback)
 let delayBypassed = true;      // sliders inactive when bypassed (default OFF)
+let reverbChain = null;        // convolution reverb at end of chain
+let reverbBypassed = true;     // default OFF
 const RM_LO_HZ = 5, RM_HI_HZ = 5000;
 const rmSliderToHz = v => RM_LO_HZ * Math.pow(RM_HI_HZ / RM_LO_HZ, v);
 let outputGainNode = null;     // master output gain
@@ -1057,6 +1086,38 @@ function createRingModChain(ctx) {
   dry.connect(output);
   wet.connect(output);
   return { input, dry, wet, ringMul, carrier, output };
+}
+
+// Generate a synthetic stereo impulse response for the convolver.
+// Decaying random noise — sounds like a fairly natural diffuse reverb tail.
+function makeImpulseResponse(ctx, durationSec, decayPower = 2.0) {
+  const sr = ctx.sampleRate;
+  const len = Math.max(1, Math.floor(sr * durationSec));
+  const buf = ctx.createBuffer(2, len, sr);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = buf.getChannelData(ch);
+    for (let i = 0; i < len; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decayPower);
+    }
+  }
+  return buf;
+}
+
+// Reverb: input → dry → output, input → conv → wet → output. Wet starts at 0
+// (bypassed); dry always 1 so dry signal is always present.
+function createReverbChain(ctx, durationSec = 2.5) {
+  const input  = ctx.createGain();
+  const dry    = ctx.createGain(); dry.gain.value = 1;
+  const wet    = ctx.createGain(); wet.gain.value = 0;
+  const conv   = ctx.createConvolver();
+  const output = ctx.createGain();
+  conv.buffer = makeImpulseResponse(ctx, durationSec);
+  input.connect(dry);
+  input.connect(conv);
+  conv.connect(wet);
+  dry.connect(output);
+  wet.connect(output);
+  return { input, conv, dry, wet, output };
 }
 
 // Simple delay: input → dry → out, input → delay → wet → out, with feedback loop.
@@ -1233,8 +1294,9 @@ function wireGlobalControls() {
     }
   });
 
-  document.getElementById('clock-period').addEventListener('input', e => {
-    state.clockPeriod = parseFloat(e.target.value);
+  document.getElementById('tempo-bpm').addEventListener('input', e => {
+    const bpm = parseFloat(e.target.value);
+    state.clockPeriod = 60 / (bpm * 2);   // seconds per 8th
     refreshClockDisplay();
     rescheduleSchedulerPeriod();
   });
@@ -1398,6 +1460,7 @@ function wireModuleBypass() {
     if (btn.id === 'output-mute')             return;
     if (btn.dataset.bypass === 'delay')       return;
     if (btn.dataset.bypass === 'ringmod')     return;
+    if (btn.dataset.bypass === 'reverb')      return;
     if (btn.dataset.stringBypass != null)     return;
     btn.addEventListener('click', e => {
       e.stopPropagation();
@@ -1408,6 +1471,45 @@ function wireModuleBypass() {
         dronorBus.gain.setTargetAtTime(target, audioCtx.currentTime, 0.05);
       }
     });
+  });
+}
+
+function wireReverbControls() {
+  const time = document.getElementById('rv-time');
+  const wet  = document.getElementById('rv-wet');
+  const tVal = document.getElementById('rv-time-val');
+  const wVal = document.getElementById('rv-wet-val');
+  const byp  = document.querySelector('#mod-reverb [data-bypass="reverb"]');
+
+  function applyTime() {
+    ensureRunning();
+    const v = parseFloat(time.value);
+    if (reverbChain) reverbChain.conv.buffer = makeImpulseResponse(audioCtx, v);
+    tVal.textContent = v.toFixed(1) + ' s';
+  }
+  function applyWet() {
+    ensureRunning();
+    const v = parseFloat(wet.value);
+    if (reverbChain && !reverbBypassed) {
+      reverbChain.wet.gain.setTargetAtTime(v, audioCtx.currentTime, 0.05);
+    }
+    wVal.textContent = Math.round(v * 100) + '%';
+  }
+  time.addEventListener('input', applyTime);
+  wet.addEventListener('input', applyWet);
+
+  byp.addEventListener('click', e => {
+    e.stopPropagation();
+    reverbBypassed = !reverbBypassed;
+    byp.classList.toggle('off', reverbBypassed);
+    byp.textContent = reverbBypassed ? 'OFF' : 'ON';
+    if (!reverbChain) return;
+    const t = audioCtx.currentTime;
+    if (reverbBypassed) {
+      reverbChain.wet.gain.setTargetAtTime(0, t, 0.05);
+    } else {
+      reverbChain.wet.gain.setTargetAtTime(parseFloat(wet.value), t, 0.05);
+    }
   });
 }
 
@@ -1569,11 +1671,16 @@ async function startAudio() {
   delayChain = createDelayChain(audioCtx);
   ringChain.output.connect(delayChain.input);
 
+  // Reverb chain at end of FX (default OFF — wet=0)
+  reverbChain = createReverbChain(audioCtx, parseFloat(
+    document.getElementById('rv-time').value));
+  delayChain.dry.connect(reverbChain.input);
+  delayChain.wet.connect(reverbChain.input);
+
   outputGainNode = audioCtx.createGain();
   outputGainNode.gain.value = dbToGain(parseFloat(
     document.getElementById('output-gain-db').value));
-  delayChain.dry.connect(outputGainNode);
-  delayChain.wet.connect(outputGainNode);
+  reverbChain.output.connect(outputGainNode);
 
   // Output stereo analysers (tap pre-limiter so the meter shows what we're
   // sending into the limiter — pegged red ⇒ limiting is happening)
@@ -1604,6 +1711,7 @@ async function startAudio() {
   wireOutputControls();
   wireRingModControls();
   wireDelayControls();
+  wireReverbControls();
   wirePresetSlots();
   wireModuleBypass();
   refreshNoteDisplay();
@@ -1646,7 +1754,7 @@ async function startAudio() {
   startScheduler();
   requestAnimationFrame(meterTick);
 
-  console.log('DronorParty v0.12 — ring mod, bidirectional offset. sr=', audioCtx.sampleRate,
+  console.log('DronorParty v0.13 — tempo slider, reverb. sr=', audioCtx.sampleRate,
               'ctx=', Tone.context.state, 'maxCh=', audioCtx.destination.maxChannelCount);
 }
 
