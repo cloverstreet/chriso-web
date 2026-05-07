@@ -1,0 +1,32 @@
+# ── Case-insensitive aliases for browsable directories ────────────────
+# Without these, /testcases/ misses the disk path /TestCases/, falls
+# through to the WordPress catch-all below, and ends up redirecting to
+# /glitchpage/. The case-sensitive RewriteCond skips the rewrite when
+# the URL is already correctly cased — otherwise the [NC] match would
+# loop the rewriter on the canonical path. Kept OUTSIDE the WordPress
+# markers so `wp-admin → Settings → Permalinks` won't overwrite them.
+<IfModule mod_rewrite.c>
+RewriteEngine On
+
+RewriteCond %{REQUEST_URI} !^/TestCases
+RewriteRule ^testcases(/.*)?$ /TestCases$1 [NC,L]
+
+RewriteCond %{REQUEST_URI} !^/Sandbox
+RewriteRule ^sandbox(/.*)?$ /Sandbox$1 [NC,L]
+</IfModule>
+
+# BEGIN WordPress
+# The directives (lines) between "BEGIN WordPress" and "END WordPress" are
+# dynamically generated, and should only be modified via WordPress filters.
+# Any changes to the directives between these markers will be overwritten.
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+RewriteBase /
+RewriteRule ^index\.php$ - [L]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule . /index.php [L]
+</IfModule>
+
+# END WordPress
