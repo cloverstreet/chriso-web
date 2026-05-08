@@ -82,6 +82,91 @@ input.gain-meter-slider::-webkit-slider-thumb {
 input.gain-meter-slider { pointer-events: none; opacity: 0; }      /* keep for value storage; visually invisible */
 input.gain-meter-slider::-webkit-slider-thumb { width: 0; height: 0; background: transparent; }
 .gain-meter-wrap { cursor: ns-resize; }
+/* ── 2D GAIN/PAN/METER PAD ──────────────────────────────────────────────
+   Per-string combined widget (ported from TestCases/lfo-adsr-test/, scaled
+   to ~130 × 55 px to fit the narrow string strip). X = gain, Y = pan.
+   Two stereo level meters draw L on top half, R on bottom half, filling
+   from left edge in red→green gradient. Crosshair at (gain, pan) coord
+   with a ball at the intersection. Drag to set both at once; double-click
+   resets to (0 dB, center). */
+.gp-pad-wrap { display:flex; justify-content:center; padding:1px 0; }
+.gp-pad {
+  position:relative; width:130px; height:55px;
+  background:#060606; border:1px solid #1a1a1a; border-radius:3px;
+  overflow:hidden; cursor:grab; touch-action:none;
+}
+.gp-pad:active { cursor:grabbing; }
+.gp-meter {
+  position:absolute; left:0; height:calc(50% - 1px); width:0%;
+  background:linear-gradient(to right,#1a5a1a 0%,#2a9a2a 58%,#7ab020 70%,#b89010 82%,#c06010 90%,#e02020 100%);
+  pointer-events:none;
+}
+.gp-meter-l { top:0; }
+.gp-meter-r { bottom:0; }
+.gp-zero-line {
+  position:absolute; top:0; bottom:0; left:83.33%;
+  width:1px; background:rgba(200,200,100,0.45); pointer-events:none;
+}
+.gp-zero-label {
+  position:absolute; top:50%; left:calc(83.33% + 2px);
+  transform:translateY(-50%);
+  font-family:'Courier New',monospace; font-size:.46rem;
+  color:rgba(200,200,100,0.55); pointer-events:none; line-height:1;
+}
+.gp-center-line {
+  position:absolute; left:0; right:0; top:50%; height:1px;
+  background:rgba(255,255,255,0.07); pointer-events:none;
+}
+.gp-cross { position:absolute; pointer-events:none; width:0; height:0; top:0; left:0; }
+.gp-vline, .gp-hline, .gp-puck { pointer-events:none; }
+.gp-vline {
+  position:absolute; top:-300px; bottom:-300px;
+  left:0; width:1px;
+  background:rgba(106,174,224,0.42);
+  transform:translateX(-50%);
+}
+.gp-hline {
+  position:absolute; left:-400px; right:-400px;
+  top:0; height:1px;
+  background:rgba(106,174,224,0.42);
+  transform:translateY(-50%);
+}
+.gp-puck {
+  position:absolute; width:8px; height:8px; border-radius:50%;
+  background:#6aaee0; border:1px solid rgba(255,255,255,0.45);
+  box-shadow:0 0 6px rgba(100,160,220,0.85);
+  top:0; left:0; transform:translate(-50%,-50%);
+}
+.gp-readout {
+  display:flex; justify-content:space-between;
+  font-size:.55rem; color:#888; letter-spacing:.04em;
+  margin-top:2px; padding:0 1px;
+}
+.gp-readout .k { color:#666; letter-spacing:.1em; text-transform:uppercase; }
+
+/* ── ADSR (graphical, compact) ──────────────────────────────────────────
+   Per-string envelope editor. Drag handles to adjust segment shape.
+   Click any text label (time or level) to type a precise value. */
+.adsr-svg-wrap {
+  position:relative; background:#070707; border:1px solid #1a1a1a;
+  border-radius:3px; margin-top:3px;
+}
+.adsr-svg { display:block; width:100%; height:55px; cursor:default; touch-action:none; }
+.adsr-seg { fill:none; stroke:#4a7a9a; stroke-width:1.2; }
+.adsr-handle { fill:#0d0d0d; stroke:#c8a854; stroke-width:1.2; cursor:grab; }
+.adsr-handle:hover { fill:#c8a854; }
+.adsr-handle.dragging { cursor:grabbing; fill:#c8a854; }
+.adsr-gridline { stroke:#1a1a1a; stroke-width:1; }
+.adsr-gridlabel { font-family:'Courier New',monospace; font-size:6px; fill:#444; letter-spacing:.04em; }
+.adsr-pointlabel { font-family:'Courier New',monospace; font-size:7px; fill:#c8a854; pointer-events:auto; }
+.adsr-pointlabel.editable { cursor:text; }
+.adsr-pointlabel.editable:hover { fill:#e8c874; }
+.adsr-editbox {
+  position:absolute; background:#000; border:1px solid #c8a854;
+  color:#e8c874; font-family:'Courier New',monospace; font-size:9px;
+  padding:1px 3px; outline:none; border-radius:2px; z-index:20; width:50px;
+}
+
 /* Custom thumb — positioned by JS in pixels relative to wrap. Bypasses
    writing-mode/direction quirks entirely (v0.7 fix). */
 .gain-thumb {
@@ -290,8 +375,8 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
 </head>
 <body>
 
-<div id="version-badge">DronorParty v0.13</div>
-<div id="stage-indicator">v2 / TEMPO slider · REVERB module</div>
+<div id="version-badge">DronorParty v0.14</div>
+<div id="stage-indicator">v2 / per-string ADSR · gain-pan pad · JAWARI</div>
 
 <div id="start-screen">
   <h1>DronorParty</h1>
@@ -501,9 +586,10 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
 </div>
 
 <div class="foot">
-  v0.12: ring modulator (between dronor bus and delay) · bidirectional OFFSET (-50..+50%) ·
-  factory presets reset full state (not just tuning).<br>
-  Pluck step = 8th note. Defaults: gain -6 dB · decay 0.975 · brightness 1500 Hz · output -3 dB.
+  v0.14: per-string ADSR envelope (drag handles · click labels to type) ·
+  Jawari soft saturation slider · combined gain/pan/meter pad replaces the
+  separate PAN row + vertical gain strip per string.<br>
+  Defaults: gain -6 dB · decay 0.975 · brightness 1500 Hz · output -3 dB · jawari 0%.
 </div>
 
 <script>
@@ -513,6 +599,16 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
 const STRING_COUNT = 4;
 const DEFAULT_DIVISORS = [7, 11, 13, 17];   // coprime polyrhythm (all prime)
 const DEFAULT_PATTERN  = '4321';
+
+// ADSR defaults — tanpura-friendly: gentle attack, mild decay-to-sustain,
+// modest sustain duration, gradual release. The KS loop's own decay also
+// shapes the trailing sound, so the envelope is mostly sculpting the front
+// of each pluck.
+const ADSR_DEFAULTS = { aMs: 15, aLevel: 1.0, dMs: 80, dLevel: 0.85, sMs: 200, rMs: 300 };
+
+// ADSR SVG view geometry (compact — adsr at 130 × 55 px in each strip)
+const ADSR_VIEW = { w: 130, h: 55, mL: 8, mR: 6, mT: 4, mB: 12 };
+const ADSR_HANDLE_R = 4;
 
 // Tuning system → showcase ratios for the three strings.
 // Earlier versions used (1, P5, octave) for every system, which made the
@@ -569,14 +665,16 @@ for (let i = 0; i < STRING_COUNT; i++) {
     bypass:    false,
     ratio:     TUNINGS['12-ET'][i],
     divisor:   DEFAULT_DIVISORS[i],
-    offset:    0,           // 0-100%: shifts every pluck by this fraction of one step period
-    humanize:  0,           // 0-100%: random per-pluck timing jitter (was timingHumanize)
+    offset:    0,           // -50..+50%: shifts every pluck by this fraction of one step period
+    humanize:  0,           // 0-100%: random per-pluck timing jitter
     pattern:   DEFAULT_PATTERN,
     intensity: 1.0,
     brightness: 1500,
     decay:      0.975,
     pan:        0,
     gain:       -6,
+    jawari:     0,                              // 0-100% wet of the soft-clip waveshaper
+    adsr:       { ...ADSR_DEFAULTS },
   });
 }
 
@@ -606,6 +704,8 @@ function defaultStringFull(i) {
     decay:      0.975,
     gain:       -6,
     pan:        0,
+    jawari:     0,
+    adsr:       { ...ADSR_DEFAULTS },
   };
 }
 function makeTuningPreset(name, tuningSystem, ratios, withDefaults = true) {
@@ -651,6 +751,8 @@ function loadTuningPreset(idx) {
       s.decay      = sp.decay;
       s.gain       = sp.gain;
       s.pan        = sp.pan;
+      s.jawari     = sp.jawari ?? 0;
+      s.adsr       = sp.adsr ? { ...ADSR_DEFAULTS, ...sp.adsr } : { ...ADSR_DEFAULTS };
       // Push to UI inputs
       const $ = sel => document.querySelector(sel);
       const inpDiv = $(`[data-divisor="${i}"]`);     if (inpDiv)  inpDiv.value  = s.divisor;
@@ -660,7 +762,7 @@ function loadTuningPreset(idx) {
       const inpInt = $(`[data-intensity="${i}"]`);   if (inpInt)  inpInt.value  = s.intensity;
       const inpBri = $(`[data-bright="${i}"]`);      if (inpBri)  inpBri.value  = s.brightness;
       const inpDec = $(`[data-decay="${i}"]`);       if (inpDec)  inpDec.value  = s.decay;
-      const inpPan = $(`[data-pan="${i}"]`);         if (inpPan)  inpPan.value  = s.pan;
+      const inpJaw = $(`[data-jawari="${i}"]`);      if (inpJaw)  inpJaw.value  = s.jawari;
       // Update the readouts
       const v = sel => document.querySelector(sel);
       const vOff = v(`[data-offset-val="${i}"]`);    if (vOff) vOff.textContent = (s.offset > 0 ? '+' : '') + s.offset + '%';
@@ -668,10 +770,12 @@ function loadTuningPreset(idx) {
       const vInt = v(`[data-intensity-val="${i}"]`); if (vInt) vInt.textContent = s.intensity.toFixed(2);
       const vBri = v(`[data-bright-val="${i}"]`);    if (vBri) vBri.textContent = Math.round(s.brightness) + ' Hz';
       const vDec = v(`[data-decay-val="${i}"]`);     if (vDec) vDec.textContent = s.decay.toFixed(3);
-      const lr = s.pan < -0.02 ? 'L' + Math.round(-s.pan * 100)
-              : s.pan >  0.02 ? 'R' + Math.round( s.pan * 100) : 'C';
-      const vPan = v(`[data-pan-val="${i}"]`);       if (vPan) vPan.textContent = lr;
+      const vJaw = v(`[data-jawari-val="${i}"]`);    if (vJaw) vJaw.textContent = s.jawari + '%';
+      const vGn  = v(`[data-str-gain-val="${i}"]`);  if (vGn)  vGn.textContent  = s.gain.toFixed(0) + ' dB';
+      const vPan = v(`[data-pan-val="${i}"]`);       if (vPan) vPan.textContent = panLabel(s.pan);
       drawBargraph(i);
+      drawAdsr(i);
+      updateGpCross(i);
       // Push live audio updates
       if (s.audio && audioCtx) {
         const t = audioCtx.currentTime;
@@ -679,11 +783,10 @@ function loadTuningPreset(idx) {
         s.audio.feedback.gain.setTargetAtTime(s.decay, t, 0.02);
         s.audio.panner.pan.setTargetAtTime(s.pan, t, 0.02);
         s.audio.strGain.gain.setTargetAtTime(dbToGain(s.gain), t, 0.02);
+        const wet = s.jawari / 100;
+        s.audio.jwDry.gain.setTargetAtTime(1 - wet, t, 0.02);
+        s.audio.jwWet.gain.setTargetAtTime(wet,     t, 0.02);
       }
-      // Push gain to the custom thumb visual
-      const stripEl = document.querySelector(`[data-string="${i}"]`);
-      const wrap    = stripEl && stripEl.querySelector('.gain-meter-wrap');
-      if (wrap && wrap._setGainDb) wrap._setGainDb(s.gain);
     });
   }
 }
@@ -704,6 +807,8 @@ function saveTuningPreset(idx) {
       decay:      s.decay,
       gain:       s.gain,
       pan:        s.pan,
+      jawari:     s.jawari,
+      adsr:       { ...s.adsr },
     })),
     factory: false,
   };
@@ -840,33 +945,39 @@ function buildStringStrips() {
         </div>
         <input type="range" data-decay="${idx}" min="0.90" max="0.999" step="0.001" value="${s.decay}">
       </div>
-      <div class="slider-row" title="Stereo position. -1 = full left, 0 = center, +1 = full right.">
+      <div class="slider-row" title="Jawari — soft saturation that excites upper harmonics. 0% = pure KS string. 30-50% = bell-like shimmer. 100% = full radio-buzzy. Inspired by the cotton thread (jawari) under a real tanpura's bridge that creates its iconic ringing tone.">
         <div class="slider-label-row">
-          <span class="slider-label">PAN</span>
-          <span class="ctrl-val" data-pan-val="${idx}">C</span>
+          <span class="slider-label">JAWARI</span>
+          <span class="ctrl-val" data-jawari-val="${idx}">${s.jawari}%</span>
         </div>
-        <input type="range" data-pan="${idx}" min="-1" max="1" step="0.01" value="${s.pan}">
+        <input type="range" data-jawari="${idx}" min="0" max="100" step="1" value="${s.jawari}">
       </div>
-      <!-- Per-string gain+meter strip (FXP canonical, smaller) -->
-      <div style="display:flex; justify-content:center; height:60px; min-height:60px; margin-top:4px;">
-        <div class="gain-meter-wrap" style="height:60px;"
-             title="String output gain (post-pan, pre-bus). Drag to set, double-click to reset to 0 dB.">
-          <div class="gain-meter-bg">
-            <div class="gain-meter-bar">
-              <div class="gain-meter-level" data-str-level-l="${idx}" style="height:0%"></div>
-              <div class="gain-meter-peak"  data-str-pk-l="${idx}"    style="bottom:0%"></div>
-            </div>
-            <div class="gain-meter-bar">
-              <div class="gain-meter-level" data-str-level-r="${idx}" style="height:0%"></div>
-              <div class="gain-meter-peak"  data-str-pk-r="${idx}"    style="bottom:0%"></div>
+      <!-- ADSR envelope editor -->
+      <div title="ADSR amplitude envelope on each pluck. Drag handles to reshape. Click any value label to type. Default: gentle attack (15ms), modest decay-to-sustain at 85% level, then a 300ms release. The KS feedback handles the natural ring underneath.">
+        <div class="adsr-svg-wrap">
+          <svg class="adsr-svg" data-adsr-svg="${idx}" viewBox="0 0 ${ADSR_VIEW.w} ${ADSR_VIEW.h}" preserveAspectRatio="none"></svg>
+        </div>
+      </div>
+      <!-- 2D Gain/Pan/Meter pad -->
+      <div title="Gain (left↔right) + pan (top↔bottom) + stereo level meters in one pad. Drag to set both, double-click to reset to 0 dB / center. Crosshairs show set position; bars show real-time level.">
+        <div class="gp-pad-wrap">
+          <div class="gp-pad" data-gp-pad="${idx}">
+            <div class="gp-meter gp-meter-l" data-str-meter-l="${idx}"></div>
+            <div class="gp-meter gp-meter-r" data-str-meter-r="${idx}"></div>
+            <div class="gp-center-line"></div>
+            <div class="gp-zero-line"></div>
+            <div class="gp-zero-label">0</div>
+            <div class="gp-cross" data-gp-cross="${idx}">
+              <div class="gp-vline"></div>
+              <div class="gp-hline"></div>
+              <div class="gp-puck"></div>
             </div>
           </div>
-          <input class="gain-meter-slider" type="range" data-str-gain-db="${idx}"
-                 min="-60" max="12" step="0.5" value="${s.gain}">
         </div>
-      </div>
-      <div style="text-align:center; margin-top:2px;">
-        <span class="ctrl-val" data-str-gain-val="${idx}" style="font-size:.62rem;">${s.gain.toFixed(0)}dB</span>
+        <div class="gp-readout">
+          <span><span class="k">gain</span> <span class="ctrl-val" data-str-gain-val="${idx}">${s.gain.toFixed(0)} dB</span></span>
+          <span><span class="k">pan</span> <span class="ctrl-val" data-pan-val="${idx}">C</span></span>
+        </div>
       </div>
     `;
     host.appendChild(wrap);
@@ -1016,6 +1127,19 @@ function attachGainDrag(wrap, slider, valEl, min, max, formatLabel, onSet) {
   wrap._setGainDb = v => commit(v);
 }
 
+// Jawari soft-saturation curve. tanh-shape with a 3× drive — at strong
+// signal amplitudes, compresses and excites upper harmonics, mimicking the
+// effect of a real tanpura's jawari (cotton thread under the bridge).
+function makeJawariCurve() {
+  const N = 1024;
+  const curve = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const x = (i / (N - 1)) * 2 - 1;
+    curve[i] = Math.tanh(3 * x);
+  }
+  return curve;
+}
+
 function createKSChain(ctx) {
   // Karplus-Strong with a STABLE in-loop filter (the BiquadFilter inside a
   // feedback loop blew up — Chrome printed "BiquadFilterNode: state is bad
@@ -1038,7 +1162,17 @@ function createKSChain(ctx) {
   filter.type = 'lowpass';
   filter.Q.value = 0.5;
   filter.frequency.value = 2500;
-  const output   = ctx.createGain(); output.gain.value = 1;
+
+  // Jawari (waveshaper, OUTSIDE the feedback loop) — dry/wet crossfade.
+  const jwDry   = ctx.createGain(); jwDry.gain.value = 1;        // 1 - jawari/100
+  const jwWet   = ctx.createGain(); jwWet.gain.value = 0;        // jawari/100
+  const shaper  = ctx.createWaveShaper();
+  shaper.curve  = makeJawariCurve();
+  shaper.oversample = '2x';
+
+  // Envelope VCA — ADSR ramps applied per pluck. Starts silent.
+  const envVCA  = ctx.createGain(); envVCA.gain.value = 0;
+
   const panner   = ctx.createStereoPanner();
   const strGain  = ctx.createGain(); strGain.gain.value = 1;
 
@@ -1049,8 +1183,13 @@ function createKSChain(ctx) {
   feedback.connect(sumNode);
   // Output tap from the same loopFIR node (multi-destination ok)
   loopFIR.connect(filter);
-  filter.connect(output);
-  output.connect(panner);
+  // After the brightness filter, branch into jawari dry + wet, sum at envVCA.
+  filter.connect(jwDry);
+  filter.connect(shaper);
+  shaper.connect(jwWet);
+  jwDry.connect(envVCA);
+  jwWet.connect(envVCA);
+  envVCA.connect(panner);
   panner.connect(strGain);
 
   // Per-string stereo analyser (post-pan, post-gain)
@@ -1063,7 +1202,7 @@ function createKSChain(ctx) {
   splitter.connect(aL, 0);
   splitter.connect(aR, 1);
 
-  return { sumNode, delay, loopFIR, feedback, filter, output, panner, strGain, aL, aR };
+  return { sumNode, delay, loopFIR, feedback, filter, jwDry, jwWet, shaper, envVCA, panner, strGain, aL, aR };
 }
 
 // Ring modulator: input → dry → output, input → ringMul → wet → output.
@@ -1135,7 +1274,7 @@ function createDelayChain(ctx) {
   return { input, delayN, feedback, dry, wet };
 }
 
-function pluckKS(ks, freq, strength, brightness) {
+function pluckKS(ks, freq, strength, brightness, adsr) {
   if (!audioCtx || !ks) return;
   if (!isFinite(freq) || freq < 20 || freq > 4000) return;
   if (strength <= 0) return;
@@ -1143,6 +1282,23 @@ function pluckKS(ks, freq, strength, brightness) {
   const t  = audioCtx.currentTime;
   ks.delay.delayTime.setValueAtTime(1 / freq, t);
   ks.filter.frequency.setTargetAtTime(brightness, t, 0.005);
+  // ADSR ramps on the per-string envelope VCA. Cancel any in-flight ramps
+  // (so retriggering during sustain is clean) and schedule a fresh A/D/S/R.
+  // Strength affects only the noise burst amplitude (and therefore KS ring
+  // amplitude); the envelope curve is shape-only, scaled 0..aLevel.
+  if (adsr) {
+    const env = ks.envVCA.gain;
+    env.cancelScheduledValues(t);
+    env.setValueAtTime(0, t);
+    const peakT    = t        + adsr.aMs / 1000;
+    const decayT   = peakT    + adsr.dMs / 1000;
+    const sustainT = decayT   + adsr.sMs / 1000;
+    const endT     = sustainT + adsr.rMs / 1000;
+    env.linearRampToValueAtTime(adsr.aLevel, peakT);
+    env.linearRampToValueAtTime(adsr.dLevel, decayT);
+    env.setValueAtTime(adsr.dLevel, sustainT);
+    env.linearRampToValueAtTime(0, endT);
+  }
   // Inject one period of noise — fills delay line, seeds broad spectrum
   const burstSec = 1 / freq;
   const bufLen = Math.max(8, Math.ceil(burstSec * sr));
@@ -1214,9 +1370,9 @@ function onTick() {
       timingMs += Math.random() * (s.humanize / 100) * stringPeriod * 1000 * 1.5;
     }
     if (timingMs > 0) {
-      setTimeout(() => pluckKS(s.audio, freq, strength, s.brightness), timingMs);
+      setTimeout(() => pluckKS(s.audio, freq, strength, s.brightness, s.adsr), timingMs);
     } else {
-      pluckKS(s.audio, freq, strength, s.brightness);
+      pluckKS(s.audio, freq, strength, s.brightness, s.adsr);
     }
   });
   tickCount++;
@@ -1260,16 +1416,23 @@ function meterTick() {
       document.getElementById('out-level-r'),
       document.getElementById('out-pk-r'), 'out-R', now);
   }
+  // Per-string meters are drawn into the GP pad's gp-meter-l/r elements
+  // (horizontal bars filling from left), not vertical bars.
   state.strings.forEach((s, i) => {
     if (!s.audio) return;
-    renderMeter(s.audio.aL,
-      document.querySelector(`[data-str-level-l="${i}"]`),
-      document.querySelector(`[data-str-pk-l="${i}"]`),    'str' + i + '-L', now);
-    renderMeter(s.audio.aR,
-      document.querySelector(`[data-str-level-r="${i}"]`),
-      document.querySelector(`[data-str-pk-r="${i}"]`),    'str' + i + '-R', now);
+    renderGpStringMeter(s.audio.aL, document.querySelector(`[data-str-meter-l="${i}"]`));
+    renderGpStringMeter(s.audio.aR, document.querySelector(`[data-str-meter-r="${i}"]`));
   });
   requestAnimationFrame(meterTick);
+}
+function renderGpStringMeter(analyser, levelEl) {
+  if (!analyser || !levelEl) return;
+  analyser.getFloatTimeDomainData(_meterBuf);
+  let p = 0;
+  for (let i = 0; i < _meterBuf.length; i++) {
+    const v = Math.abs(_meterBuf[i]); if (v > p) p = v;
+  }
+  levelEl.style.width = pctFromDb(gainToDb(p)) + '%';
 }
 
 // ── Wire up controls ────────────────────────────────────────────────────
@@ -1314,8 +1477,7 @@ function wireStringControls() {
     else if (t.dataset.offset    != null) { i = +t.dataset.offset;    kind = 'offset'; }
     else if (t.dataset.bright    != null) { i = +t.dataset.bright;    kind = 'bright'; }
     else if (t.dataset.decay     != null) { i = +t.dataset.decay;     kind = 'decay'; }
-    else if (t.dataset.pan       != null) { i = +t.dataset.pan;       kind = 'pan'; }
-    else if (t.dataset.strGainDb != null) { i = +t.dataset.strGainDb; kind = 'strGain'; }
+    else if (t.dataset.jawari    != null) { i = +t.dataset.jawari;    kind = 'jawari'; }
     if (!(i >= 0)) return;
     const s = state.strings[i];
     const v = parseFloat(t.value);
@@ -1345,20 +1507,16 @@ function wireStringControls() {
         document.querySelector(`[data-decay-val="${i}"]`).textContent = v.toFixed(3);
         if (s.audio) s.audio.feedback.gain.setTargetAtTime(v, now, 0.02);
         break;
-      case 'pan': {
-        s.pan = v;
-        const lr = v < -0.02 ? 'L' + Math.round(-v * 100)
-                : v >  0.02 ? 'R' + Math.round( v * 100)
-                : 'C';
-        document.querySelector(`[data-pan-val="${i}"]`).textContent = lr;
-        if (s.audio) s.audio.panner.pan.setTargetAtTime(v, now, 0.02);
+      case 'jawari': {
+        s.jawari = v;
+        document.querySelector(`[data-jawari-val="${i}"]`).textContent = v + '%';
+        const wet = v / 100;
+        if (s.audio) {
+          s.audio.jwDry.gain.setTargetAtTime(1 - wet, now, 0.02);
+          s.audio.jwWet.gain.setTargetAtTime(wet,     now, 0.02);
+        }
         break;
       }
-      case 'strGain':
-        s.gain = v;
-        document.querySelector(`[data-str-gain-val="${i}"]`).textContent = v.toFixed(0) + 'dB';
-        if (s.audio) s.audio.strGain.gain.setTargetAtTime(dbToGain(v), now, 0.02);
-        break;
     }
   });
 
@@ -1397,7 +1555,7 @@ function wireStringControls() {
         const freq = state.rootFreq * s.ratio;
         // Manual pluck = full strength (clamped) regardless of pattern
         const strength = Math.max(0.05, Math.min(1, s.intensity));
-        pluckKS(s.audio, freq, strength, s.brightness);
+        pluckKS(s.audio, freq, strength, s.brightness, s.adsr);
       }
       t.style.background = '#c8a85488';
       setTimeout(() => { t.style.background = ''; }, 90);
@@ -1409,19 +1567,282 @@ function wireStringControls() {
     }
   });
 
-  // Double-click str-gain to reset to 0dB
-  stringsRow.addEventListener('dblclick', e => {
-    const t = e.target;
-    if (t.dataset.strGainDb != null) {
-      const i = +t.dataset.strGainDb;
-      t.value = 0;
-      state.strings[i].gain = 0;
-      document.querySelector(`[data-str-gain-val="${i}"]`).textContent = '0dB';
-      if (state.strings[i].audio) {
-        state.strings[i].audio.strGain.gain.setTargetAtTime(1, audioCtx.currentTime, 0.02);
-      }
-    }
+}
+
+// ── 2D Gain/Pan Pad — per-string ───────────────────────────────────────
+const PAN_C_THRESH = 0.02;
+function panLabel(p) {
+  if (p < -PAN_C_THRESH) return 'L' + Math.round(-p * 100);
+  if (p >  PAN_C_THRESH) return 'R' + Math.round( p * 100);
+  return 'C';
+}
+function setStringGain(i, db) {
+  const s = state.strings[i]; if (!s) return;
+  const clamped = Math.max(-60, Math.min(12, db));
+  s.gain = clamped;
+  const valEl = document.querySelector(`[data-str-gain-val="${i}"]`);
+  if (valEl) valEl.textContent = clamped.toFixed(0) + ' dB';
+  if (s.audio && audioCtx) {
+    s.audio.strGain.gain.setTargetAtTime(dbToGain(clamped), audioCtx.currentTime, 0.02);
+  }
+  updateGpCross(i);
+}
+function setStringPan(i, p) {
+  const s = state.strings[i]; if (!s) return;
+  const clamped = Math.max(-1, Math.min(1, p));
+  s.pan = clamped;
+  const valEl = document.querySelector(`[data-pan-val="${i}"]`);
+  if (valEl) valEl.textContent = panLabel(clamped);
+  if (s.audio && audioCtx) {
+    s.audio.panner.pan.setTargetAtTime(clamped, audioCtx.currentTime, 0.02);
+  }
+  updateGpCross(i);
+}
+function updateGpCross(i) {
+  const s = state.strings[i]; if (!s) return;
+  const cross = document.querySelector(`[data-gp-cross="${i}"]`);
+  if (!cross) return;
+  // X = gain (-60..+12 → 0..100%)
+  const xPct = Math.max(0, Math.min(1, (s.gain - (-60)) / (12 - (-60)))) * 100;
+  // Y = pan (-1..+1 → 0..100%); top is left (Y=0 → pan=-1)
+  const yPct = Math.max(0, Math.min(1, (s.pan + 1) / 2)) * 100;
+  cross.style.left = xPct + '%';
+  cross.style.top  = yPct + '%';
+}
+function bindGainPanPad(i) {
+  const pad = document.querySelector(`[data-gp-pad="${i}"]`);
+  if (!pad) return;
+  let dragging = false;
+  function setFromEvent(e) {
+    const rect = pad.getBoundingClientRect();
+    const x = Math.max(0, Math.min(rect.width,  e.clientX - rect.left));
+    const y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+    setStringGain(i, -60 + (x / rect.width) * 72);    // 72 dB span
+    setStringPan(i, (y / rect.height) * 2 - 1);
+  }
+  pad.addEventListener('pointerdown', e => {
+    ensureRunning();
+    dragging = true; pad.setPointerCapture(e.pointerId);
+    setFromEvent(e); e.preventDefault();
   });
+  pad.addEventListener('pointermove', e => { if (dragging) setFromEvent(e); });
+  pad.addEventListener('pointerup', e => {
+    dragging = false;
+    try { pad.releasePointerCapture(e.pointerId); } catch (_) {}
+  });
+  pad.addEventListener('pointercancel', () => { dragging = false; });
+  pad.addEventListener('dblclick', () => {
+    setStringGain(i, 0);
+    setStringPan(i, 0);
+  });
+}
+
+// ── Graphical ADSR — per-string ─────────────────────────────────────────
+function adsrTimes(i) {
+  const a = state.strings[i].adsr;
+  return { tA: a.aMs, tD: a.aMs + a.dMs, tS: a.aMs + a.dMs + a.sMs, tR: a.aMs + a.dMs + a.sMs + a.rMs };
+}
+function adsrViewMaxMs(i) { return Math.max(adsrTimes(i).tR * 1.25, 500); }
+function adsrCoords(i) {
+  const a = state.strings[i].adsr;
+  const { w, h, mL, mR, mT, mB } = ADSR_VIEW;
+  const t = adsrTimes(i);
+  const total = adsrViewMaxMs(i);
+  const plotW = w - mL - mR, plotH = h - mT - mB;
+  const x = (ms) => mL + (ms / total) * plotW;
+  const y = (amp) => mT + (1 - amp) * plotH;
+  return {
+    start: { x: x(0),    y: y(0) },
+    peak:  { x: x(t.tA), y: y(a.aLevel) },
+    decay: { x: x(t.tD), y: y(a.dLevel) },
+    sust:  { x: x(t.tS), y: y(a.dLevel) },
+    end:   { x: x(t.tR), y: y(0) },
+  };
+}
+function fmtDb(amp) {
+  if (amp <= 0.001) return '-inf';
+  return (20 * Math.log10(amp)).toFixed(1) + 'dB';
+}
+function dbStrToAmp(str) {
+  const t = String(str).trim().toLowerCase().replace(/db/g, '').trim();
+  if (t === '-inf' || t === '') return 0;
+  const v = parseFloat(t);
+  return Number.isNaN(v) ? null : dbToGain(v);
+}
+function msStrToMs(str) {
+  const t = String(str).trim().toLowerCase().replace(/ms/g, '').replace(/s$/, '').trim();
+  const v = parseFloat(t);
+  return Number.isNaN(v) ? null : Math.max(1, v);
+}
+function drawAdsr(i) {
+  const svg = document.querySelector(`[data-adsr-svg="${i}"]`);
+  if (!svg) return;
+  const { w, h, mL, mR, mT, mB } = ADSR_VIEW;
+  const c = adsrCoords(i);
+  const a = state.strings[i].adsr;
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  const NS = 'http://www.w3.org/2000/svg';
+  const addLine = (x1, y1, x2, y2, cls = 'adsr-gridline') => {
+    const el = document.createElementNS(NS, 'line');
+    el.setAttribute('x1', x1); el.setAttribute('y1', y1);
+    el.setAttribute('x2', x2); el.setAttribute('y2', y2);
+    el.setAttribute('class', cls);
+    svg.appendChild(el);
+  };
+  const addText = (x, y, text, cls = 'adsr-gridlabel') => {
+    const el = document.createElementNS(NS, 'text');
+    el.setAttribute('x', x); el.setAttribute('y', y);
+    el.setAttribute('class', cls); el.textContent = text;
+    svg.appendChild(el); return el;
+  };
+  // Reference lines: 0 dB (top of plot) and -12 dB (≈ 0.251)
+  addLine(mL, c.peak.y > c.decay.y ? c.peak.y : mT, w - mR, mT);   // not used; replaced below
+  // Just two horizontal grid markers
+  const yTop = mT, yMid = mT + (h - mT - mB) * 0.749, yBot = h - mB;
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  addLine(mL, yTop, w - mR, yTop);
+  addLine(mL, yMid, w - mR, yMid);
+  addLine(mL, yBot, w - mR, yBot);
+  // Section dividers at A/D/S/R boundaries
+  addLine(c.peak.x,  mT, c.peak.x,  h - mB);
+  addLine(c.decay.x, mT, c.decay.x, h - mB);
+  addLine(c.sust.x,  mT, c.sust.x,  h - mB);
+  addLine(c.end.x,   mT, c.end.x,   h - mB);
+  // Section labels A/D/S/R along the bottom
+  addText((c.start.x + c.peak.x) / 2 - 2, h - 3, 'A');
+  addText((c.peak.x + c.decay.x) / 2 - 2, h - 3, 'D');
+  addText((c.decay.x + c.sust.x) / 2 - 2, h - 3, 'S');
+  addText((c.sust.x + c.end.x) / 2 - 2,   h - 3, 'R');
+  // Envelope segments
+  const addSeg = (x1, y1, x2, y2) => {
+    const el = document.createElementNS(NS, 'line');
+    el.setAttribute('x1', x1); el.setAttribute('y1', y1);
+    el.setAttribute('x2', x2); el.setAttribute('y2', y2);
+    el.setAttribute('class', 'adsr-seg');
+    svg.appendChild(el);
+  };
+  addSeg(c.start.x, c.start.y, c.peak.x,  c.peak.y);
+  addSeg(c.peak.x,  c.peak.y,  c.decay.x, c.decay.y);
+  addSeg(c.decay.x, c.decay.y, c.sust.x,  c.sust.y);
+  addSeg(c.sust.x,  c.sust.y,  c.end.x,   c.end.y);
+  // Drag handles
+  const addHandle = (p, name) => {
+    const el = document.createElementNS(NS, 'circle');
+    el.setAttribute('cx', p.x); el.setAttribute('cy', p.y);
+    el.setAttribute('r', ADSR_HANDLE_R);
+    el.setAttribute('class', 'adsr-handle');
+    el.dataset.name = name; el.dataset.idx = i;
+    el.addEventListener('pointerdown', onAdsrHandlePointerDown);
+    svg.appendChild(el);
+  };
+  addHandle(c.peak,  'peak');
+  addHandle(c.decay, 'decay');
+  addHandle(c.sust,  'sust');
+  addHandle(c.end,   'end');
+  // Click-to-edit value labels (compact — only times, not levels — keeps SVG readable)
+  const addLabel = (x, y, text, kind) => {
+    const el = document.createElementNS(NS, 'text');
+    el.setAttribute('x', x); el.setAttribute('y', y);
+    el.setAttribute('class', 'adsr-pointlabel editable');
+    el.textContent = text;
+    el.dataset.editKind = kind;
+    el.dataset.idx = i;
+    svg.appendChild(el);
+  };
+  addLabel(c.peak.x  - 8, c.peak.y  - 5, a.aMs + 'ms',         'aTime');
+  addLabel(c.decay.x - 8, c.decay.y + 9, a.dMs + 'ms',         'dTime');
+  addLabel(c.sust.x  - 8, c.sust.y  + 9, a.sMs + 'ms',         'sTime');
+  addLabel(Math.min(c.end.x - 14, w - mR - 18), c.end.y - 2, a.rMs + 'ms', 'rTime');
+}
+function bindAdsrLabels(i) {
+  const wrap = document.querySelector(`[data-adsr-svg="${i}"]`).parentElement;
+  wrap.addEventListener('click', e => {
+    const t = e.target;
+    if (!(t instanceof SVGTextElement)) return;
+    if (!t.dataset.editKind) return;
+    startAdsrLabelEdit(t);
+  });
+}
+function startAdsrLabelEdit(labelEl) {
+  const rect = labelEl.getBoundingClientRect();
+  const kind = labelEl.dataset.editKind;
+  const idx  = parseInt(labelEl.dataset.idx, 10);
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = labelEl.textContent;
+  input.className = 'adsr-editbox';
+  input.style.left = (rect.left + window.scrollX - 4) + 'px';
+  input.style.top  = (rect.top  + window.scrollY - 2) + 'px';
+  document.body.appendChild(input);
+  input.focus(); input.select();
+  function commit() { const raw = input.value; input.remove(); applyAdsrLabelEdit(idx, kind, raw); }
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  { e.preventDefault(); commit(); }
+    if (e.key === 'Escape') { e.preventDefault(); input.remove(); }
+  });
+}
+function applyAdsrLabelEdit(i, kind, raw) {
+  const a = state.strings[i].adsr;
+  let v;
+  switch (kind) {
+    case 'aTime':  v = msStrToMs(raw); if (v != null) a.aMs = Math.max(1, Math.min(30000, v)); break;
+    case 'dTime':  v = msStrToMs(raw); if (v != null) a.dMs = Math.max(1, Math.min(30000, v)); break;
+    case 'sTime':  v = msStrToMs(raw); if (v != null) a.sMs = Math.max(1, Math.min(60000, v)); break;
+    case 'rTime':  v = msStrToMs(raw); if (v != null) a.rMs = Math.max(1, Math.min(30000, v)); break;
+    case 'aLevel': v = dbStrToAmp(raw); if (v != null) a.aLevel = Math.max(0, Math.min(1, v)); break;
+    case 'dLevel': v = dbStrToAmp(raw); if (v != null) a.dLevel = Math.max(0, Math.min(a.aLevel, v)); break;
+  }
+  drawAdsr(i);
+}
+
+let adsrDragState = null;
+function svgPointFromEvt(svg, evt) {
+  const pt = svg.createSVGPoint(); pt.x = evt.clientX; pt.y = evt.clientY;
+  return pt.matrixTransform(svg.getScreenCTM().inverse());
+}
+function onAdsrHandlePointerDown(e) {
+  e.preventDefault();
+  const idx = parseInt(e.target.dataset.idx, 10);
+  const name = e.target.dataset.name;
+  e.target.classList.add('dragging');
+  e.target.setPointerCapture(e.pointerId);
+  adsrDragState = { idx, name, pointerId: e.pointerId, el: e.target, svg: e.target.closest('svg') };
+  window.addEventListener('pointermove', onAdsrHandlePointerMove);
+  window.addEventListener('pointerup',   onAdsrHandlePointerUp);
+}
+function onAdsrHandlePointerMove(e) {
+  if (!adsrDragState) return;
+  const p = svgPointFromEvt(adsrDragState.svg, e);
+  const { w, h, mL, mR, mT, mB } = ADSR_VIEW;
+  const plotW = w - mL - mR, plotH = h - mT - mB;
+  const viewMax = adsrViewMaxMs(adsrDragState.idx);
+  const xRaw = p.x - mL;
+  const ms   = Math.max(0, Math.min(60000, (xRaw / plotW) * viewMax));
+  const yClamp = Math.max(mT, Math.min(h - mB, p.y));
+  const amp = 1 - (yClamp - mT) / plotH;
+  const a = state.strings[adsrDragState.idx].adsr;
+  if (adsrDragState.name === 'peak') {
+    a.aMs    = Math.max(1, Math.min(30000, ms));
+    a.aLevel = Math.max(0, Math.min(1, amp));
+    if (a.dLevel > a.aLevel) a.dLevel = a.aLevel;
+  } else if (adsrDragState.name === 'decay') {
+    a.dMs    = Math.max(1, Math.min(30000, ms - a.aMs));
+    a.dLevel = Math.max(0, Math.min(a.aLevel, amp));
+  } else if (adsrDragState.name === 'sust') {
+    a.sMs = Math.max(1, Math.min(60000, ms - a.aMs - a.dMs));
+  } else if (adsrDragState.name === 'end') {
+    a.rMs = Math.max(1, Math.min(30000, ms - a.aMs - a.dMs - a.sMs));
+  }
+  drawAdsr(adsrDragState.idx);
+}
+function onAdsrHandlePointerUp(e) {
+  if (!adsrDragState) return;
+  try { adsrDragState.el.releasePointerCapture(adsrDragState.pointerId); } catch (_) {}
+  adsrDragState.el.classList.remove('dragging');
+  adsrDragState = null;
+  window.removeEventListener('pointermove', onAdsrHandlePointerMove);
+  window.removeEventListener('pointerup',   onAdsrHandlePointerUp);
 }
 
 function wireOutputControls() {
@@ -1651,10 +2072,14 @@ async function startAudio() {
   // Per-string KS chains
   state.strings.forEach((s) => {
     s.audio = createKSChain(audioCtx);
-    s.audio.feedback.gain.value  = s.decay;
+    s.audio.feedback.gain.value    = s.decay;
     s.audio.filter.frequency.value = s.brightness;
-    s.audio.panner.pan.value     = s.pan;
-    s.audio.strGain.gain.value   = dbToGain(s.gain);
+    s.audio.panner.pan.value       = s.pan;
+    s.audio.strGain.gain.value     = dbToGain(s.gain);
+    // Initial jawari mix (default 0% wet)
+    const wet = (s.jawari || 0) / 100;
+    s.audio.jwDry.gain.value = 1 - wet;
+    s.audio.jwWet.gain.value = wet;
     s.patternStep = 0;
   });
 
@@ -1717,22 +2142,19 @@ async function startAudio() {
   refreshNoteDisplay();
   refreshClockDisplay();
 
-  // Attach custom gain drag handlers to each gain-meter-wrap
-  // (replaces the unreliable native vertical slider behavior)
+  // Per-string: bind 2D gain/pan pad + draw the ADSR SVG + initial cross
   state.strings.forEach((s, i) => {
-    const stripEl = document.querySelector(`[data-string="${i}"]`);
-    if (!stripEl) return;
-    const wrap   = stripEl.querySelector('.gain-meter-wrap');
-    const slider = stripEl.querySelector('input.gain-meter-slider');
-    const valEl  = stripEl.querySelector('[data-str-gain-val]');
-    attachGainDrag(wrap, slider, valEl, -60, 12,
-      db => db.toFixed(0) + 'dB',
-      db => {
-        s.gain = db;
-        if (s.audio) s.audio.strGain.gain.setTargetAtTime(dbToGain(db), audioCtx.currentTime, 0.02);
-      }
-    );
+    bindGainPanPad(i);
+    bindAdsrLabels(i);
+    drawAdsr(i);
+    updateGpCross(i);
+    // Initialize the gain/pan readouts
+    const gv = document.querySelector(`[data-str-gain-val="${i}"]`);
+    if (gv) gv.textContent = s.gain.toFixed(0) + ' dB';
+    const pv = document.querySelector(`[data-pan-val="${i}"]`);
+    if (pv) pv.textContent = panLabel(s.pan);
   });
+  // Output gain — keep the canonical 1D vertical thumb (no second axis)
   {
     const wrap   = document.querySelector('#mod-output .gain-meter-wrap');
     const slider = document.getElementById('output-gain-db');
@@ -1754,7 +2176,7 @@ async function startAudio() {
   startScheduler();
   requestAnimationFrame(meterTick);
 
-  console.log('DronorParty v0.13 — tempo slider, reverb. sr=', audioCtx.sampleRate,
+  console.log('DronorParty v0.14 — ADSR + jawari + GP pad. sr=', audioCtx.sampleRate,
               'ctx=', Tone.context.state, 'maxCh=', audioCtx.destination.maxChannelCount);
 }
 
