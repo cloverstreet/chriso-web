@@ -511,7 +511,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 <!-- Version badge (always visible, top-right) -->
 <div id="version-badge" style="position:fixed;top:8px;right:10px;
      font-family:'Courier New',monospace;font-size:.6rem;letter-spacing:.16em;
-     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v65</div>
+     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v66</div>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
 <!-- START SCREEN                                                   -->
@@ -906,14 +906,19 @@ input.gain-meter-slider::-webkit-slider-thumb {
           <div class="lvl-thumb" id="delay-wet-thumb"></div>
         </div>
       </div>
-      <!-- FEEDBACK TO PITCH SHIFT (dangerous but musical!) -->
+      <!-- FEEDBACK TO PITCH SHIFT (dangerous but musical!) — v66 level slider -->
       <div style="margin-bottom:0;padding-top:7px;border-top:1px solid #1a1a1a;">
         <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
           <label style="font-size:.66rem;letter-spacing:.08em;color:#e0a050;">MIX → PITCH SHIFT</label>
-          <span class="ctrl-val" id="delay-to-pitch-val" data-value="0" style="font-size:.72rem;">-inf</span>
+          <span class="ctrl-val" id="delay-to-pitch-val" data-value="0" title="Click to type a precise dB value">-inf dB</span>
         </div>
-        <input type="range" id="delay-to-pitch" min="0" max="1" step="0.01" value="0"
-               oninput="setDelayToPitch(this.value)" style="width:100%;">
+        <input type="range" id="delay-to-pitch" min="0" max="1" step="0.01" value="0" style="display:none;">
+        <div class="lvl-slider" id="delay-to-pitch-pad" title="Delay output → pitch shifter input (feedback loop, can run away — that's musical!). Drag · dblclick = 0 dB.">
+          <div class="lvl-meter-l" id="delay-to-pitch-meter-l"></div>
+          <div class="lvl-meter-r" id="delay-to-pitch-meter-r"></div>
+          <div class="lvl-zero-line"></div>
+          <div class="lvl-thumb" id="delay-to-pitch-thumb"></div>
+        </div>
       </div>
     </div>
 
@@ -952,24 +957,16 @@ input.gain-meter-slider::-webkit-slider-thumb {
               <button class="global-slot" data-slot="14" onclick="handleGlobalPreset(this)">14</button>
               <button class="global-slot" data-slot="15" onclick="handleGlobalPreset(this)">15</button>
               <span style="flex:1;min-width:4px;"></span>
-              <select id="factory-sel" onchange="loadFactoryPreset(this.value)"
-                title="Load a hard-wired factory preset (read-only — save to a slot to keep your tweaks)"
-                style="background:#0d0d0d;border:1px solid #252525;color:#666;font-family:'Courier New',monospace;
-                       font-size:.58rem;padding:1px 3px;cursor:pointer;max-width:96px;">
-                <option value="">— factory —</option>
-                <option value="just-sines">Just Sines</option>
-                <option value="just-delays">Just Delays</option>
-                <option value="pitch-stack">Pitch Stack</option>
-                <option value="danger-zone">Danger Zone</option>
-                <option value="deep-bass">Deep Bass</option>
-              </select>
+              <!-- v66: single-slot factory dropdown removed. Banks (multi-slot
+                   themed sets) live in the dropdown below alongside user banks. -->
               <select id="ps-layout-sel" onchange="psLoadLayout(this.value)"
+                title="Banks: factory themes + your saved user banks"
                 style="background:#0d0d0d;border:1px solid #252525;color:#666;font-family:'Courier New',monospace;
-                       font-size:.58rem;padding:1px 3px;cursor:pointer;max-width:88px;">
-                <option value="">— layout —</option>
+                       font-size:.58rem;padding:1px 3px;cursor:pointer;max-width:120px;">
+                <option value="">— bank —</option>
               </select>
               <button onclick="psSaveLayout()"
-                title="Save current IS preset layout as named set"
+                title="Save the current 16 IS slots as a named user bank"
                 style="padding:1px 5px;background:transparent;border:1px solid #252525;color:#555;
                        font-family:'Courier New',monospace;font-size:.6rem;cursor:pointer;
                        border-radius:2px;transition:all .12s;"
@@ -1018,25 +1015,26 @@ input.gain-meter-slider::-webkit-slider-thumb {
           <span style="font-size:.58rem;color:#555;letter-spacing:.1em;">MAX CH</span>
           <span style="font-size:.60rem;color:#666;" id="out-maxch">—</span>
         </div>
-        <div style="display:flex;justify-content:center;height:68px;min-height:68px;margin-bottom:4px;">
-          <!-- Combined gain+meter slider -->
-          <div class="gain-meter-wrap" style="height:68px;">
-            <div class="gain-meter-bg">
-              <div class="gain-meter-bar">
-                <div class="gain-meter-level" id="out-level-l" style="height:0%"></div>
-                <div class="gain-meter-peak" id="out-pk-l" style="bottom:0%"></div>
-              </div>
-              <div class="gain-meter-bar">
-                <div class="gain-meter-level" id="out-level-r" style="height:0%"></div>
-                <div class="gain-meter-peak" id="out-pk-r" style="bottom:0%"></div>
-              </div>
+        <!-- v66: XY gain/pan pad replaces 1D gain/meter strip on output. -->
+        <input type="range" id="output-gain-db" min="-60" max="12" step="0.5" value="0" style="display:none;">
+        <input type="range" id="output-pan-sl"  min="-1" max="1" step="0.01" value="0" style="display:none;">
+        <div class="gp-pad-wrap" style="margin-bottom:4px;"
+             title="Gain (L/R = -60..+12 dB) · Pan (U/D = L..R). Drag to set, dblclick = 0 dB / center, click value to type.">
+          <div class="gp-pad" id="output-gp-pad">
+            <div class="gp-meter gp-meter-l" id="out-pad-l"></div>
+            <div class="gp-meter gp-meter-r" id="out-pad-r"></div>
+            <div class="gp-center-line"></div>
+            <div class="gp-zero-line"></div>
+            <div class="gp-zero-label">0</div>
+            <div class="gp-cross" id="output-gp-cross">
+              <div class="gp-vline"></div><div class="gp-hline"></div><div class="gp-puck"></div>
             </div>
-            <input class="gain-meter-slider" type="range" id="output-gain-db"
-              min="-60" max="12" step="0.5" value="0" oninput="setOutputGainDb(this.value)">
           </div>
-
         </div>
-        <div style="text-align:center;margin-top:3px;"><span class="ctrl-val" id="output-gain-val" data-value="0" style="font-size:.68rem;">0dB</span></div>
+        <div class="gp-readout" style="margin-bottom:4px;">
+          <span><span class="k">gain</span> <span class="ctrl-val" id="output-gain-val" data-value="0" title="Click to type a precise dB value">0 dB</span></span>
+          <span><span class="k">pan</span> <span class="ctrl-val" id="output-pan-val" data-value="0" title="Click to type pan (L100..R100 or 0)">C</span></span>
+        </div>
 
         <!-- ── REC: pre-gain mix → MediaRecorder → file download ── -->
         <div style="margin-top:8px;padding-top:7px;border-top:1px solid #1a1a1a;display:flex;align-items:center;gap:6px;">
@@ -1183,7 +1181,7 @@ let pitchShift, pitchDryG, pitchWetG;
 let pitchSumG, pitchToDelayG, pitchToOutG; // pitch post-mix sends
 let delayToPitchG; // delay→pitch feedback send
 let delayNode, feedbackGain, delayDryGain, delayWetGain;
-let outputGainNode, outputMuteNode, outputMeter;
+let outputGainNode, outputPanner, outputMuteNode, outputMeter;
 // Recording: recordTap is the pre-output-gain mix tap. MediaStreamDestination
 // hangs off it for MediaRecorder. Future Granulated Loopers will tap recordTap
 // → AudioWorkletNode for shared circular-buffer access.
@@ -1280,6 +1278,7 @@ async function initAudio() {
     delayDryGain   = stereoGain(0); // v55: dry-out removed; node kept at 0 so legacy refs are no-ops
     delayWetGain   = stereoGain(0.4);
     outputGainNode = stereoGain(1);
+    outputPanner   = new Tone.Panner(0); // v66: master output pan
     outputMuteNode = stereoGain(1);
     // Recording tap: all sources route through recordTap → outputGainNode.
     // The pre-gain MediaStreamDestination keeps recordings independent of the output gain slider.
@@ -1344,7 +1343,12 @@ async function initAudio() {
     delayNode.connect(delayToPitchG); delayToPitchG.connect(preFxGain);
     // Pitch direct → out
     pitchToOutG.connect(recordTap);
-    outputGainNode.connect(outputMeter); outputGainNode.connect(outputMuteNode); outputMuteNode.toDestination();
+    // v66: insert outputPanner between gain and mute. Meter taps post-pan
+    // so the L/R bars reflect the actual pan applied at the master.
+    outputGainNode.connect(outputPanner);
+    outputPanner.connect(outputMeter);
+    outputPanner.connect(outputMuteNode);
+    outputMuteNode.toDestination();
 
     // Open mic with Tone.UserMedia — APM-disabled via monkey-patched getUserMedia above.
     micInput = new Tone.UserMedia();
@@ -1371,14 +1375,17 @@ async function initAudio() {
     setupDblClick();
     setupSliderSlew();
     // v64: bind XY pads (replaces separate gain + pan controls on mic + sig gen).
-    bindGainPanPad('mic-gp-pad',  -60, 12, v => setInputGainDb(v), v => setMicPan(v));
-    bindGainPanPad('test-gp-pad', -60,  6, v => setTestGainDb(v),  v => setTestPan(v));
+    bindGainPanPad('mic-gp-pad',    -60, 12, v => setInputGainDb(v),  v => setMicPan(v));
+    bindGainPanPad('test-gp-pad',   -60,  6, v => setTestGainDb(v),   v => setTestPan(v));
+    // v66: output also gets a gain/pan/meter pad (master output pan + level).
+    bindGainPanPad('output-gp-pad', -60, 12, v => setOutputGainDb(v), v => setOutputPan(v));
     // v65: bind level sliders (replaces send sliders w/ stereo-meter pads).
     bindLvlSlider('mic-direct-pad',     -60, 6, v => setMicDirect(v));
     bindLvlSlider('test-direct-pad',    -60, 6, v => setTestDirect(v));
     bindLvlSlider('pitch-to-delay-pad', -60, 6, v => setPitchToDelay(v));
     bindLvlSlider('pitch-to-out-pad',   -60, 6, v => setPitchToOut(v));
     bindLvlSlider('delay-wet-pad',      -60, 6, v => setDelayWet(v));
+    bindLvlSlider('delay-to-pitch-pad', -60, 6, v => setDelayToPitch(v));
     showBoard();
     if (!psKeyboardSetup) { psSetupKeyboard(); psKeyboardSetup = true; }
     applyDefaultState(); // apply safe defaults
@@ -1704,6 +1711,9 @@ function updateSendMeters(){
   const dOut = (getAnalyserRMS(delayOutAnL) + getAnalyserRMS(delayOutAnR)) * 0.5 || 0;
   const dwG = (delayWetGain && delayWetGain.gain) ? delayWetGain.gain.value : 0;
   _setBarPair('delay-wet', dOut * dwG);
+  // Delay → pitch (feedback): tap from delayNode (pre-wet), scaled by feedback send gain.
+  const d2pG = (delayToPitchG && delayToPitchG.gain) ? delayToPitchG.gain.value : 0;
+  _setBarPair('delay-to-pitch', dOut * d2pG);
 }
 
 function bindGainPanPad(padId, minDb, maxDb, onGain, onPan){
@@ -1880,9 +1890,10 @@ function showBoard() {
 
 // ── Meters ────────────────────────────────────────────────────────────
 function animateMeters(){
-  // Output meter — mono signal, pan-compensated display
+  // Output meter — mono signal, pan-compensated display.
+  // v66: tap the master output panner (not testPanner). Equal-power split.
   const oMono = Math.max(0, (() => { const v=outputMeter.getValue(); return Array.isArray(v)?Math.max(v[0]||0,v[1]||0):(v||0); })());
-  const oPan = testPanner ? testPanner.pan.value : 0;
+  const oPan = outputPanner ? outputPanner.pan.value : 0;
   const oTheta = (oPan+1)/2*Math.PI/2;
   const oLin_l = oMono * Math.cos(oTheta);
   const oLin_r = oMono * Math.sin(oTheta);
@@ -1923,8 +1934,10 @@ function animateMeters(){
   const odb_r = oLin_r < SILENCE ? -Infinity : gainToDb(oLin_r);
   const opct_l = oLin_l < SILENCE ? 0 : Math.max(0, Math.min(100, (odb_l+60)/60*100));
   const opct_r = oLin_r < SILENCE ? 0 : Math.max(0, Math.min(100, (odb_r+60)/60*100));
-  vMeterBar(opct_l,'out-level-l','out-pk-l');
-  vMeterBar(opct_r,'out-level-r','out-pk-r');
+  // v66: output pad bars (horizontal, width-driven). Old vertical out-level-l/r
+  // bars were retired with the gain/meter strip → XY pad swap.
+  setPadBar('out-pad-l', oLin_l);
+  setPadBar('out-pad-r', oLin_r);
   const odEl = document.getElementById('out-db');
   const oLinMix = Math.max(oLin_l, oLin_r);
   if (odEl) odEl.textContent = oLinMix < SILENCE ? '—' : fmtDb(gainToDb(oLinMix));
@@ -1980,7 +1993,27 @@ function setInputGainDb(db){
   const pan = parseFloat((document.getElementById('mic-pan-sl')||{value:0}).value)||0;
   updateXyCross('mic-gp-cross', v, pan, -60, 12);
 }
-function setOutputGainDb(db){if(outputGainNode)outputGainNode.gain.rampTo(dbToGain(parseFloat(db)),paramRampTime); const v=parseFloat(db); const el=document.getElementById('output-gain-val'); el.textContent=Math.round(v)+'dB'; el.dataset.value=v;}
+function setOutputGainDb(db){
+  const v=parseFloat(db);
+  if(outputGainNode)outputGainNode.gain.rampTo(dbToGain(v),paramRampTime);
+  const el=document.getElementById('output-gain-val'); if(el){el.textContent=Math.round(v)+' dB'; el.dataset.value=v;}
+  const sl=document.getElementById('output-gain-db'); if(sl) sl.value=v;
+  const pan=parseFloat((document.getElementById('output-pan-sl')||{value:0}).value)||0;
+  updateXyCross('output-gp-cross', v, pan, -60, 12);
+}
+function setOutputPan(v){
+  const pan=parseFloat(v);
+  if(outputPanner) outputPanner.pan.rampTo(pan, 0.05);
+  const el=document.getElementById('output-pan-val');
+  if(el){
+    if(Math.abs(pan)<0.03) el.textContent='C';
+    else if(pan<0) el.textContent='L'+Math.round(Math.abs(pan)*100);
+    else el.textContent='R'+Math.round(pan*100);
+    el.dataset.value=pan;
+  }
+  const sl=document.getElementById('output-pan-sl'); if(sl) sl.value=pan;
+  updateXyCross('output-gp-cross', _readGainDb('output-gain-val', 0), pan, -60, 12);
+}
 
 // ── Recording: pre-gain mix → file download ──
 //   Two formats:
@@ -2343,7 +2376,14 @@ function setPitchToOut(v){
   const sl=document.getElementById('pitch-to-out'); if(sl) sl.value=g;
   updateLvlThumb('pitch-to-out-thumb', g, -60, 6);
 }
-function setDelayToPitch(v){if(delayToPitchG)delayToPitchG.gain.rampTo(parseFloat(v),paramRampTime); const g=parseFloat(v); const el=document.getElementById('delay-to-pitch-val'); if(el){el.textContent=g<0.001?'-inf':fmtDb(gainToDb(g)); el.dataset.value=g;}}
+function setDelayToPitch(v){
+  const g=parseFloat(v);
+  if(delayToPitchG)delayToPitchG.gain.rampTo(g,paramRampTime);
+  const el=document.getElementById('delay-to-pitch-val');
+  if(el){el.textContent=g<0.001?'-inf dB':fmtDb(gainToDb(g))+' dB'; el.dataset.value=g;}
+  const sl=document.getElementById('delay-to-pitch'); if(sl) sl.value=g;
+  updateLvlThumb('delay-to-pitch-thumb', g, -60, 6);
+}
 
 // ── Preset system ─────────────────────────────────────────────────
 function buildPresetSlots(){
@@ -2472,59 +2512,113 @@ function pickSavePosition(slot, canvas){
   return { x: 0.5, y: 0.5 };
 }
 
-// ── Factory presets (v61) — hard-wired starting points. Read-only; loading one
-//   applies its musical state. Save-to-slot if you want a tweakable copy.
-const FACTORY_PRESETS = {
-  'just-sines': {
-    name: 'Just Sines',
+// ── Factory BANKS (v66) — themed multi-slot configurations. Loading a bank
+//   replaces slots 1..15 with the bank's pre-placed nodes (slot 0 / home is
+//   left alone so you keep your own safe-place-to-return). Each bank slot
+//   carries x,y in 0..1 normalized canvas coords and the same global-state
+//   shape used by getGlobalState/applyGlobalState.
+//
+//   Helper to keep the bank declarations compact.
+function _bankSlot(x, y, opts) {
+  const o = opts || {};
+  return {
+    x: x, y: y,
     inputGainDb: -60, micPan: 0, micDirect: 0,
-    testEnabled: true, testWave: 'sine', testFreqHz: 220, testGainDb: -6, testDirect: 1,
-    pitchBypassed: true, delayBypassed: true,
-    pitch: { window:0.1, semi:0, toDelay:0, toOut:0 },
-    delay: { time:0.5, fb:0, wet:0, toPitch:0 },
-  },
-  'just-delays': {
-    name: 'Just Delays',
-    inputGainDb: -60, micPan: 0, micDirect: 0,
-    testEnabled: true, testWave: 'sine', testFreqHz: 220, testGainDb: -6, testDirect: 0,
-    pitchBypassed: true, delayBypassed: false,
-    pitch: { window:0.1, semi:0, toDelay:1, toOut:0 },
-    delay: { time:0.4, fb:0.4, wet:0.6, toPitch:0 },
+    testEnabled: o.testEnabled !== undefined ? o.testEnabled : true,
+    testWave:    o.testWave     || 'sine',
+    testFreqHz:  o.testFreqHz   != null ? o.testFreqHz   : 220,
+    testGainDb:  o.testGainDb   != null ? o.testGainDb   : -9,
+    testDirect:  o.testDirect   != null ? o.testDirect   : 0,
+    pitchBypassed: o.pitchBypassed !== undefined ? o.pitchBypassed : true,
+    delayBypassed: o.delayBypassed !== undefined ? o.delayBypassed : true,
+    pitch: { window:(o.pWin != null ? o.pWin : 0.1), semi:(o.pSemi || 0), toDelay:(o.pToDelay || 0), toOut:(o.pToOut || 0) },
+    delay: { time:(o.dTime != null ? o.dTime : 0.5), fb:(o.dFb || 0), wet:(o.dWet || 0), toPitch:(o.dToPitch || 0) },
+  };
+}
+// Standard 8-around-the-circle radii used by autoDistributePosition.
+const _R = 0.34; const _A = i => ((i-1)/8) * Math.PI * 2 - Math.PI/2;
+const _bx = i => 0.5 + Math.cos(_A(i)) * _R;
+const _by = i => 0.5 + Math.sin(_A(i)) * _R;
+
+const FACTORY_BANKS = {
+  'sines': {
+    name: 'Sines',
+    description: 'Tour of pure sine palette + a few effected variations.',
+    slots: {
+      1: _bankSlot(_bx(1), _by(1), { testWave:'sine', testFreqHz:1320, testDirect:1 }),
+      2: _bankSlot(_bx(2), _by(2), { testWave:'sine', testFreqHz: 880, testDirect:0.7, pitchBypassed:false, pSemi:-5, pToOut:0.6 }),
+      3: _bankSlot(_bx(3), _by(3), { testWave:'sine', testFreqHz: 660, testDirect:0.4, delayBypassed:false, dTime:0.18, dFb:0.5, dWet:0.6, pToDelay:1 }),
+      4: _bankSlot(_bx(4), _by(4), { testWave:'sine', testFreqHz: 440, testDirect:0.3, pitchBypassed:false, delayBypassed:false, pSemi:7, pToDelay:0.7, dTime:0.32, dFb:0.45, dWet:0.5 }),
+      5: _bankSlot(_bx(5), _by(5), { testWave:'sine', testFreqHz: 220, testDirect:1 }),
+      6: _bankSlot(_bx(6), _by(6), { testWave:'sine', testFreqHz: 165, testDirect:0.5, delayBypassed:false, dTime:0.66, dFb:0.55, dWet:0.5, pToDelay:1 }),
+      7: _bankSlot(_bx(7), _by(7), { testWave:'sine', testFreqHz: 110, testDirect:0.6, pitchBypassed:false, pSemi:12, pToOut:0.8 }),
+      8: _bankSlot(_bx(8), _by(8), { testWave:'sine', testFreqHz:  55, testGainDb:-3, testDirect:0.4, pitchBypassed:false, delayBypassed:false, pSemi:-12, pToOut:0.7, dTime:1.2, dFb:0.5, dWet:0.4 }),
+    },
   },
   'pitch-stack': {
     name: 'Pitch Stack',
-    inputGainDb: -60, micPan: 0, micDirect: 0,
-    testEnabled: true, testWave: 'triangle', testFreqHz: 110, testGainDb: -6, testDirect: 0.4,
-    pitchBypassed: false, delayBypassed: true,
-    pitch: { window:0.1, semi:7, toDelay:0, toOut:1 },
-    delay: { time:0.5, fb:0, wet:0, toPitch:0 },
+    description: 'Same source, eight pitch-shift intervals around the canvas.',
+    slots: {
+      1: _bankSlot(_bx(1), _by(1), { testWave:'triangle', testFreqHz:110, pitchBypassed:false, pSemi: 24, pToOut:1, testDirect:0.2 }),
+      2: _bankSlot(_bx(2), _by(2), { testWave:'triangle', testFreqHz:110, pitchBypassed:false, pSemi: 12, pToOut:1, testDirect:0.2 }),
+      3: _bankSlot(_bx(3), _by(3), { testWave:'triangle', testFreqHz:110, pitchBypassed:false, pSemi:  7, pToOut:1, testDirect:0.2 }),
+      4: _bankSlot(_bx(4), _by(4), { testWave:'triangle', testFreqHz:110, pitchBypassed:false, pSemi:  3, pToOut:1, testDirect:0.2 }),
+      5: _bankSlot(_bx(5), _by(5), { testWave:'triangle', testFreqHz:110, pitchBypassed:true,  testDirect:1 }),
+      6: _bankSlot(_bx(6), _by(6), { testWave:'triangle', testFreqHz:110, pitchBypassed:false, pSemi: -3, pToOut:1, testDirect:0.2 }),
+      7: _bankSlot(_bx(7), _by(7), { testWave:'triangle', testFreqHz:110, pitchBypassed:false, pSemi: -7, pToOut:1, testDirect:0.2 }),
+      8: _bankSlot(_bx(8), _by(8), { testWave:'triangle', testFreqHz:110, pitchBypassed:false, pSemi:-12, pToOut:1, testDirect:0.2 }),
+    },
+  },
+  'delay-garden': {
+    name: 'Delay Garden',
+    description: 'Eight delay characters: quick slap → long bloom, varying feedback.',
+    slots: {
+      1: _bankSlot(_bx(1), _by(1), { testWave:'sawtooth', testFreqHz:220, delayBypassed:false, dTime:0.06, dFb:0.20, dWet:0.7, pToDelay:1, testDirect:0.3 }),
+      2: _bankSlot(_bx(2), _by(2), { testWave:'sawtooth', testFreqHz:220, delayBypassed:false, dTime:0.13, dFb:0.45, dWet:0.6, pToDelay:1, testDirect:0.2 }),
+      3: _bankSlot(_bx(3), _by(3), { testWave:'sawtooth', testFreqHz:220, delayBypassed:false, dTime:0.25, dFb:0.55, dWet:0.55,pToDelay:1 }),
+      4: _bankSlot(_bx(4), _by(4), { testWave:'sawtooth', testFreqHz:220, delayBypassed:false, dTime:0.50, dFb:0.65, dWet:0.5, pToDelay:1 }),
+      5: _bankSlot(_bx(5), _by(5), { testWave:'sawtooth', testFreqHz:220, delayBypassed:false, dTime:0.75, dFb:0.70, dWet:0.5, pToDelay:1 }),
+      6: _bankSlot(_bx(6), _by(6), { testWave:'sawtooth', testFreqHz:220, delayBypassed:false, dTime:1.20, dFb:0.65, dWet:0.5, pToDelay:1 }),
+      7: _bankSlot(_bx(7), _by(7), { testWave:'sawtooth', testFreqHz:220, delayBypassed:false, dTime:2.10, dFb:0.55, dWet:0.5, pToDelay:1 }),
+      8: _bankSlot(_bx(8), _by(8), { testWave:'sawtooth', testFreqHz:220, delayBypassed:false, dTime:3.50, dFb:0.40, dWet:0.5, pToDelay:1 }),
+    },
   },
   'danger-zone': {
     name: 'Danger Zone',
-    inputGainDb: -60, micPan: 0, micDirect: 0,
-    testEnabled: true, testWave: 'sawtooth', testFreqHz: 165, testGainDb: -6, testDirect: 0,
-    pitchBypassed: false, delayBypassed: false,
-    pitch: { window:0.15, semi:-7, toDelay:0.7, toOut:0.5 },
-    delay: { time:0.18, fb:0.85, wet:0.6, toPitch:0.4 },
-  },
-  'deep-bass': {
-    name: 'Deep Bass',
-    inputGainDb: -60, micPan: 0, micDirect: 0,
-    testEnabled: true, testWave: 'sine', testFreqHz: 55, testGainDb: -3, testDirect: 0.25,
-    pitchBypassed: false, delayBypassed: false,
-    pitch: { window:0.2, semi:-12, toDelay:0.6, toOut:0.8 },
-    delay: { time:1.5, fb:0.55, wet:0.4, toPitch:0 },
+    description: 'Increasing pitch+delay feedback chaos. Hold on to your ears.',
+    slots: {
+      1: _bankSlot(_bx(1), _by(1), { testWave:'sawtooth', testFreqHz:165, pitchBypassed:false, delayBypassed:false, pSemi:-3,  pToDelay:0.4, dTime:0.45, dFb:0.40, dWet:0.4, dToPitch:0.10 }),
+      2: _bankSlot(_bx(2), _by(2), { testWave:'sawtooth', testFreqHz:165, pitchBypassed:false, delayBypassed:false, pSemi:-5,  pToDelay:0.5, dTime:0.32, dFb:0.50, dWet:0.4, dToPitch:0.20 }),
+      3: _bankSlot(_bx(3), _by(3), { testWave:'sawtooth', testFreqHz:165, pitchBypassed:false, delayBypassed:false, pSemi:-7,  pToDelay:0.6, dTime:0.22, dFb:0.65, dWet:0.5, dToPitch:0.30 }),
+      4: _bankSlot(_bx(4), _by(4), { testWave:'sawtooth', testFreqHz:165, pitchBypassed:false, delayBypassed:false, pSemi:-7,  pToDelay:0.7, dTime:0.18, dFb:0.75, dWet:0.55,dToPitch:0.40 }),
+      5: _bankSlot(_bx(5), _by(5), { testWave:'sawtooth', testFreqHz:165, pitchBypassed:false, delayBypassed:false, pSemi:-12, pToDelay:0.7, dTime:0.14, dFb:0.85, dWet:0.55,dToPitch:0.50 }),
+      6: _bankSlot(_bx(6), _by(6), { testWave:'square',   testFreqHz:165, pitchBypassed:false, delayBypassed:false, pSemi: -7, pToDelay:0.6, dTime:0.10, dFb:0.90, dWet:0.6, dToPitch:0.45 }),
+      7: _bankSlot(_bx(7), _by(7), { testWave:'square',   testFreqHz:110, pitchBypassed:false, delayBypassed:false, pSemi:  7, pToDelay:0.55,dTime:0.08, dFb:0.92, dWet:0.6, dToPitch:0.55 }),
+      8: _bankSlot(_bx(8), _by(8), { testWave:'square',   testFreqHz: 82, pitchBypassed:false, delayBypassed:false, pSemi: 12, pToDelay:0.5, dTime:0.06, dFb:0.95, dWet:0.6, dToPitch:0.65 }),
+    },
   },
 };
-function loadFactoryPreset(name){
-  if (!name) return;
-  const p = FACTORY_PRESETS[name];
-  if (!p) return;
-  applyGlobalState(p);
-  const hint = document.getElementById('ps-hint');
-  if (hint) hint.textContent = `factory: ${p.name}`;
-  const sel = document.getElementById('factory-sel');
-  if (sel) sel.value = '';  // reset placeholder so re-selecting the same one re-loads
+
+function loadFactoryBank(key){
+  const bank = FACTORY_BANKS[key];
+  if (!bank) return;
+  // Clear placed slots 1..15 (leave slot 0 / home alone) and persist clears.
+  for (let i = 1; i < PS_SLOTS; i++) {
+    psData[i] = null;
+    localStorage.removeItem('fx_global_' + i);
+  }
+  // Drop bank slots into psData + localStorage so reload picks them up.
+  for (const slotStr in bank.slots) {
+    const slot = parseInt(slotStr);
+    const s = bank.slots[slot];
+    psData[slot] = { ...s };
+    localStorage.setItem('fx_global_' + slot, JSON.stringify(psData[slot]));
+  }
+  // Snap listener back to home (slot 0) so the user starts from a known state.
+  const canvas = document.getElementById('playspace-canvas');
+  if (canvas && canvas.width) psCursor = { x: canvas.width / 2, y: canvas.height / 2 };
+  if (psData[0]) applyGlobalState(psData[0]);
+  psUpdateSlotBtns(); loadPresetUI(); psRedraw();
 }
 
 function handleGlobalPreset(btn){
@@ -3205,48 +3299,67 @@ function psCanvasPos(e, canvas) {
 const PS_LAYOUT_KEY='fx_is_layouts';
 function psGetLayouts(){try{return JSON.parse(localStorage.getItem(PS_LAYOUT_KEY)||'[]');}catch(e){return [];}}
 function psPopulateLayoutSel(){
-  const sel=document.getElementById('ps-layout-sel'); if(!sel)return;
-  const layouts=psGetLayouts();
-  sel.innerHTML='<option value="">— layout —</option><option value="__defaults__">defaults</option>'+
-    layouts.map((l,i)=>`<option value="${i}">${l.name}</option>`).join('');
+  const sel = document.getElementById('ps-layout-sel'); if (!sel) return;
+  const layouts = psGetLayouts();
+  let html = '<option value="">— bank —</option>';
+  html += '<option value="__defaults__">defaults</option>';
+  // Factory banks
+  html += '<optgroup label="factory">';
+  for (const key in FACTORY_BANKS) {
+    const b = FACTORY_BANKS[key];
+    html += `<option value="factory:${key}" title="${(b.description||'').replace(/"/g,'&quot;')}">${b.name}</option>`;
+  }
+  html += '</optgroup>';
+  // User banks
+  if (layouts.length) {
+    html += '<optgroup label="user">';
+    layouts.forEach((l, i) => { html += `<option value="${i}">${l.name}</option>`; });
+    html += '</optgroup>';
+  }
+  sel.innerHTML = html;
 }
 function psSaveLayout(){
-  const name=prompt('Name this layout:'); if(!name||!name.trim())return;
-  const layouts=psGetLayouts();
-  layouts.push({name:name.trim(),data:psData.map(d=>d?{...d}:null)});
-  localStorage.setItem(PS_LAYOUT_KEY,JSON.stringify(layouts)); psPopulateLayoutSel();
-  const hint=document.getElementById('ps-hint'); if(hint)hint.textContent=`layout "${name.trim()}" saved`;
+  const name = prompt('Name this user bank:');
+  if (!name || !name.trim()) return;
+  const layouts = psGetLayouts();
+  layouts.push({ name: name.trim(), data: psData.map(d => d ? { ...d } : null) });
+  localStorage.setItem(PS_LAYOUT_KEY, JSON.stringify(layouts));
+  psPopulateLayoutSel();
 }
 function psLoadLayout(val){
-  if(!val)return;
-  const canvas=document.getElementById('playspace-canvas');
-  const W=canvas?canvas.width:1,H=canvas?canvas.height:1;
-  if(val==='__defaults__'){
-    psData=Array(PS_SLOTS).fill(null);
-    const home=getGlobalState(); home.x=0.5; home.y=0.5; psData[0]=home;
-    for(let i=1;i<PS_SLOTS;i++) localStorage.removeItem('fx_global_'+i);
-    localStorage.setItem('fx_global_0',JSON.stringify(home));
-    if(canvas&&W) psCursor={x:W/2,y:H/2};
+  if (!val) return;
+  const canvas = document.getElementById('playspace-canvas');
+  const W = canvas ? canvas.width : 1, H = canvas ? canvas.height : 1;
+  if (val === '__defaults__') {
+    psData = Array(PS_SLOTS).fill(null);
+    const home = getGlobalState(); home.x = 0.5; home.y = 0.5; psData[0] = home;
+    for (let i = 1; i < PS_SLOTS; i++) localStorage.removeItem('fx_global_' + i);
+    localStorage.setItem('fx_global_0', JSON.stringify(home));
+    if (canvas && W) psCursor = { x: W/2, y: H/2 };
     applyFactoryDefaults();
+    psUpdateSlotBtns(); loadPresetUI(); psRedraw();
+  } else if (val.startsWith('factory:')) {
+    loadFactoryBank(val.slice('factory:'.length));   // does its own UI refresh
   } else {
-    const layouts=psGetLayouts(); const idx=parseInt(val);
-    if(isNaN(idx)||!layouts[idx])return;
-    psData=layouts[idx].data.map(d=>d?{...d}:null);
-    for(let i=0;i<PS_SLOTS;i++){
-      if(psData[i]) localStorage.setItem('fx_global_'+i,JSON.stringify(psData[i]));
-      else localStorage.removeItem('fx_global_'+i);
+    const layouts = psGetLayouts(); const idx = parseInt(val);
+    if (isNaN(idx) || !layouts[idx]) return;
+    psData = layouts[idx].data.map(d => d ? { ...d } : null);
+    for (let i = 0; i < PS_SLOTS; i++) {
+      if (psData[i]) localStorage.setItem('fx_global_' + i, JSON.stringify(psData[i]));
+      else           localStorage.removeItem('fx_global_' + i);
     }
+    psUpdateSlotBtns(); loadPresetUI(); psRedraw();
   }
-  psUpdateSlotBtns(); loadPresetUI(); psRedraw();
-  document.getElementById('ps-layout-sel').value='';
+  document.getElementById('ps-layout-sel').value = '';
 }
 function psDeleteLayout(){
-  const sel=document.getElementById('ps-layout-sel');
-  if(!sel||!sel.value||sel.value==='__defaults__')return;
-  const idx=parseInt(sel.value); const layouts=psGetLayouts();
-  const name=layouts[idx]?layouts[idx].name:'';
-  if(!name||!confirm(`Delete layout "${name}"?`))return;
-  layouts.splice(idx,1); localStorage.setItem(PS_LAYOUT_KEY,JSON.stringify(layouts));
+  const sel = document.getElementById('ps-layout-sel');
+  if (!sel || !sel.value) return;
+  if (sel.value === '__defaults__' || sel.value.startsWith('factory:')) return; // factories not deletable
+  const idx = parseInt(sel.value); const layouts = psGetLayouts();
+  const name = layouts[idx] ? layouts[idx].name : '';
+  if (!name || !confirm(`Delete user bank "${name}"?`)) return;
+  layouts.splice(idx, 1); localStorage.setItem(PS_LAYOUT_KEY, JSON.stringify(layouts));
   psPopulateLayoutSel();
 }
 // psInit() is called from initAudio() after showBoard()
