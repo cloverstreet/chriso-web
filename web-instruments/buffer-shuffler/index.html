@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Buffer Shuffler — v0.7</title>
+<title>Buffer Shuffler — v0.7.1</title>
 <!-- Tone.js intentionally NOT loaded in v0.2: the buffer-shuffler engine is pure
      Web Audio. AudioWorkletNode's constructor requires a real BaseAudioContext,
      and Tone.js 14.8.49's wrapper isn't one — so we use a bare AudioContext. -->
@@ -230,32 +230,32 @@ input.gain-meter-slider::-webkit-slider-thumb {
 }
 .activity-led.fire { background:#7abbe0; box-shadow:0 0 6px rgba(122,187,224,.9); }
 
-/* SRC → OUT horizontal gain/meter strip (1D — pan doesn't apply to a send level) */
-.srcout-meter-wrap {
-  position:relative; width:100%; height:22px;
+/* ─────── LEVEL SLIDER + STEREO METER (v0.7) ───────
+   Standardized 1D level slider — same widget as fx-processor v65+. Used for
+   send-style controls where pan would be meaningless. Drag, dblclick = 0 dB.
+   Stereo level fill behind a blue 1 px thumb. Yellow 0 dB tick at 90.9%
+   (unity in the standard −60..+6 dB range). */
+.lvl-slider {
+  position:relative; width:100%; height:14px;
   background:#060606; border:1px solid #1a1a1a; border-radius:3px;
-  overflow:hidden;
+  overflow:hidden; cursor:grab; touch-action:none;
 }
-.srcout-meter-bar { position:absolute; left:0; right:0; top:0; bottom:0; }
-.srcout-meter-level {
-  position:absolute; left:0; height:calc(50% - 1px); top:0; width:0%;
-  background:linear-gradient(to right,#1a5a1a 0%,#2a9a2a 60%,#b89010 80%,#e02020 100%);
-  pointer-events:none; transition:width .04s linear;
+.lvl-slider:active { cursor:grabbing; }
+.lvl-meter-l, .lvl-meter-r {
+  position:absolute; left:0; height:calc(50% - 1px); width:0%;
+  background:linear-gradient(to right,#1a5a1a 0%,#2a9a2a 58%,#7ab020 70%,#b89010 82%,#c06010 90%,#e02020 100%);
+  pointer-events:none;
 }
-/* 0 dB tick at the same proportional spot as other meter widgets (-60..+6 → 0 = 90.9%) */
-.srcout-meter-wrap::before {
-  content:""; position:absolute; top:0; bottom:0;
-  left:90.9%; width:1px; background:rgba(200,200,100,0.45);
-  pointer-events:none; z-index:2;
+.lvl-meter-l { top:0; }
+.lvl-meter-r { bottom:0; }
+.lvl-zero-line {
+  position:absolute; top:0; bottom:0; left:var(--zero-x, 90.9%);
+  width:1px; background:rgba(200,200,100,.45); pointer-events:none;
 }
-.srcout-meter-wrap input[type="range"] {
-  position:absolute; left:0; top:0; width:100%; height:100%;
-  -webkit-appearance:none; background:transparent; outline:none; cursor:pointer; z-index:3;
-}
-.srcout-meter-wrap input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance:none; width:5px; height:26px;
-  background:#6aaee0; border-radius:1px; cursor:ew-resize;
-  box-shadow:0 0 4px rgba(100,160,220,.6);
+.lvl-thumb {
+  position:absolute; top:0; bottom:0; left:0;
+  width:1px; background:#6aaee0; box-shadow:0 0 4px rgba(100,160,220,.85);
+  transform:translateX(-50%); pointer-events:none;
 }
 
 /* ── v0.5 RANGE SLIDER WIDGET ─────────────────────────────────── */
@@ -318,7 +318,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 </head>
 <body>
 
-<div id="version-badge">BUFFER SHUFFLER · v0.7</div>
+<div id="version-badge">BUFFER SHUFFLER · v0.7.1</div>
 
 <div id="start-screen">
   <div style="font-size:.78rem;letter-spacing:.28em;color:#666;">BUFFER SHUFFLER — TEST CASE</div>
@@ -389,21 +389,20 @@ input.gain-meter-slider::-webkit-slider-thumb {
         <input type="range" id="src-gain-sl" min="-60" max="6" step="0.5" value="-6" oninput="setSrcGainDb(this.value)">
       </div>
 
-      <!-- v0.6: SRC → OUT replaced with a gain/meter slider. Capture into the
-           ring buffer is always live regardless of this monitor level. -->
+      <!-- v0.7: SRC → OUT now uses the standardized .lvl-slider widget,
+           matching every other send across the chriso.org instruments.
+           Capture into the ring buffer is always live regardless of this. -->
       <div class="slider-row" title="How much of the source you hear directly mixed with the grain output. Capture into the 12s buffer continues regardless.">
         <div class="slider-label-row">
           <span class="slider-label">SRC → OUT</span>
-          <span class="ctrl-val" id="src-passthru-val" data-value="-inf" title="Click to type a precise dB value">-inf dB</span>
+          <span class="ctrl-val" id="src-passthru-val" data-value="-60" title="Click to type a precise dB value (-inf..+6)">-inf dB</span>
         </div>
-        <div class="srcout-meter-wrap">
-          <div class="srcout-meter-bar">
-            <div class="srcout-meter-level" id="srcout-meter-l"></div>
-            <div class="srcout-meter-level" id="srcout-meter-r" style="top:auto;bottom:0;"></div>
-          </div>
-          <input type="range" id="src-passthru-sl" min="-60" max="6" step="0.1" value="-60"
-                 oninput="setSrcPassthruDb(this.value)"
-                 title="Source-to-output gain (-inf to +6 dB). At -60 dB or lower, you hear only the grains.">
+        <input type="range" id="src-passthru-sl" min="-60" max="6" step="0.1" value="-60" style="display:none;">
+        <div class="lvl-slider" id="src-passthru-pad" title="Source pass-through to output (-60..-inf to +6 dB). Drag · dblclick = 0 dB.">
+          <div class="lvl-meter-l" id="srcout-meter-l"></div>
+          <div class="lvl-meter-r" id="srcout-meter-r"></div>
+          <div class="lvl-zero-line"></div>
+          <div class="lvl-thumb" id="src-passthru-thumb"></div>
         </div>
       </div>
       <div class="hint" style="margin-top:6px;color:#444;">
@@ -871,6 +870,8 @@ async function _initAudio(){
   document.getElementById('start-screen').style.display = 'none';
   document.getElementById('board').style.display = 'flex';
   initSliders();
+  // v0.7: bind the standardized .lvl-slider widget for SRC → OUT.
+  bindLvlSlider('src-passthru-pad', -60, 6, db => setSrcPassthruDb(db));
   bindEditables();
   setSrcWave(srcWaveSel);
   setSrcFreqPos(freqLog.toPos(srcFreqHz));
@@ -1104,6 +1105,29 @@ function setSrcPassthruDb(db){
     el.textContent = v <= -60 ? '-inf dB' : (v >= 0 ? '+' : '') + round2(v) + ' dB';
     el.dataset.value = v;
   }
+  const sl = document.getElementById('src-passthru-sl'); if (sl) sl.value = v;
+  // v0.7: drive the standardized .lvl-slider thumb position.
+  const thumb = document.getElementById('src-passthru-thumb');
+  if (thumb) {
+    const pct = Math.max(0, Math.min(100, (v - (-60)) / 66 * 100));
+    thumb.style.left = pct + '%';
+  }
+}
+// v0.7: standardized lvl-slider drag binder (matches fx-processor).
+function bindLvlSlider(padId, minDb, maxDb, onChangeDb){
+  const pad = document.getElementById(padId); if (!pad) return;
+  let dragging = false;
+  function update(e){
+    const r = pad.getBoundingClientRect();
+    const x = Math.max(0, Math.min(r.width, e.clientX - r.left));
+    const db = minDb + (x / r.width) * (maxDb - minDb);
+    onChangeDb(db <= minDb + 0.5 ? minDb : db);
+  }
+  pad.addEventListener('pointerdown',  e => { dragging = true; pad.setPointerCapture(e.pointerId); update(e); });
+  pad.addEventListener('pointermove',  e => { if (dragging) update(e); });
+  pad.addEventListener('pointerup',    e => { dragging = false; try { pad.releasePointerCapture(e.pointerId); } catch{} });
+  pad.addEventListener('pointercancel',()=>{ dragging = false; });
+  pad.addEventListener('dblclick',     () => { onChangeDb(0); });   // 0 dB
 }
 // Back-compat: any old factory/user state that calls setSrcPassthru(0|0.5|1) still works.
 function setSrcPassthru(amount){

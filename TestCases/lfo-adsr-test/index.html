@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LFO + Graphical ADSR — Test Case v0.6</title>
+<title>LFO + Graphical ADSR — Test Case v0.7</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -297,7 +297,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 </head>
 <body>
 
-<div id="version-badge">LFO + ADSR TEST · v0.6</div>
+<div id="version-badge">LFO + ADSR TEST · v0.7</div>
 
 <div id="start-screen">
   <div style="font-size:.78rem;letter-spacing:.28em;color:#666;">LFO + GRAPHICAL ADSR — TEST CASE</div>
@@ -331,7 +331,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
    - Recording: WEBM (opus 192kbps) | WAV (16-bit PCM) toggle
    ════════════════════════════════════════════════════════════════ */
 
-const APP_VERSION = 'v0.5';
+const APP_VERSION = 'v0.7';
 const NUM_LFOS = 3;
 
 /* ══════════ UTILITIES ══════════ */
@@ -1223,7 +1223,17 @@ function adsrTimes(idx){
   const a = sg(idx).adsr;
   return { tA: a.aMs, tD: a.aMs+a.dMs, tS: a.aMs+a.dMs+a.sMs, tR: a.aMs+a.dMs+a.sMs+a.rMs };
 }
-function adsrViewMaxMs(idx){ return Math.max(adsrTimes(idx).tR * 1.25, 500); }
+function adsrViewMaxMs(idx){
+  // v0.7: while a handle is being dragged, freeze the viewport. Otherwise the
+  // viewMax recomputes every frame from tR*1.25, "zooming out" as R grows —
+  // which makes pixel-to-ms ratio coarser and coarser as you drag, the exact
+  // opposite of what you want for precise tuning. Releasing the handle lets
+  // the viewport re-zoom on the new value.
+  if (dragState && dragState.idx === idx && dragState.frozenViewMax) {
+    return dragState.frozenViewMax;
+  }
+  return Math.max(adsrTimes(idx).tR * 1.25, 500);
+}
 function adsrCoords(idx){
   const a = sg(idx).adsr;
   const {w,h,mL,mR,mT,mB} = ADSR_VIEW;
@@ -1307,15 +1317,25 @@ function drawAdsr(idx){
     el.dataset.idx = idx;
     svg.appendChild(el); return el;
   };
+  // v0.7 readability pass:
+  //  • ms displays use ints (Math.round) — sub-ms precision wasn't useful.
+  //  • A and D labels are STACKED two-line (time on top, level below) instead of
+  //    overlapping side-by-side. Both A and D labels sit ABOVE their handle
+  //    (D was previously below, where it collided with S — user wanted D
+  //    offset upward).
+  //  • S stays below sustain. R stays just above end.
   const rightEdge = w - mR;
-  const lblLeft = (x, wEst) => (x + wEst > rightEdge) ? x - wEst : x+2;
-  addLabel(c.peak.x-14,  c.peak.y-7,  round2(a.aMs)+'ms',         {kind:'aTime',  value:a.aMs});
-  addLabel(lblLeft(c.peak.x+2, 22), c.peak.y-7, fmtDb(a.aLevel),  {kind:'aLevel', value:a.aLevel});
-  addLabel(c.decay.x-14, c.decay.y+14, round2(a.dMs)+'ms',        {kind:'dTime',  value:a.dMs});
-  addLabel(c.decay.x+2,  c.decay.y+14, fmtDb(a.dLevel),           {kind:'dLevel', value:a.dLevel});
-  addLabel(c.sust.x-16,  c.sust.y+14,  round2(a.sMs)+'ms',        {kind:'sTime',  value:a.sMs});
-  const rLblX = Math.min(c.end.x-18, rightEdge-34);
-  addLabel(rLblX, c.end.y-5, round2(a.rMs)+'ms', {kind:'rTime', value:a.rMs});
+  const clampX = (x, wEst) => Math.max(mL, Math.min(rightEdge - wEst, x));
+  // A peak — both labels stacked above the peak handle.
+  addLabel(clampX(c.peak.x - 14, 30), c.peak.y - 19, Math.round(a.aMs)+'ms', {kind:'aTime',  value:a.aMs});
+  addLabel(clampX(c.peak.x - 14, 26), c.peak.y - 8,  fmtDb(a.aLevel),        {kind:'aLevel', value:a.aLevel});
+  // D decay — labels stacked above the decay handle (user req: offset upward).
+  addLabel(clampX(c.decay.x - 14, 30), c.decay.y - 19, Math.round(a.dMs)+'ms', {kind:'dTime',  value:a.dMs});
+  addLabel(clampX(c.decay.x - 14, 26), c.decay.y - 8,  fmtDb(a.dLevel),        {kind:'dLevel', value:a.dLevel});
+  // S sustain — single label below the sustain segment.
+  addLabel(clampX(c.sust.x - 16, 30),  c.sust.y + 18, Math.round(a.sMs)+'ms',  {kind:'sTime',  value:a.sMs});
+  // R end — single label above the end point.
+  addLabel(clampX(c.end.x - 18, 32),   c.end.y - 6,  Math.round(a.rMs)+'ms',   {kind:'rTime',  value:a.rMs});
 }
 function fmtDb(amp){ if(amp<=0.001) return '-inf'; return round2(20*Math.log10(amp))+'dB'; }
 function dbStrToAmp(str){
@@ -1396,7 +1416,10 @@ function onHandlePointerDown(e){
   const name = e.target.dataset.name;
   e.target.classList.add('dragging');
   e.target.setPointerCapture(e.pointerId);
-  dragState = { idx, name, pointerId:e.pointerId, el:e.target, svg: e.target.closest('svg') };
+  // Freeze the viewport zoom for the duration of this drag so R (and the
+  // others) drag at a constant pixel-to-ms rate.
+  const frozenViewMax = Math.max(adsrTimes(idx).tR * 1.25, 500);
+  dragState = { idx, name, pointerId:e.pointerId, el:e.target, svg: e.target.closest('svg'), frozenViewMax };
   window.addEventListener('pointermove', onHandlePointerMove);
   window.addEventListener('pointerup',   onHandlePointerUp);
 }
@@ -1411,17 +1434,18 @@ function onHandlePointerMove(e){
   const yClamp = clamp(p.y, mT, h-mB);
   const amp = 1 - (yClamp-mT)/plotH;
   const a = sg(dragState.idx).adsr;
+  // v0.7: ADSR ms values are now ints (display + underlying state).
   if(dragState.name==='peak'){
-    a.aMs = round2(clamp(ms,1,30000));
+    a.aMs = Math.round(clamp(ms,1,30000));
     a.aLevel = clamp(amp,0,1);
     if(a.dLevel > a.aLevel) a.dLevel = a.aLevel;
   } else if(dragState.name==='decay'){
-    a.dMs = round2(clamp(ms - a.aMs, 1, 30000));
+    a.dMs = Math.round(clamp(ms - a.aMs, 1, 30000));
     a.dLevel = clamp(amp, 0, a.aLevel);
   } else if(dragState.name==='sust'){
-    a.sMs = round2(clamp(ms - a.aMs - a.dMs, 1, 60000));
+    a.sMs = Math.round(clamp(ms - a.aMs - a.dMs, 1, 60000));
   } else if(dragState.name==='end'){
-    a.rMs = round2(clamp(ms - a.aMs - a.dMs - a.sMs, 1, 30000));
+    a.rMs = Math.round(clamp(ms - a.aMs - a.dMs - a.sMs, 1, 30000));
   }
   applyAdsrToEngine(dragState.idx);
   drawAdsr(dragState.idx);
