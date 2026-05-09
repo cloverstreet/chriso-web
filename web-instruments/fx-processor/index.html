@@ -559,7 +559,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 <!-- Version badge (always visible, top-right) -->
 <div id="version-badge" style="position:fixed;top:8px;right:10px;
      font-family:'Courier New',monospace;font-size:.6rem;letter-spacing:.16em;
-     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v67</div>
+     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v67.1</div>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
 <!-- START SCREEN                                                   -->
@@ -1183,6 +1183,8 @@ const dbToGain = db => db <= -60 ? 0 : Math.pow(10, db / 20);
 const gainToDb = g  => g < 0.0001 ? -Infinity : 20 * Math.log10(g);
 const fmtDb    = db => isFinite(db) ? db.toFixed(1) + ' dB' : '< −60';
 const fmtHz    = hz => hz >= 1000 ? Math.round(hz) + ' Hz' : hz < 100 ? hz.toFixed(2) + ' Hz' : hz.toFixed(1) + ' Hz';
+// v67: small helper used by the LFO TARGETS (ported from lfo-adsr-test).
+const round2   = n  => Math.round(n * 100) / 100;
 const hzToSemi = hz => 12 * Math.log2(Math.max(hz, 1) / 440);
 const semiToHz = st => 440 * Math.pow(2, st / 12);
 const SILENCE  = 0.001;
