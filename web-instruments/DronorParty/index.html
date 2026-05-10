@@ -224,7 +224,7 @@ body {
 .module.fx      { width:265px; }
 .module.ringmod { width:170px; }   /* v0.12: ring modulator inserted between dronor and delay */
 .module.reverb  { width:170px; }   /* v0.13: reverb tail at end of the chain */
-.module.dronor  { width:620px; }   /* v0.9: widened to fit 4 string strips */
+.module.dronor  { width:770px; }   /* v0.15: widened to fit 5 string strips */
 
 .mod-head {
   display:flex; align-items:center; gap:5px;
@@ -375,8 +375,8 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
 </head>
 <body>
 
-<div id="version-badge">DronorParty v0.14</div>
-<div id="stage-indicator">v2 / per-string ADSR · gain-pan pad · JAWARI</div>
+<div id="version-badge">DronorParty v0.15</div>
+<div id="stage-indicator">v2 / 5 strings · halo · detune · symp · keys · persist</div>
 
 <div id="start-screen">
   <h1>DronorParty</h1>
@@ -428,10 +428,15 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
             <option value="custom">Custom</option>
           </select>
         </div>
-        <div class="gline" title="Tempo in BPM. Slider goes left = slow, right = fast. Default 120 BPM = 0.250 s per 8th note. Strings fire every divisor steps (e.g., div 7 = every 7 eighths).">
+        <div class="gline" title="Tempo in BPM. Slider goes left = slow, right = fast. Range 20-480 BPM with a slight power curve (more precision at slow tempos). Default 120 BPM = 0.250 s per 8th note. Strings fire every divisor steps (e.g., div 7 = every 7 eighths).">
           <label>TEMPO</label>
-          <input type="range" id="tempo-bpm" min="15" max="480" step="1" value="120" style="flex:1;">
+          <input type="range" id="tempo-bpm" min="0" max="1" step="0.0001" value="0.466" style="flex:1;">
           <span class="ctrl-val" id="clock-val" style="min-width:140px; text-align:right;">120 BPM (0.250 s/8th)</span>
+        </div>
+        <div class="gline" title="Sympathetic resonance — when one string plucks, the others receive a tiny excitation at the same time (low gain). Each string's KS loop amplifies it at its own pitch, producing the polyphonic resonance halo of a real tanpura. Keep this low (~5-15%); higher values risk feedback runaway.">
+          <label>SYMP</label>
+          <input type="range" id="symp-amt" min="0" max="100" step="1" value="0" style="flex:1;">
+          <span class="ctrl-val" id="symp-val" style="min-width:96px; text-align:right;">0%</span>
         </div>
       </div>
 
@@ -586,19 +591,34 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
 </div>
 
 <div class="foot">
-  v0.14: per-string ADSR envelope (drag handles · click labels to type) ·
-  Jawari soft saturation slider · combined gain/pan/meter pad replaces the
-  separate PAN row + vertical gain strip per string.<br>
-  Defaults: gain -6 dB · decay 0.975 · brightness 1500 Hz · output -3 dB · jawari 0%.
+  v0.15: 5 strings · per-pluck DETUNE jitter · HALO comb-filter bloom ·
+  global SYMP cross-string excitation · TEMPO 20-480 BPM with curve ·
+  ASDFG keyboard plucks · user presets persist via localStorage.<br>
+  Defaults: gain -6 dB · decay 0.975 · brightness 1500 Hz · output -3 dB ·
+  jawari/detune/halo/symp all 0% (additions opt-in).
 </div>
 
 <script>
 'use strict';
 
 // ── Build constants ─────────────────────────────────────────────────────
-const STRING_COUNT = 4;
-const DEFAULT_DIVISORS = [7, 11, 13, 17];   // coprime polyrhythm (all prime)
+const STRING_COUNT = 5;
+const DEFAULT_DIVISORS = [7, 11, 13, 17, 19];   // coprime polyrhythm (all prime)
 const DEFAULT_PATTERN  = '4321';
+
+// Tempo slider mapping. Slider position is 0..1 (sliderValue) and we map
+// it to BPM through a power curve (exponent 1.5) so the LOW end gets more
+// physical slider distance — easier to dial musical tempos in the 60-180
+// range, less precision at 300+ where you don't usually need it.
+const TEMPO_MIN_BPM = 20;
+const TEMPO_MAX_BPM = 480;
+const TEMPO_CURVE = 1.5;
+const tempoSliderToBpm = v => TEMPO_MIN_BPM + (TEMPO_MAX_BPM - TEMPO_MIN_BPM) * Math.pow(v, TEMPO_CURVE);
+const tempoBpmToSlider = bpm => Math.pow((bpm - TEMPO_MIN_BPM) / (TEMPO_MAX_BPM - TEMPO_MIN_BPM), 1 / TEMPO_CURVE);
+
+// Keyboard pluck mapping (a=str0, s=str1, ..., g=str4). User asked to
+// reserve number keys for presets, so plucking uses the home row.
+const PLUCK_KEYS = ['a', 's', 'd', 'f', 'g'];
 
 // ADSR defaults — tanpura-friendly: gentle attack, mild decay-to-sustain,
 // modest sustain duration, gradual release. The KS loop's own decay also
@@ -616,11 +636,16 @@ const ADSR_HANDLE_R = 4;
 // 1.5). v0.8 uses each system's *characteristic* interval so switching
 // systems audibly changes the chord.
 const TUNINGS = {
-  '12-ET':   [1, Math.pow(2, 4/12),  Math.pow(2, 7/12), 2  ],  // unison · M3_eq   · P5_eq    · octave   (equal-tempered major triad + 8ve)
-  '5-limit': [1, 5/4,                3/2,              2  ],  // unison · just M3 · just P5  · octave   (just major triad + 8ve)
-  '7-limit': [1, 5/4,                3/2,              7/4],  // unison · just M3 · just P5  · harm 7th (just dominant 7 — the killer 7-limit demo)
-  'pythag':  [1, 81/64,              3/2,              2  ],  // unison · pyth M3 · just P5  · octave   (Pythagorean major + 8ve)
-  'custom':  [1, 3/2,                2,                5/2],  // tanpura-ish stack
+  // unison · M3 · P5 · octave · M10 (M3 above octave) — full major spread
+  '12-ET':   [1, Math.pow(2, 4/12),  Math.pow(2, 7/12), 2,    Math.pow(2, 16/12)],
+  // unison · just M3 · just P5 · octave · just M3 above octave (5/2)
+  '5-limit': [1, 5/4,                3/2,              2,    5/2              ],
+  // unison · just M3 · just P5 · harmonic 7th · octave (just dom7 + 8ve)
+  '7-limit': [1, 5/4,                3/2,              7/4,  2                ],
+  // unison · pyth M3 · just P5 · octave · pyth M3 above octave
+  'pythag':  [1, 81/64,              3/2,              2,    81/32            ],
+  // tanpura-ish stack: root, P5, octave, P5+octave (= 12th), 2 octaves
+  'custom':  [1, 3/2,                2,                5/2,  3                ],
 };
 
 // Note names for display in the freq-field
@@ -665,8 +690,8 @@ for (let i = 0; i < STRING_COUNT; i++) {
     bypass:    false,
     ratio:     TUNINGS['12-ET'][i],
     divisor:   DEFAULT_DIVISORS[i],
-    offset:    0,           // -50..+50%: shifts every pluck by this fraction of one step period
-    humanize:  0,           // 0-100%: random per-pluck timing jitter
+    offset:    0,
+    humanize:  0,
     pattern:   DEFAULT_PATTERN,
     intensity: 1.0,
     brightness: 1500,
@@ -674,9 +699,16 @@ for (let i = 0; i < STRING_COUNT; i++) {
     pan:        0,
     gain:       -6,
     jawari:     0,                              // 0-100% wet of the soft-clip waveshaper
+    detune:     0,                              // 0-50 cents — random ± per-pluck pitch jitter (each pluck adds Math.random()*2-1 × this)
+    halo:       0,                              // 0-100% — tanpura "bloom" via comb filter with slow per-pluck envelope
     adsr:       { ...ADSR_DEFAULTS },
   });
 }
+
+// Sympathetic resonance — global level. Each string's output feeds every
+// OTHER string's KS sumNode at low gain × this percentage. Very tanpura.
+// Defaults to 0; small values (5-15%) are usually all you need.
+state.symp = 0;
 
 // ── Tuning presets ──────────────────────────────────────────────────────
 // 6 slots. 1-4 factory (showcase distinct intervals across systems), 5-6 user.
@@ -705,6 +737,8 @@ function defaultStringFull(i) {
     gain:       -6,
     pan:        0,
     jawari:     0,
+    detune:     0,
+    halo:       0,
     adsr:       { ...ADSR_DEFAULTS },
   };
 }
@@ -752,6 +786,8 @@ function loadTuningPreset(idx) {
       s.gain       = sp.gain;
       s.pan        = sp.pan;
       s.jawari     = sp.jawari ?? 0;
+      s.detune     = sp.detune ?? 0;
+      s.halo       = sp.halo   ?? 0;
       s.adsr       = sp.adsr ? { ...ADSR_DEFAULTS, ...sp.adsr } : { ...ADSR_DEFAULTS };
       // Push to UI inputs
       const $ = sel => document.querySelector(sel);
@@ -763,6 +799,8 @@ function loadTuningPreset(idx) {
       const inpBri = $(`[data-bright="${i}"]`);      if (inpBri)  inpBri.value  = s.brightness;
       const inpDec = $(`[data-decay="${i}"]`);       if (inpDec)  inpDec.value  = s.decay;
       const inpJaw = $(`[data-jawari="${i}"]`);      if (inpJaw)  inpJaw.value  = s.jawari;
+      const inpDet = $(`[data-detune="${i}"]`);      if (inpDet)  inpDet.value  = s.detune;
+      const inpHal = $(`[data-halo="${i}"]`);        if (inpHal)  inpHal.value  = s.halo;
       // Update the readouts
       const v = sel => document.querySelector(sel);
       const vOff = v(`[data-offset-val="${i}"]`);    if (vOff) vOff.textContent = (s.offset > 0 ? '+' : '') + s.offset + '%';
@@ -771,6 +809,8 @@ function loadTuningPreset(idx) {
       const vBri = v(`[data-bright-val="${i}"]`);    if (vBri) vBri.textContent = Math.round(s.brightness) + ' Hz';
       const vDec = v(`[data-decay-val="${i}"]`);     if (vDec) vDec.textContent = s.decay.toFixed(3);
       const vJaw = v(`[data-jawari-val="${i}"]`);    if (vJaw) vJaw.textContent = s.jawari + '%';
+      const vDet = v(`[data-detune-val="${i}"]`);    if (vDet) vDet.textContent = '±' + s.detune + '¢';
+      const vHal = v(`[data-halo-val="${i}"]`);      if (vHal) vHal.textContent = s.halo + '%';
       const vGn  = v(`[data-str-gain-val="${i}"]`);  if (vGn)  vGn.textContent  = s.gain.toFixed(0) + ' dB';
       const vPan = v(`[data-pan-val="${i}"]`);       if (vPan) vPan.textContent = panLabel(s.pan);
       drawBargraph(i);
@@ -808,12 +848,43 @@ function saveTuningPreset(idx) {
       gain:       s.gain,
       pan:        s.pan,
       jawari:     s.jawari,
+      detune:     s.detune,
+      halo:       s.halo,
       adsr:       { ...s.adsr },
     })),
     factory: false,
   };
+  persistUserPresets();
   refreshPresetSlotStyle();
 }
+
+// localStorage persistence for user preset slots (4..7 in array, "5..8" to
+// the user). Factory slots are static and not persisted. Stored as JSON
+// under a versioned key so future format changes can be migrated.
+const USER_PRESETS_KEY = 'dronorparty:userPresets:v1';
+function persistUserPresets() {
+  try {
+    const userSlots = {};
+    for (let i = 4; i < tuningPresets.length; i++) {
+      if (tuningPresets[i]) userSlots[i] = tuningPresets[i];
+    }
+    localStorage.setItem(USER_PRESETS_KEY, JSON.stringify(userSlots));
+  } catch (e) { console.warn('persistUserPresets failed:', e); }
+}
+function hydrateUserPresets() {
+  try {
+    const raw = localStorage.getItem(USER_PRESETS_KEY);
+    if (!raw) return;
+    const userSlots = JSON.parse(raw);
+    for (const k of Object.keys(userSlots)) {
+      const i = parseInt(k, 10);
+      if (i >= 4 && i < tuningPresets.length && userSlots[k]) {
+        tuningPresets[i] = userSlots[k];
+      }
+    }
+  } catch (e) { console.warn('hydrateUserPresets failed:', e); }
+}
+hydrateUserPresets();
 
 function refreshPresetSlotStyle() {
   document.querySelectorAll('#mod-dronor .head-preset-slot').forEach((btn, i) => {
@@ -858,8 +929,33 @@ function saveDelayPreset(idx) {
     wet:  get('dly-wet'),
     factory: false,
   };
+  persistUserDelayPresets();
   refreshDelayPresetSlotStyle();
 }
+const USER_DLY_PRESETS_KEY = 'dronorparty:userDelayPresets:v1';
+function persistUserDelayPresets() {
+  try {
+    const userSlots = {};
+    for (let i = 4; i < delayPresets.length; i++) {
+      if (delayPresets[i]) userSlots[i] = delayPresets[i];
+    }
+    localStorage.setItem(USER_DLY_PRESETS_KEY, JSON.stringify(userSlots));
+  } catch (e) { console.warn('persistUserDelayPresets failed:', e); }
+}
+function hydrateUserDelayPresets() {
+  try {
+    const raw = localStorage.getItem(USER_DLY_PRESETS_KEY);
+    if (!raw) return;
+    const userSlots = JSON.parse(raw);
+    for (const k of Object.keys(userSlots)) {
+      const i = parseInt(k, 10);
+      if (i >= 4 && i < delayPresets.length && userSlots[k]) {
+        delayPresets[i] = userSlots[k];
+      }
+    }
+  } catch (e) { console.warn('hydrateUserDelayPresets failed:', e); }
+}
+hydrateUserDelayPresets();
 function refreshDelayPresetSlotStyle() {
   document.querySelectorAll('#mod-delay .head-preset-slot').forEach((btn, i) => {
     btn.classList.toggle('saved', delayPresets[i] != null);
@@ -886,7 +982,7 @@ function buildStringStrips() {
         </button>
       </div>
       <button class="pluck-btn" data-pluck="${idx}"
-              title="Pluck this string manually at full strength (ignores pattern; useful for tuning).">PLUCK</button>
+              title="Pluck this string manually at full strength (ignores pattern). Keyboard: ${(PLUCK_KEYS[idx] || '').toUpperCase()}">PLUCK [${(PLUCK_KEYS[idx] || '').toUpperCase()}]</button>
       <div class="slider-row" title="Pitch ratio — frequency multiplier vs ROOT. Examples: 1.0 = unison · 1.5 = perfect fifth · 2.0 = octave · 5/4 = just major third · 7/4 = harmonic seventh. Editing this flips the TUNING dropdown to Custom.">
         <div class="slider-label-row">
           <span class="slider-label">PITCH RATIO</span>
@@ -951,6 +1047,20 @@ function buildStringStrips() {
           <span class="ctrl-val" data-jawari-val="${idx}">${s.jawari}%</span>
         </div>
         <input type="range" data-jawari="${idx}" min="0" max="100" step="1" value="${s.jawari}">
+      </div>
+      <div class="slider-row" title="Halo — slow comb-filter envelope that swells over ~500ms after each pluck, then fades over ~1.5s. Mimics the upper-harmonic 'bloom' of a real tanpura where the high overtones grow after the initial attack rather than decaying immediately.">
+        <div class="slider-label-row">
+          <span class="slider-label">HALO</span>
+          <span class="ctrl-val" data-halo-val="${idx}">${s.halo}%</span>
+        </div>
+        <input type="range" data-halo="${idx}" min="0" max="100" step="1" value="${s.halo}">
+      </div>
+      <div class="slider-row" title="Detune — random ± pitch jitter applied to EACH pluck independently (in cents). 0 = strict in-tune. 5-15 = subtle organic variation, like real strings not returning to identical pitch. 50 = ±a quarter-tone wobble.">
+        <div class="slider-label-row">
+          <span class="slider-label">DETUNE</span>
+          <span class="ctrl-val" data-detune-val="${idx}">±${s.detune}¢</span>
+        </div>
+        <input type="range" data-detune="${idx}" min="0" max="50" step="1" value="${s.detune}">
       </div>
       <!-- ADSR envelope editor -->
       <div title="ADSR amplitude envelope on each pluck. Drag handles to reshape. Click any value label to type. Default: gentle attack (15ms), modest decay-to-sustain at 85% level, then a 300ms release. The KS feedback handles the natural ring underneath.">
@@ -1173,6 +1283,24 @@ function createKSChain(ctx) {
   // Envelope VCA — ADSR ramps applied per pluck. Starts silent.
   const envVCA  = ctx.createGain(); envVCA.gain.value = 0;
 
+  // Halo comb filter — gives the tanpura "bloom" of upper harmonics
+  // growing AFTER the initial pluck rather than decaying. Implemented as
+  // a short-delay feedback loop fed from the post-jawari signal, with a
+  // per-pluck envelope on its output level (slow rise, slow fall).
+  const haloDelay     = ctx.createDelay(0.05);
+  haloDelay.delayTime.value = 0.0021;          // ≈ 480 Hz comb fundamental
+  const haloFeedback  = ctx.createGain(); haloFeedback.gain.value = 0.6;
+  const haloEnv       = ctx.createGain(); haloEnv.gain.value = 0;   // ADSR'd per pluck
+  haloDelay.connect(haloFeedback);
+  haloFeedback.connect(haloDelay);
+  haloDelay.connect(haloEnv);
+
+  // Sympathetic-resonance input — siblings' output gets summed in here
+  // at a low gain (set globally from the SYMP slider). Connects directly
+  // into the KS feedback sumNode so it acts like extra excitation.
+  const sympInput = ctx.createGain(); sympInput.gain.value = 0;
+  sympInput.connect(sumNode);
+
   const panner   = ctx.createStereoPanner();
   const strGain  = ctx.createGain(); strGain.gain.value = 1;
 
@@ -1190,6 +1318,10 @@ function createKSChain(ctx) {
   jwDry.connect(envVCA);
   jwWet.connect(envVCA);
   envVCA.connect(panner);
+  // Halo comb: feed from post-envelope signal and mix the enveloped output
+  // back into the panner alongside envVCA.
+  envVCA.connect(haloDelay);
+  haloEnv.connect(panner);
   panner.connect(strGain);
 
   // Per-string stereo analyser (post-pan, post-gain)
@@ -1202,7 +1334,9 @@ function createKSChain(ctx) {
   splitter.connect(aL, 0);
   splitter.connect(aR, 1);
 
-  return { sumNode, delay, loopFIR, feedback, filter, jwDry, jwWet, shaper, envVCA, panner, strGain, aL, aR };
+  return { sumNode, delay, loopFIR, feedback, filter, jwDry, jwWet, shaper, envVCA,
+           haloDelay, haloFeedback, haloEnv, sympInput,
+           panner, strGain, aL, aR };
 }
 
 // Ring modulator: input → dry → output, input → ringMul → wet → output.
@@ -1274,18 +1408,22 @@ function createDelayChain(ctx) {
   return { input, delayN, feedback, dry, wet };
 }
 
-function pluckKS(ks, freq, strength, brightness, adsr) {
+function pluckKS(ks, freq, strength, brightness, adsr, detuneCents, haloPct) {
   if (!audioCtx || !ks) return;
+  // DETUNE — apply random pitch jitter ± up to detuneCents per pluck. Keeps
+  // each pluck slightly off the strict ratio for organic feel (real strings
+  // never return to identical pitch after each pluck).
+  if (detuneCents && detuneCents > 0) {
+    const j = (Math.random() * 2 - 1) * detuneCents;     // ±cents
+    freq = freq * Math.pow(2, j / 1200);
+  }
   if (!isFinite(freq) || freq < 20 || freq > 4000) return;
   if (strength <= 0) return;
   const sr = audioCtx.sampleRate;
   const t  = audioCtx.currentTime;
   ks.delay.delayTime.setValueAtTime(1 / freq, t);
   ks.filter.frequency.setTargetAtTime(brightness, t, 0.005);
-  // ADSR ramps on the per-string envelope VCA. Cancel any in-flight ramps
-  // (so retriggering during sustain is clean) and schedule a fresh A/D/S/R.
-  // Strength affects only the noise burst amplitude (and therefore KS ring
-  // amplitude); the envelope curve is shape-only, scaled 0..aLevel.
+  // ADSR ramps on the per-string envelope VCA.
   if (adsr) {
     const env = ks.envVCA.gain;
     env.cancelScheduledValues(t);
@@ -1298,6 +1436,18 @@ function pluckKS(ks, freq, strength, brightness, adsr) {
     env.linearRampToValueAtTime(adsr.dLevel, decayT);
     env.setValueAtTime(adsr.dLevel, sustainT);
     env.linearRampToValueAtTime(0, endT);
+  }
+  // HALO — slow comb-filter swell. Ramps haloEnv from 0 → halo% over 500ms
+  // (the "growth" phase) then back to 0 over 1500ms. Without an envelope on
+  // its level, the comb would just be a constant tone-color change; the
+  // slow swell is what gives tanpura its iconic post-pluck bloom.
+  if (ks.haloEnv && haloPct != null && haloPct > 0) {
+    const peak = haloPct / 100;
+    const h = ks.haloEnv.gain;
+    h.cancelScheduledValues(t);
+    h.setValueAtTime(0, t);
+    h.linearRampToValueAtTime(peak, t + 0.5);
+    h.linearRampToValueAtTime(0,    t + 2.0);
   }
   // Inject one period of noise — fills delay line, seeds broad spectrum
   const burstSec = 1 / freq;
@@ -1370,9 +1520,9 @@ function onTick() {
       timingMs += Math.random() * (s.humanize / 100) * stringPeriod * 1000 * 1.5;
     }
     if (timingMs > 0) {
-      setTimeout(() => pluckKS(s.audio, freq, strength, s.brightness, s.adsr), timingMs);
+      setTimeout(() => pluckKS(s.audio, freq, strength, s.brightness, s.adsr, s.detune, s.halo), timingMs);
     } else {
-      pluckKS(s.audio, freq, strength, s.brightness, s.adsr);
+      pluckKS(s.audio, freq, strength, s.brightness, s.adsr, s.detune, s.halo);
     }
   });
   tickCount++;
@@ -1458,10 +1608,28 @@ function wireGlobalControls() {
   });
 
   document.getElementById('tempo-bpm').addEventListener('input', e => {
-    const bpm = parseFloat(e.target.value);
+    const bpm = tempoSliderToBpm(parseFloat(e.target.value));
     state.clockPeriod = 60 / (bpm * 2);   // seconds per 8th
     refreshClockDisplay();
     rescheduleSchedulerPeriod();
+  });
+
+  // Sympathetic resonance — global. Sets the gain on each string's
+  // sympInput node (which feeds into that string's KS loop sumNode).
+  document.getElementById('symp-amt').addEventListener('input', e => {
+    ensureRunning();
+    const v = parseFloat(e.target.value);
+    state.symp = v;
+    document.getElementById('symp-val').textContent = v + '%';
+    // Cap at 0.15 max even at slider 100%, to keep the system stable.
+    const target = (v / 100) * 0.15;
+    if (audioCtx) {
+      state.strings.forEach(s => {
+        if (s.audio && s.audio.sympInput) {
+          s.audio.sympInput.gain.setTargetAtTime(target, audioCtx.currentTime, 0.05);
+        }
+      });
+    }
   });
 }
 
@@ -1478,6 +1646,8 @@ function wireStringControls() {
     else if (t.dataset.bright    != null) { i = +t.dataset.bright;    kind = 'bright'; }
     else if (t.dataset.decay     != null) { i = +t.dataset.decay;     kind = 'decay'; }
     else if (t.dataset.jawari    != null) { i = +t.dataset.jawari;    kind = 'jawari'; }
+    else if (t.dataset.halo      != null) { i = +t.dataset.halo;      kind = 'halo'; }
+    else if (t.dataset.detune    != null) { i = +t.dataset.detune;    kind = 'detune'; }
     if (!(i >= 0)) return;
     const s = state.strings[i];
     const v = parseFloat(t.value);
@@ -1517,6 +1687,16 @@ function wireStringControls() {
         }
         break;
       }
+      case 'halo':
+        s.halo = v;
+        document.querySelector(`[data-halo-val="${i}"]`).textContent = v + '%';
+        // Halo level is set per-pluck via envelope; nothing to push here.
+        break;
+      case 'detune':
+        s.detune = v;
+        document.querySelector(`[data-detune-val="${i}"]`).textContent = '±' + v + '¢';
+        // Detune is applied per-pluck in pluckKS; nothing to push here.
+        break;
     }
   });
 
@@ -1555,7 +1735,7 @@ function wireStringControls() {
         const freq = state.rootFreq * s.ratio;
         // Manual pluck = full strength (clamped) regardless of pattern
         const strength = Math.max(0.05, Math.min(1, s.intensity));
-        pluckKS(s.audio, freq, strength, s.brightness, s.adsr);
+        pluckKS(s.audio, freq, strength, s.brightness, s.adsr, s.detune, s.halo);
       }
       t.style.background = '#c8a85488';
       setTimeout(() => { t.style.background = ''; }, 90);
@@ -2088,6 +2268,17 @@ async function startAudio() {
   dronorBus.gain.value = 1;
   state.strings.forEach(s => s.audio.strGain.connect(dronorBus));
 
+  // Sympathetic-resonance routing: each string's strGain feeds every OTHER
+  // string's sympInput at the global symp-controlled gain. This creates the
+  // tanpura-like cross-string coupling where plucking one string excites
+  // the others at their own resonant pitches.
+  state.strings.forEach((src, srcI) => {
+    state.strings.forEach((dst, dstI) => {
+      if (srcI === dstI) return;
+      src.audio.strGain.connect(dst.audio.sympInput);
+    });
+  });
+
   // Ring modulator (defaults bypassed: dry=1, wet=0)
   ringChain = createRingModChain(audioCtx);
   dronorBus.connect(ringChain.input);
@@ -2176,8 +2367,33 @@ async function startAudio() {
   startScheduler();
   requestAnimationFrame(meterTick);
 
-  console.log('DronorParty v0.14 — ADSR + jawari + GP pad. sr=', audioCtx.sampleRate,
-              'ctx=', Tone.context.state, 'maxCh=', audioCtx.destination.maxChannelCount);
+  // Keyboard plucks — a/s/d/f/g for strings 0/1/2/3/4. Skip when the user
+  // is typing into a text input or holding a modifier (so editing pattern
+  // or ratio fields, copy-paste, etc., don't accidentally trigger plucks).
+  window.addEventListener('keydown', e => {
+    const tag = e.target && e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.repeat) return;                                   // ignore key-repeat spam
+    const idx = PLUCK_KEYS.indexOf(e.key.toLowerCase());
+    if (idx < 0 || idx >= STRING_COUNT) return;
+    e.preventDefault();
+    const s = state.strings[idx];
+    if (!s || !s.audio) return;
+    const freq = state.rootFreq * s.ratio;
+    const strength = Math.max(0.05, Math.min(1, s.intensity));
+    pluckKS(s.audio, freq, strength, s.brightness, s.adsr, s.detune, s.halo);
+    // Visual flash on the matching pluck button
+    const btn = document.querySelector(`[data-pluck="${idx}"]`);
+    if (btn) {
+      btn.style.background = '#c8a85488';
+      setTimeout(() => { btn.style.background = ''; }, 90);
+    }
+  });
+
+  console.log('DronorParty v0.15 — 5 strings, halo, detune, symp, keys, persisted presets. sr=',
+              audioCtx.sampleRate, 'ctx=', Tone.context.state,
+              'maxCh=', audioCtx.destination.maxChannelCount);
 }
 
 document.getElementById('start-btn').addEventListener('click', startAudio);
