@@ -1445,14 +1445,6 @@ function pluckKS(ks, freq, strength, brightness, adsr, detuneCents, haloPct) {
   const buf  = audioCtx.createBuffer(1, bufLen, sr);
   const data = buf.getChannelData(0);
 
-  // Generate raw uniform noise + measure its mean for DC removal.
-  let sum = 0;
-  for (let i = 0; i < bufLen; i++) {
-    data[i] = Math.random() * 2 - 1;
-    sum += data[i];
-  }
-  const mean = sum / bufLen;
-
   // ADSR amplitude shape — A: linear ramp to aLevel, D: ramp to dLevel,
   // S: hold dLevel, R: ramp to 0. Sample-by-sample envelope curve.
   const aSamp = adsr ? Math.max(1, Math.round(adsr.aMs / 1000 * sr)) : 1;
@@ -1461,6 +1453,15 @@ function pluckKS(ks, freq, strength, brightness, adsr, detuneCents, haloPct) {
   const rSamp = adsr ? Math.max(1, Math.round(adsr.rMs / 1000 * sr)) : 1;
   const aLvl  = adsr ? adsr.aLevel : 1.0;
   const dLvl  = adsr ? adsr.dLevel : 1.0;
+
+  // Pass 1: generate raw noise, apply ADSR envelope + strength, accumulate
+  // the SHAPED-buffer sum. We must compute the mean AFTER applying the
+  // envelope — multiplying zero-mean noise by a time-varying envAmp can
+  // reintroduce DC for any non-flat ADSR shape (asymmetric A/D/R, etc.),
+  // which the KS loop integrates toward burst_mean × ~100 at fb=0.99 and
+  // surfaces as low-frequency rumble after rapid replucking. (Codex catch
+  // on PR #9.)
+  let sum = 0;
   for (let i = 0; i < bufLen; i++) {
     let envAmp;
     if      (i < aSamp)                         envAmp = aLvl * (i / aSamp);
@@ -1468,8 +1469,13 @@ function pluckKS(ks, freq, strength, brightness, adsr, detuneCents, haloPct) {
     else if (i < aSamp + dSamp + sSamp)         envAmp = dLvl;
     else                                        envAmp = dLvl * (1 - (i - aSamp - dSamp - sSamp) / rSamp);
     if (envAmp < 0) envAmp = 0;
-    data[i] = (data[i] - mean) * strength * envAmp;
+    data[i] = (Math.random() * 2 - 1) * strength * envAmp;
+    sum += data[i];
   }
+  // Pass 2: subtract mean of the SHAPED buffer so the injected signal is
+  // exactly zero-mean regardless of envelope shape.
+  const mean = sum / bufLen;
+  for (let i = 0; i < bufLen; i++) data[i] -= mean;
 
   const src = audioCtx.createBufferSource();
   src.buffer = buf;
