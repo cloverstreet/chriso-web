@@ -375,8 +375,8 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
 </head>
 <body>
 
-<div id="version-badge">DronorParty v0.15</div>
-<div id="stage-indicator">v2 / 5 strings · halo · detune · symp · keys · persist</div>
+<div id="version-badge">DronorParty v0.16</div>
+<div id="stage-indicator">v2 / ADSR moved to noise burst · DC-removed · decay default 0.99</div>
 
 <div id="start-screen">
   <h1>DronorParty</h1>
@@ -591,11 +591,12 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
 </div>
 
 <div class="foot">
-  v0.15: 5 strings · per-pluck DETUNE jitter · HALO comb-filter bloom ·
-  global SYMP cross-string excitation · TEMPO 20-480 BPM with curve ·
-  ASDFG keyboard plucks · user presets persist via localStorage.<br>
-  Defaults: gain -6 dB · decay 0.975 · brightness 1500 Hz · output -3 dB ·
-  jawari/detune/halo/symp all 0% (additions opt-in).
+  v0.16: ADSR is now baked into the noise burst (input-side shaping) instead
+  of gating the output — DECAY is no longer overridden by ADSR's release,
+  symp resonance is now audible (other strings' meters move), and the
+  "kick-drum" click on rapid replucking is gone (DC removed from each burst).
+  Default decay 0.975 → 0.99 (longer natural ring). Jawari drive 3× → 5×
+  (more obvious at modest %). Halo feedback 0.6 → 0.75.
 </div>
 
 <script>
@@ -695,11 +696,11 @@ for (let i = 0; i < STRING_COUNT; i++) {
     pattern:   DEFAULT_PATTERN,
     intensity: 1.0,
     brightness: 1500,
-    decay:      0.975,
+    decay:      0.99,                           // v0.16: was 0.975 — natural ring is now audible (output isn't gated by ADSR), so default longer ring
     pan:        0,
     gain:       -6,
     jawari:     0,                              // 0-100% wet of the soft-clip waveshaper
-    detune:     0,                              // 0-50 cents — random ± per-pluck pitch jitter (each pluck adds Math.random()*2-1 × this)
+    detune:     0,                              // 0-50 cents — random ± per-pluck pitch jitter
     halo:       0,                              // 0-100% — tanpura "bloom" via comb filter with slow per-pluck envelope
     adsr:       { ...ADSR_DEFAULTS },
   });
@@ -733,7 +734,7 @@ function defaultStringFull(i) {
     pattern:    DEFAULT_PATTERN,
     intensity:  1.0,
     brightness: 1500,
-    decay:      0.975,
+    decay:      0.99,                            // v0.16: was 0.975
     gain:       -6,
     pan:        0,
     jawari:     0,
@@ -1237,15 +1238,16 @@ function attachGainDrag(wrap, slider, valEl, min, max, formatLabel, onSet) {
   wrap._setGainDb = v => commit(v);
 }
 
-// Jawari soft-saturation curve. tanh-shape with a 3× drive — at strong
-// signal amplitudes, compresses and excites upper harmonics, mimicking the
-// effect of a real tanpura's jawari (cotton thread under the bridge).
+// Jawari soft-saturation curve. tanh-shape with 5× drive (v0.16: was 3×).
+// At typical KS string output amplitudes (~0.1-0.3), 3× was too gentle to
+// produce audible saturation; 5× pushes inputs into the curve's compressing
+// region so the slider's effect is obvious at modest percentages.
 function makeJawariCurve() {
   const N = 1024;
   const curve = new Float32Array(N);
   for (let i = 0; i < N; i++) {
     const x = (i / (N - 1)) * 2 - 1;
-    curve[i] = Math.tanh(3 * x);
+    curve[i] = Math.tanh(5 * x);
   }
   return curve;
 }
@@ -1280,17 +1282,21 @@ function createKSChain(ctx) {
   shaper.curve  = makeJawariCurve();
   shaper.oversample = '2x';
 
-  // Envelope VCA — ADSR ramps applied per pluck. Starts silent.
-  const envVCA  = ctx.createGain(); envVCA.gain.value = 0;
+  // v0.16: NO output envVCA. ADSR is now baked into the noise burst (input
+  // side), so the KS string's natural decay is what's heard at the output.
+  // This makes DECAY actually do something audible (was being chopped by the
+  // ADSR's R ramp to 0), eliminates click/kick-drum artifacts on retrigger,
+  // and lets sympathetic resonance be audible (otherwise the receiving
+  // string's envVCA was at 0 and silenced any symp excitation).
 
   // Halo comb filter — gives the tanpura "bloom" of upper harmonics
-  // growing AFTER the initial pluck rather than decaying. Implemented as
-  // a short-delay feedback loop fed from the post-jawari signal, with a
-  // per-pluck envelope on its output level (slow rise, slow fall).
+  // growing AFTER the initial pluck. Short-delay feedback loop with a
+  // per-pluck envelope on its output level (slow rise, slow fall). Source
+  // is the post-brightness filter signal.
   const haloDelay     = ctx.createDelay(0.05);
   haloDelay.delayTime.value = 0.0021;          // ≈ 480 Hz comb fundamental
-  const haloFeedback  = ctx.createGain(); haloFeedback.gain.value = 0.6;
-  const haloEnv       = ctx.createGain(); haloEnv.gain.value = 0;   // ADSR'd per pluck
+  const haloFeedback  = ctx.createGain(); haloFeedback.gain.value = 0.75;  // v0.16: was 0.6
+  const haloEnv       = ctx.createGain(); haloEnv.gain.value = 0;          // enveloped per pluck
   haloDelay.connect(haloFeedback);
   haloFeedback.connect(haloDelay);
   haloDelay.connect(haloEnv);
@@ -1311,16 +1317,15 @@ function createKSChain(ctx) {
   feedback.connect(sumNode);
   // Output tap from the same loopFIR node (multi-destination ok)
   loopFIR.connect(filter);
-  // After the brightness filter, branch into jawari dry + wet, sum at envVCA.
+  // After the brightness filter: dry path + jawari wet path both go directly
+  // to the panner (no output envelope). Halo comb feeds from the same filter
+  // node, and its enveloped output mixes into the panner alongside.
   filter.connect(jwDry);
   filter.connect(shaper);
   shaper.connect(jwWet);
-  jwDry.connect(envVCA);
-  jwWet.connect(envVCA);
-  envVCA.connect(panner);
-  // Halo comb: feed from post-envelope signal and mix the enveloped output
-  // back into the panner alongside envVCA.
-  envVCA.connect(haloDelay);
+  jwDry.connect(panner);
+  jwWet.connect(panner);
+  filter.connect(haloDelay);
   haloEnv.connect(panner);
   panner.connect(strGain);
 
@@ -1334,7 +1339,7 @@ function createKSChain(ctx) {
   splitter.connect(aL, 0);
   splitter.connect(aR, 1);
 
-  return { sumNode, delay, loopFIR, feedback, filter, jwDry, jwWet, shaper, envVCA,
+  return { sumNode, delay, loopFIR, feedback, filter, jwDry, jwWet, shaper,
            haloDelay, haloFeedback, haloEnv, sympInput,
            panner, strGain, aL, aR };
 }
@@ -1408,13 +1413,18 @@ function createDelayChain(ctx) {
   return { input, delayN, feedback, dry, wet };
 }
 
+// v0.16: pluckKS rewritten. ADSR is now baked into the noise burst's
+// amplitude over time (input-side shaping) instead of gating the output.
+// The output stage has no envelope — the natural KS feedback decay is what
+// the listener hears. Burst length = total ADSR time (capped at 5 seconds).
+// Each burst has its DC component removed before injection so the loop
+// doesn't accumulate sub-fundamental rumble after rapid replucking.
+const PLUCK_MAX_BURST_SEC = 5;
 function pluckKS(ks, freq, strength, brightness, adsr, detuneCents, haloPct) {
   if (!audioCtx || !ks) return;
-  // DETUNE — apply random pitch jitter ± up to detuneCents per pluck. Keeps
-  // each pluck slightly off the strict ratio for organic feel (real strings
-  // never return to identical pitch after each pluck).
+  // DETUNE — random ± cents per pluck.
   if (detuneCents && detuneCents > 0) {
-    const j = (Math.random() * 2 - 1) * detuneCents;     // ±cents
+    const j = (Math.random() * 2 - 1) * detuneCents;
     freq = freq * Math.pow(2, j / 1200);
   }
   if (!isFinite(freq) || freq < 20 || freq > 4000) return;
@@ -1423,24 +1433,52 @@ function pluckKS(ks, freq, strength, brightness, adsr, detuneCents, haloPct) {
   const t  = audioCtx.currentTime;
   ks.delay.delayTime.setValueAtTime(1 / freq, t);
   ks.filter.frequency.setTargetAtTime(brightness, t, 0.005);
-  // ADSR ramps on the per-string envelope VCA.
-  if (adsr) {
-    const env = ks.envVCA.gain;
-    env.cancelScheduledValues(t);
-    env.setValueAtTime(0, t);
-    const peakT    = t        + adsr.aMs / 1000;
-    const decayT   = peakT    + adsr.dMs / 1000;
-    const sustainT = decayT   + adsr.sMs / 1000;
-    const endT     = sustainT + adsr.rMs / 1000;
-    env.linearRampToValueAtTime(adsr.aLevel, peakT);
-    env.linearRampToValueAtTime(adsr.dLevel, decayT);
-    env.setValueAtTime(adsr.dLevel, sustainT);
-    env.linearRampToValueAtTime(0, endT);
+
+  // Burst length — at least one period (so even with ADSR=0 we still get a
+  // valid pluck) and at most PLUCK_MAX_BURST_SEC. Use the ADSR total when
+  // it's longer than one period.
+  const minSec   = 1 / freq;
+  const adsrSec  = adsr ? (adsr.aMs + adsr.dMs + adsr.sMs + adsr.rMs) / 1000 : minSec;
+  const burstSec = Math.max(minSec, Math.min(PLUCK_MAX_BURST_SEC, adsrSec));
+  const bufLen   = Math.max(8, Math.ceil(burstSec * sr));
+
+  const buf  = audioCtx.createBuffer(1, bufLen, sr);
+  const data = buf.getChannelData(0);
+
+  // Generate raw uniform noise + measure its mean for DC removal.
+  let sum = 0;
+  for (let i = 0; i < bufLen; i++) {
+    data[i] = Math.random() * 2 - 1;
+    sum += data[i];
   }
-  // HALO — slow comb-filter swell. Ramps haloEnv from 0 → halo% over 500ms
-  // (the "growth" phase) then back to 0 over 1500ms. Without an envelope on
-  // its level, the comb would just be a constant tone-color change; the
-  // slow swell is what gives tanpura its iconic post-pluck bloom.
+  const mean = sum / bufLen;
+
+  // ADSR amplitude shape — A: linear ramp to aLevel, D: ramp to dLevel,
+  // S: hold dLevel, R: ramp to 0. Sample-by-sample envelope curve.
+  const aSamp = adsr ? Math.max(1, Math.round(adsr.aMs / 1000 * sr)) : 1;
+  const dSamp = adsr ? Math.max(1, Math.round(adsr.dMs / 1000 * sr)) : 1;
+  const sSamp = adsr ? Math.max(0, Math.round(adsr.sMs / 1000 * sr)) : 0;
+  const rSamp = adsr ? Math.max(1, Math.round(adsr.rMs / 1000 * sr)) : 1;
+  const aLvl  = adsr ? adsr.aLevel : 1.0;
+  const dLvl  = adsr ? adsr.dLevel : 1.0;
+  for (let i = 0; i < bufLen; i++) {
+    let envAmp;
+    if      (i < aSamp)                         envAmp = aLvl * (i / aSamp);
+    else if (i < aSamp + dSamp)                 envAmp = aLvl + (dLvl - aLvl) * ((i - aSamp) / dSamp);
+    else if (i < aSamp + dSamp + sSamp)         envAmp = dLvl;
+    else                                        envAmp = dLvl * (1 - (i - aSamp - dSamp - sSamp) / rSamp);
+    if (envAmp < 0) envAmp = 0;
+    data[i] = (data[i] - mean) * strength * envAmp;
+  }
+
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  src.connect(ks.sumNode);
+  src.start(t);
+
+  // HALO — slow comb-filter swell on each pluck. The slow rise is what
+  // gives tanpura its iconic post-pluck bloom (upper harmonics growing
+  // AFTER the initial pluck rather than decaying immediately).
   if (ks.haloEnv && haloPct != null && haloPct > 0) {
     const peak = haloPct / 100;
     const h = ks.haloEnv.gain;
@@ -1449,16 +1487,6 @@ function pluckKS(ks, freq, strength, brightness, adsr, detuneCents, haloPct) {
     h.linearRampToValueAtTime(peak, t + 0.5);
     h.linearRampToValueAtTime(0,    t + 2.0);
   }
-  // Inject one period of noise — fills delay line, seeds broad spectrum
-  const burstSec = 1 / freq;
-  const bufLen = Math.max(8, Math.ceil(burstSec * sr));
-  const buf = audioCtx.createBuffer(1, bufLen, sr);
-  const data = buf.getChannelData(0);
-  for (let i = 0; i < bufLen; i++) data[i] = (Math.random() * 2 - 1) * strength;
-  const src = audioCtx.createBufferSource();
-  src.buffer = buf;
-  src.connect(ks.sumNode);
-  src.start(t);
 }
 
 // ── Master scheduler ────────────────────────────────────────────────────
@@ -2391,7 +2419,7 @@ async function startAudio() {
     }
   });
 
-  console.log('DronorParty v0.15 — 5 strings, halo, detune, symp, keys, persisted presets. sr=',
+  console.log('DronorParty v0.16 — ADSR→burst, DC-removed, natural ring audible. sr=',
               audioCtx.sampleRate, 'ctx=', Tone.context.state,
               'maxCh=', audioCtx.destination.maxChannelCount);
 }
