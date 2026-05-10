@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Buffer Shuffler — v0.7.1</title>
+<title>Buffer Shuffler — v0.8</title>
 <!-- Tone.js intentionally NOT loaded in v0.2: the buffer-shuffler engine is pure
      Web Audio. AudioWorkletNode's constructor requires a real BaseAudioContext,
      and Tone.js 14.8.49's wrapper isn't one — so we use a bare AudioContext. -->
@@ -318,7 +318,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 </head>
 <body>
 
-<div id="version-badge">BUFFER SHUFFLER · v0.7.1</div>
+<div id="version-badge">BUFFER SHUFFLER · v0.8</div>
 
 <div id="start-screen">
   <div style="font-size:.78rem;letter-spacing:.28em;color:#666;">BUFFER SHUFFLER — TEST CASE</div>
@@ -503,6 +503,17 @@ input.gain-meter-slider::-webkit-slider-thumb {
           </span>
         </div>
         <div class="range-slider" id="rs-pan"></div>
+      </div>
+
+      <!-- v0.8: REVERSE — per-grain probability of reversed playback (0 = all forward,
+           100 = all reversed, 50 = half-and-half). Each grain rolls the dice
+           independently at trigger time, so the cloud mixes naturally. -->
+      <div class="slider-row" title="Per-grain probability of reverse playback. 0% = all forward · 50% = half forward / half reversed · 100% = all reversed.">
+        <div class="slider-label-row">
+          <span class="slider-label">REVERSE</span>
+          <span class="ctrl-val" id="param-reverse-val" data-value="0" title="Click to type a precise % value">0%</span>
+        </div>
+        <input type="range" id="param-reverse-sl" min="0" max="100" step="1" value="0" oninput="setReverseChance(this.value)">
       </div>
 
       <!-- GRAIN GAIN — output of grain engine into the master mix -->
@@ -690,6 +701,9 @@ const params = {
   pitch:    { lowVal: 0,    highVal: 0   },  // semitones
   pan:      { lowVal: -0.4, highVal: 0.4 },  // -1..+1
 };
+// v0.8: per-grain reverse playback probability (0..1). Each grain rolls
+// independently at trigger time so the cloud mixes naturally.
+let reverseChance = 0;
 
 // Output / mute / state
 let outputMuted = false;
@@ -1888,6 +1902,34 @@ function makeRaisedCosineEnvelope(lenSec, fadeSec){
   return out;
 }
 
+// v0.8: REVERSE setter — UI value 0..100 maps to chance 0..1.
+function setReverseChance(pct){
+  const v = Math.max(0, Math.min(100, parseFloat(pct) || 0));
+  reverseChance = v / 100;
+  const el = document.getElementById('param-reverse-val');
+  if (el) { el.textContent = Math.round(v) + '%'; el.dataset.value = v; }
+  const sl = document.getElementById('param-reverse-sl'); if (sl) sl.value = v;
+}
+
+// Build a one-shot AudioBuffer of `lengthSamples` samples copied from the
+// ring `captureBuffer` starting at `startSample`, but with sample order
+// reversed. Handles ring wraparound.
+function makeReversedGrainBuffer(startSample, lengthSamples){
+  const buf = rawCtx.createBuffer(2, Math.max(2, lengthSamples), sampleRate);
+  const inL = captureBuffer.getChannelData(0);
+  const inR = captureBuffer.getChannelData(1);
+  const outL = buf.getChannelData(0);
+  const outR = buf.getChannelData(1);
+  for (let i = 0; i < lengthSamples; i++) {
+    // Read end-to-start; modulo for ring wraparound
+    let srcIdx = (startSample + lengthSamples - 1 - i) % bufferLen;
+    if (srcIdx < 0) srcIdx += bufferLen;
+    outL[i] = inL[srcIdx];
+    outR[i] = inR[srcIdx];
+  }
+  return buf;
+}
+
 function triggerGrain(){
   if (!captureBuffer) return;
   const capturedSec = totalSamplesCaptured / sampleRate;
@@ -1913,8 +1955,20 @@ function triggerGrain(){
 
   const rate = Math.pow(2, grainPitchSt / 12);
 
+  // v0.8: per-grain coin flip for reverse playback. When reversed, copy
+  // the grain's range from the ring buffer into a one-shot reversed buffer
+  // and play it forward — keeps the rest of the trigger logic unchanged
+  // and works on every browser regardless of negative-playbackRate quirks.
+  const reverseThis = reverseChance > 0 && Math.random() < reverseChance;
+  const sourceLenSec = (grainLengthMs / 1000) * rate;
+  const lenSamples = Math.max(2, Math.floor(sourceLenSec * sampleRate) + 4);
+
   const src = rawCtx.createBufferSource();
-  src.buffer = captureBuffer;
+  if (reverseThis) {
+    src.buffer = makeReversedGrainBuffer(startSample, lenSamples);
+  } else {
+    src.buffer = captureBuffer;
+  }
   src.playbackRate.value = rate;
 
   const env = rawCtx.createGain();
@@ -1926,7 +1980,7 @@ function triggerGrain(){
   src.connect(env); env.connect(pan); pan.connect(grainOutGainNode);
 
   const lenSec = grainLengthMs / 1000;
-  const sourceLenSec = lenSec * rate;
+  // sourceLenSec already computed above (used to size the reversed-grain buffer)
 
   // v0.4: raised-cosine fade-in/fade-out via setValueCurveAtTime.
   const fadeMs = clamp(grainLengthMs * 0.15, 1.5, 8);
@@ -1959,7 +2013,10 @@ function triggerGrain(){
   }
 
   try {
-    src.start(t0, startSec, sourceLenSec + 0.05);
+    // Reversed grain plays its own temp buffer from offset 0; forward grain
+    // reads at startSec into the shared captureBuffer.
+    const playOffset = reverseThis ? 0 : startSec;
+    src.start(t0, playOffset, sourceLenSec + 0.05);
     src.stop(tEnd + 0.02);
   } catch(e){ console.warn('grain start failed:', e); return; }
 

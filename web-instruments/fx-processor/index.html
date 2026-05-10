@@ -410,9 +410,19 @@ input.vfader::-webkit-slider-thumb {
   box-shadow:0 0 5px rgba(100,160,220,.85);
   top:0; left:0; transform:translate(-50%,-50%);
 }
-.gp-readout { display:flex; justify-content:space-between;
+.gp-readout {
+  display:flex; justify-content:space-between; align-items:baseline;
   font-size:.56rem; color:#888; letter-spacing:.04em;
-  margin-top:2px; padding:0 1px; }
+  margin-top:2px; padding:0 1px;
+  /* v68: lock single-line — text was reflowing to 2 lines when modulated
+     values had wider strings. */
+  white-space:nowrap; flex-wrap:nowrap; gap:6px;
+  overflow:hidden;
+}
+.gp-readout > span {
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  flex:0 1 auto; min-width:0;
+}
 .gp-readout .k { color:#666; letter-spacing:.10em; text-transform:uppercase; }
 
 /* ─────────── LEVEL SLIDER + STEREO METER (v65+) ───────────
@@ -559,7 +569,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 <!-- Version badge (always visible, top-right) -->
 <div id="version-badge" style="position:fixed;top:8px;right:10px;
      font-family:'Courier New',monospace;font-size:.6rem;letter-spacing:.16em;
-     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v67.1</div>
+     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v68</div>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
 <!-- START SCREEN                                                   -->
@@ -862,32 +872,54 @@ input.gain-meter-slider::-webkit-slider-thumb {
            The dry/wet concept is being replaced module-by-module with explicit
            direct-out + thru-to-X sends (multi-dim slider/preset system). -->
 
-      <!-- SENDS (post-mix) — v65 level sliders w/ stereo meter taps -->
+      <!-- SENDS (post-mix) — v68 XY gain/pan/meter pads with side labels.
+           Each send now has its own pan dimension so you can place pitched
+           signal independently in the delay path vs the direct-out path. -->
       <div style="padding-top:7px;border-top:1px solid #1a1a1a;">
-        <div style="margin-bottom:7px;">
-          <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
-            <label style="font-size:.66rem;letter-spacing:.08em;color:#aaa;">THRU → DELAY</label>
-            <span class="ctrl-val" id="pitch-to-delay-val" data-value="0" title="Click to type a precise dB value">0.0 dB</span>
+        <!-- THRU → DELAY -->
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
+          <div style="flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-start;min-width:78px;">
+            <label style="font-size:.62rem;letter-spacing:.08em;color:#aaa;">THRU → DELAY</label>
+            <div style="display:flex;flex-direction:column;font-size:.54rem;color:#666;letter-spacing:.04em;line-height:1.35;margin-top:2px;">
+              <span><span style="color:#555;letter-spacing:.1em;">G </span><span class="ctrl-val" id="pitch-to-delay-val" data-value="1" title="Click to type a precise dB value">0.0 dB</span></span>
+              <span><span style="color:#555;letter-spacing:.1em;">P </span><span class="ctrl-val" id="pitch-to-delay-pan-val" data-value="0" title="Click to type pan">C</span></span>
+            </div>
           </div>
           <input type="range" id="pitch-to-delay" min="0" max="1" step="0.01" value="1" style="display:none;">
-          <div class="lvl-slider" id="pitch-to-delay-pad" title="Pitch shifter post-mix → delay input. Drag · dblclick = 0 dB.">
-            <div class="lvl-meter-l" id="pitch-to-delay-meter-l"></div>
-            <div class="lvl-meter-r" id="pitch-to-delay-meter-r"></div>
-            <div class="lvl-zero-line"></div>
-            <div class="lvl-thumb" id="pitch-to-delay-thumb"></div>
+          <input type="range" id="pitch-to-delay-pan-sl" min="-1" max="1" step="0.01" value="0" style="display:none;">
+          <div class="gp-pad" id="pitch-to-delay-pad" style="--zero-x:90.9%;flex:1;height:30px;"
+               title="Pitch shifter post-mix → delay. L/R = gain (-60..+6 dB), U/D = pan. Drag · dblclick = 0 dB / center.">
+            <div class="gp-meter gp-meter-l" id="pitch-to-delay-meter-l"></div>
+            <div class="gp-meter gp-meter-r" id="pitch-to-delay-meter-r"></div>
+            <div class="gp-center-line"></div>
+            <div class="gp-zero-line"></div>
+            <div class="gp-zero-label">0</div>
+            <div class="gp-cross" id="pitch-to-delay-cross">
+              <div class="gp-vline"></div><div class="gp-hline"></div><div class="gp-puck"></div>
+            </div>
           </div>
         </div>
-        <div style="margin-bottom:0;">
-          <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
-            <label style="font-size:.66rem;letter-spacing:.08em;color:#aaa;">THRU → OUT</label>
-            <span class="ctrl-val" id="pitch-to-out-val" data-value="-60" title="Click to type a precise dB value">-inf dB</span>
+        <!-- THRU → OUT -->
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:0;">
+          <div style="flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-start;min-width:78px;">
+            <label style="font-size:.62rem;letter-spacing:.08em;color:#aaa;">THRU → OUT</label>
+            <div style="display:flex;flex-direction:column;font-size:.54rem;color:#666;letter-spacing:.04em;line-height:1.35;margin-top:2px;">
+              <span><span style="color:#555;letter-spacing:.1em;">G </span><span class="ctrl-val" id="pitch-to-out-val" data-value="0" title="Click to type a precise dB value">-inf dB</span></span>
+              <span><span style="color:#555;letter-spacing:.1em;">P </span><span class="ctrl-val" id="pitch-to-out-pan-val" data-value="0" title="Click to type pan">C</span></span>
+            </div>
           </div>
           <input type="range" id="pitch-to-out" min="0" max="1" step="0.01" value="0" style="display:none;">
-          <div class="lvl-slider" id="pitch-to-out-pad" title="Pitch shifter post-mix → master out (bypass delay). Drag · dblclick = 0 dB.">
-            <div class="lvl-meter-l" id="pitch-to-out-meter-l"></div>
-            <div class="lvl-meter-r" id="pitch-to-out-meter-r"></div>
-            <div class="lvl-zero-line"></div>
-            <div class="lvl-thumb" id="pitch-to-out-thumb"></div>
+          <input type="range" id="pitch-to-out-pan-sl" min="-1" max="1" step="0.01" value="0" style="display:none;">
+          <div class="gp-pad" id="pitch-to-out-pad" style="--zero-x:90.9%;flex:1;height:30px;"
+               title="Pitch shifter post-mix → master out. L/R = gain, U/D = pan. Drag · dblclick = 0 dB / center.">
+            <div class="gp-meter gp-meter-l" id="pitch-to-out-meter-l"></div>
+            <div class="gp-meter gp-meter-r" id="pitch-to-out-meter-r"></div>
+            <div class="gp-center-line"></div>
+            <div class="gp-zero-line"></div>
+            <div class="gp-zero-label">0</div>
+            <div class="gp-cross" id="pitch-to-out-cross">
+              <div class="gp-vline"></div><div class="gp-hline"></div><div class="gp-puck"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -1225,6 +1257,7 @@ let rawCtx;
 let micInput=null; // Tone.UserMedia — APM disabled via getUserMedia monkey-patch in initAudio()
 let micGainNode, preFxGain, inputMeter; // Tone nodes
 let testOscTone=null, testNoiseTone=null, testOscGainTone, testNoiseGainTone, testMasterGainTone, testPanner; // all Tone.js
+let testDirectPanner=null; // v68: mirrors testPanner so DIRECT → OUT is panned too
 let micPanner=null; // mic stereo pan
 let micDirectG=null, testDirectG=null; // direct-to-output sends (bypass all FX)
 // Flanking meter analysers: pitch in/out L/R, delay in/out L/R
@@ -1234,6 +1267,7 @@ let delayInAnL=null, delayInAnR=null, delayOutAnL=null, delayOutAnR=null;
 let delayOutSum=null; // sums dry+wet for delay output meter tap
 let pitchShift, pitchDryG, pitchWetG;
 let pitchSumG, pitchToDelayG, pitchToOutG; // pitch post-mix sends
+let pitchToDelayPanner, pitchToOutPanner;  // v68: per-send pan
 let delayToPitchG; // delay→pitch feedback send
 let delayNode, feedbackGain, delayDryGain, delayWetGain;
 let outputGainNode, outputPanner, outputMuteNode, outputMeter;
@@ -1313,6 +1347,8 @@ async function initAudio() {
     pitchSumG      = stereoGain(1);   // sums dry+wet pitch output
     pitchToDelayG  = stereoGain(1);   // pitch → delay send (default full)
     pitchToOutG    = stereoGain(0);   // pitch → out direct send (default 0)
+    pitchToDelayPanner = new Tone.Panner(0); // v68: pan on the → delay send
+    pitchToOutPanner   = new Tone.Panner(0); // v68: pan on the → out send
     delayToPitchG  = stereoGain(0);   // delay wet → pitch input feedback (default 0)
     micDirectG     = stereoGain(0);   // mic → output direct (bypass FX, default 0)
     testDirectG    = stereoGain(0);   // sig gen → output direct (bypass FX, default 0)
@@ -1356,11 +1392,19 @@ async function initAudio() {
     testOscGainTone.connect(testMasterGainTone);
     testNoiseGainTone.connect(testMasterGainTone);
     testPanner = new Tone.Panner(0);
+    // v68: dedicated panner for the direct-out path. Previously testDirectG
+    // tapped testPanner's stereo output, but the explicit-stereo Gain
+    // helper (`stereoGain`) downstream was flattening the pan in some
+    // routings. Two panners kept in sync via setTestPan + LFO is the
+    // unambiguous fix — direct-out now panned independently of any
+    // upstream-stereo gotchas.
+    testDirectPanner = new Tone.Panner(0);
     testEnvelope = new Tone.AmplitudeEnvelope({attack:0.01,decay:0.03,sustain:0.75,release:0.05});
     testMasterGainTone.connect(testEnvelope);
     testEnvelope.connect(testPanner);
+    testEnvelope.connect(testDirectPanner);
     testPanner.connect(preFxGain); // Tone→Tone ✓ (via panner)
-    testPanner.connect(testDirectG); testDirectG.connect(recordTap); // DIRECT → OUT bypass
+    testDirectPanner.connect(testDirectG); testDirectG.connect(recordTap); // DIRECT → OUT bypass
     testEnvelope.triggerAttack(); // open fully in steady mode
     testMasterGain = testMasterGainTone; // alias for backward-compat refs
 
@@ -1381,8 +1425,11 @@ async function initAudio() {
     preFxGain.connect(pitchDryG); preFxGain.connect(pitchShift); pitchShift.connect(pitchWetG);
     pitchDryG.connect(pitchSumG); pitchWetG.connect(pitchSumG);
     // Pitch sends (post internal mix): to delay, and direct to output
+    // v68: gain → panner per send so each send can be pan-positioned independently
     pitchSumG.connect(pitchToDelayG); pitchSumG.connect(pitchToOutG);
-    pitchToDelayG.connect(delayDryGain); pitchToDelayG.connect(delayNode);
+    pitchToDelayG.connect(pitchToDelayPanner);
+    pitchToOutG.connect(pitchToOutPanner);
+    pitchToDelayPanner.connect(delayDryGain); pitchToDelayPanner.connect(delayNode);
     // Delay internal feedback
     delayNode.connect(feedbackGain); feedbackGain.connect(delayNode);
     delayNode.connect(delayWetGain);
@@ -1391,13 +1438,13 @@ async function initAudio() {
     // Flanking meter taps (side-chain analysers, not in main audio path)
     preFxGain.connect(pitchInSplit);
     pitchSumG.connect(pitchOutSplit);
-    pitchToDelayG.connect(delayInSplit);
+    pitchToDelayPanner.connect(delayInSplit);
     delayDryGain.connect(delayOutSum); delayWetGain.connect(delayOutSum);
     delayOutSum.connect(delayOutSplit);
     // Feedback tap — direct from delay line (pre-wet), so send gain is the true level
     delayNode.connect(delayToPitchG); delayToPitchG.connect(preFxGain);
-    // Pitch direct → out
-    pitchToOutG.connect(recordTap);
+    // Pitch direct → out (v68: through pitchToOutPanner)
+    pitchToOutPanner.connect(recordTap);
     // v66: insert outputPanner between gain and mute. Meter taps post-pan
     // so the L/R bars reflect the actual pan applied at the master.
     outputGainNode.connect(outputPanner);
@@ -1436,13 +1483,18 @@ async function initAudio() {
     bindGainPanPad('output-gp-pad', -60, 12, v => setOutputGainDb(v), v => setOutputPan(v));
     // v67: build the MOD column (3 LFOs) and start the LFO RAF loop.
     initLfo();
-    // v65: bind level sliders (replaces send sliders w/ stereo-meter pads).
+    // v65: bind level sliders (1D — sends with no pan dimension).
     bindLvlSlider('mic-direct-pad',     -60, 6, v => setMicDirect(v));
     bindLvlSlider('test-direct-pad',    -60, 6, v => setTestDirect(v));
-    bindLvlSlider('pitch-to-delay-pad', -60, 6, v => setPitchToDelay(v));
-    bindLvlSlider('pitch-to-out-pad',   -60, 6, v => setPitchToOut(v));
     bindLvlSlider('delay-wet-pad',      -60, 6, v => setDelayWet(v));
     bindLvlSlider('delay-to-pitch-pad', -60, 6, v => setDelayToPitch(v));
+    // v68: pitch sends are now XY gain/pan pads — gain on X, pan on Y.
+    bindGainPanPad('pitch-to-delay-pad', -60, 6,
+      db => setPitchToDelay(db <= -60 ? 0 : dbToGain(db)),
+      v  => setPitchToDelayPan(v));
+    bindGainPanPad('pitch-to-out-pad', -60, 6,
+      db => setPitchToOut(db <= -60 ? 0 : dbToGain(db)),
+      v  => setPitchToOutPan(v));
     showBoard();
     if (!psKeyboardSetup) { psSetupKeyboard(); psKeyboardSetup = true; }
     applyDefaultState(); // apply safe defaults
@@ -1671,7 +1723,8 @@ function toggleTestTone(){
 
 function setTestPan(v) {
   const pan = parseFloat(v);
-  if (testPanner) testPanner.pan.rampTo(pan, 0.05);
+  if (testPanner)       testPanner.pan.rampTo(pan, 0.05);
+  if (testDirectPanner) testDirectPanner.pan.rampTo(pan, 0.05);   // v68: direct-out follows
   const el = document.getElementById('test-pan-val');
   if (el) {
     if (Math.abs(pan) < 0.03) el.textContent = 'C';
@@ -2423,7 +2476,9 @@ function setPitchToDelay(v){
   const el=document.getElementById('pitch-to-delay-val');
   if(el){el.textContent=g<0.001?'-inf dB':fmtDb(gainToDb(g))+' dB'; el.dataset.value=g;}
   const sl=document.getElementById('pitch-to-delay'); if(sl) sl.value=g;
-  updateLvlThumb('pitch-to-delay-thumb', g, -60, 6);
+  // v68: drive XY pad crosshair X (gain axis -60..+6)
+  const pan = parseFloat((document.getElementById('pitch-to-delay-pan-sl')||{value:0}).value)||0;
+  updateXyCross('pitch-to-delay-cross', g<=0.0001?-60:gainToDb(g), pan, -60, 6);
 }
 function setPitchToOut(v){
   const g=parseFloat(v);
@@ -2431,7 +2486,37 @@ function setPitchToOut(v){
   const el=document.getElementById('pitch-to-out-val');
   if(el){el.textContent=g<0.001?'-inf dB':fmtDb(gainToDb(g))+' dB'; el.dataset.value=g;}
   const sl=document.getElementById('pitch-to-out'); if(sl) sl.value=g;
-  updateLvlThumb('pitch-to-out-thumb', g, -60, 6);
+  const pan = parseFloat((document.getElementById('pitch-to-out-pan-sl')||{value:0}).value)||0;
+  updateXyCross('pitch-to-out-cross', g<=0.0001?-60:gainToDb(g), pan, -60, 6);
+}
+function setPitchToDelayPan(v){
+  const p = Math.max(-1, Math.min(1, parseFloat(v)));
+  if (pitchToDelayPanner) pitchToDelayPanner.pan.rampTo(p, 0.05);
+  const el = document.getElementById('pitch-to-delay-pan-val');
+  if (el) {
+    if (Math.abs(p) < 0.03) el.textContent = 'C';
+    else if (p < 0) el.textContent = 'L' + Math.round(Math.abs(p)*100);
+    else el.textContent = 'R' + Math.round(p*100);
+    el.dataset.value = p;
+  }
+  const sl = document.getElementById('pitch-to-delay-pan-sl'); if (sl) sl.value = p;
+  // re-update X (gain) too in case it was the latest write source
+  const g = parseFloat((document.getElementById('pitch-to-delay')||{value:1}).value)||1;
+  updateXyCross('pitch-to-delay-cross', g<=0.0001?-60:gainToDb(g), p, -60, 6);
+}
+function setPitchToOutPan(v){
+  const p = Math.max(-1, Math.min(1, parseFloat(v)));
+  if (pitchToOutPanner) pitchToOutPanner.pan.rampTo(p, 0.05);
+  const el = document.getElementById('pitch-to-out-pan-val');
+  if (el) {
+    if (Math.abs(p) < 0.03) el.textContent = 'C';
+    else if (p < 0) el.textContent = 'L' + Math.round(Math.abs(p)*100);
+    else el.textContent = 'R' + Math.round(p*100);
+    el.dataset.value = p;
+  }
+  const sl = document.getElementById('pitch-to-out-pan-sl'); if (sl) sl.value = p;
+  const g = parseFloat((document.getElementById('pitch-to-out')||{value:0}).value)||0;
+  updateXyCross('pitch-to-out-cross', g<=0.0001?-60:gainToDb(g), p, -60, 6);
 }
 function setDelayToPitch(v){
   const g=parseFloat(v);
@@ -3454,7 +3539,12 @@ const FX_TARGETS = {
     toVal(p){ return this.unitMin*Math.pow(this.unitMax/this.unitMin, p/1000); },
     fmt(v){ return v >= 1000 ? round2(v/1000)+' kHz' : Math.round(v)+' Hz'; },
     parse(s){ s=String(s).trim().toLowerCase(); const k=s.includes('k'); const n=parseFloat(s.replace(/[^0-9.\-]/g,'')); return k?n*1000:n; },
-    apply(v){ if (testOscTone) testOscTone.frequency.value = Math.max(v, 0.5); },
+    apply(v){
+      if (testOscTone) testOscTone.frequency.value = Math.max(v, 0.5);
+      // v68: drive the freq slider visually so the user sees modulation
+      const sl = document.getElementById('test-freq-sl');
+      if (sl) sl.value = freqLog.toPos(Math.max(20, Math.min(20000, v)));
+    },
     restore(){ if (typeof setTestFreqHz === 'function') setTestFreqHz(parseFloat(document.getElementById('test-freq-val').dataset.value) || 110); },
     valId: 'test-freq-val',
   },
@@ -3464,7 +3554,12 @@ const FX_TARGETS = {
     toVal(p){ return this.unitMin + (p/1000)*(this.unitMax - this.unitMin); },
     fmt(v){ return round2(v)+' dB'; },
     parse(s){ return parseFloat(String(s).replace(/[^0-9.\-]/g,'')); },
-    apply(v){ if (testEnabled && testMasterGainTone) testMasterGainTone.gain.value = dbToGain(v); },
+    apply(v){
+      if (testEnabled && testMasterGainTone) testMasterGainTone.gain.value = dbToGain(v);
+      // v68: drive the SIG GEN XY pad crosshair X (gain axis: -60..+6)
+      const cross = document.getElementById('test-gp-cross');
+      if (cross) cross.style.left = ((v - (-60)) / 66 * 100) + '%';
+    },
     restore(){ if (typeof setTestGainDb === 'function') setTestGainDb(parseFloat(document.getElementById('test-gain-val').dataset.value) || -6); },
     valId: 'test-gain-val',
   },
@@ -3474,7 +3569,14 @@ const FX_TARGETS = {
     toVal(p){ return -1 + (p/1000)*2; },
     fmt(v){ if (Math.abs(v) < 0.02) return 'C'; return (v < 0 ? 'L' : 'R') + Math.round(Math.abs(v)*100); },
     parse(s){ s=String(s).trim().toUpperCase(); if (s==='C') return 0; if (s.startsWith('L')) return -parseFloat(s.slice(1))/100; if (s.startsWith('R')) return parseFloat(s.slice(1))/100; return parseFloat(s); },
-    apply(v){ if (testPanner) testPanner.pan.value = Math.max(-1, Math.min(1, v)); },
+    apply(v){
+      const p = Math.max(-1, Math.min(1, v));
+      if (testPanner)       testPanner.pan.value       = p;
+      if (testDirectPanner) testDirectPanner.pan.value = p;   // v68: keep direct in sync
+      // v68: drive the SIG GEN XY pad crosshair Y (pan axis: -1..+1)
+      const cross = document.getElementById('test-gp-cross');
+      if (cross) cross.style.top = ((p + 1) / 2 * 100) + '%';
+    },
     restore(){ if (typeof setTestPan === 'function') setTestPan(parseFloat(document.getElementById('test-pan-val').dataset.value) || 0); },
     valId: 'test-pan-val',
   },
@@ -3484,7 +3586,12 @@ const FX_TARGETS = {
     toVal(p){ return this.unitMin + (p/1000)*(this.unitMax - this.unitMin); },
     fmt(v){ return round2(v)+' dB'; },
     parse(s){ return parseFloat(String(s).replace(/[^0-9.\-]/g,'')); },
-    apply(v){ if (micGainNode && !inputMuted) micGainNode.gain.value = dbToGain(v); },
+    apply(v){
+      if (micGainNode && !inputMuted) micGainNode.gain.value = dbToGain(v);
+      // v68: drive the MIC XY pad crosshair X (gain axis: -60..+12 → 72 dB span)
+      const cross = document.getElementById('mic-gp-cross');
+      if (cross) cross.style.left = ((v - (-60)) / 72 * 100) + '%';
+    },
     restore(){ if (typeof setInputGainDb === 'function') setInputGainDb(parseFloat(document.getElementById('input-gain-val').dataset.value) || 0); },
     valId: 'input-gain-val',
   },
@@ -3494,7 +3601,13 @@ const FX_TARGETS = {
     toVal(p){ return -1 + (p/1000)*2; },
     fmt(v){ if (Math.abs(v) < 0.02) return 'C'; return (v < 0 ? 'L' : 'R') + Math.round(Math.abs(v)*100); },
     parse(s){ s=String(s).trim().toUpperCase(); if (s==='C') return 0; if (s.startsWith('L')) return -parseFloat(s.slice(1))/100; if (s.startsWith('R')) return parseFloat(s.slice(1))/100; return parseFloat(s); },
-    apply(v){ if (micPanner) micPanner.pan.value = Math.max(-1, Math.min(1, v)); },
+    apply(v){
+      const p = Math.max(-1, Math.min(1, v));
+      if (micPanner) micPanner.pan.value = p;
+      // v68: drive the MIC XY pad crosshair Y
+      const cross = document.getElementById('mic-gp-cross');
+      if (cross) cross.style.top = ((p + 1) / 2 * 100) + '%';
+    },
     restore(){ if (typeof setMicPan === 'function') setMicPan(parseFloat(document.getElementById('mic-pan-val').dataset.value) || 0); },
     valId: 'mic-pan-val',
   },
@@ -3504,7 +3617,12 @@ const FX_TARGETS = {
     toVal(p){ return this.unitMin + (p/1000)*(this.unitMax - this.unitMin); },
     fmt(v){ return (v >= 0 ? '+' : '') + round2(v) + ' st'; },
     parse(s){ return parseFloat(String(s).replace(/[^0-9.\-+]/g,'')); },
-    apply(v){ if (pitchShift && !pitchBypassed) pitchShift.pitch = v; },
+    apply(v){
+      if (pitchShift && !pitchBypassed) pitchShift.pitch = v;
+      // v68: drive the pitch slider thumb visually
+      const sl = document.getElementById('pitch-semi');
+      if (sl) sl.value = Math.max(-24, Math.min(24, v));
+    },
     restore(){ if (typeof setPitchSemi === 'function') setPitchSemi(parseFloat(document.getElementById('pitch-semi-val').dataset.value) || 0); },
     valId: 'pitch-semi-val',
   },
@@ -3514,7 +3632,12 @@ const FX_TARGETS = {
     toVal(p){ return this.unitMin*Math.pow(this.unitMax/this.unitMin, p/1000); },
     fmt(v){ return v >= 1 ? v.toFixed(2)+' s' : Math.round(v*1000)+' ms'; },
     parse(s){ s=String(s).trim().toLowerCase(); const ms=s.includes('ms'); const n=parseFloat(s.replace(/[^0-9.\-]/g,'')); return ms?n/1000:n; },
-    apply(v){ if (delayNode && !delayBypassed) delayNode.delayTime.value = Math.max(0.001, Math.min(60, v)); },
+    apply(v){
+      if (delayNode && !delayBypassed) delayNode.delayTime.value = Math.max(0.001, Math.min(60, v));
+      // v68: drive the delay-time slider thumb (log-scale)
+      const sl = document.getElementById('delay-time');
+      if (sl && typeof timeLog !== 'undefined' && timeLog.toPos) sl.value = timeLog.toPos(Math.max(0.001, Math.min(60, v)));
+    },
     restore(){ if (typeof setDelayTimeSec === 'function') setDelayTimeSec(parseFloat(document.getElementById('delay-time-val').dataset.value) || 0.5); },
     valId: 'delay-time-val',
   },
@@ -3524,7 +3647,12 @@ const FX_TARGETS = {
     toVal(p){ return (p/1000) * this.unitMax; },
     fmt(v){ return Math.round(v*100) + '%'; },
     parse(s){ return parseFloat(String(s).replace(/[^0-9.\-]/g,'')) / 100; },
-    apply(v){ if (feedbackGain && !delayBypassed) feedbackGain.gain.value = Math.max(0, Math.min(1.5, v)); },
+    apply(v){
+      if (feedbackGain && !delayBypassed) feedbackGain.gain.value = Math.max(0, Math.min(1.5, v));
+      // v68: drive the feedback slider thumb
+      const sl = document.getElementById('delay-fb');
+      if (sl) sl.value = Math.max(0, Math.min(1.5, v));
+    },
     restore(){ if (typeof setFeedback === 'function') setFeedback(parseFloat(document.getElementById('delay-fb-val').dataset.value) || 0.3); },
     valId: 'delay-fb-val',
   },
@@ -3596,6 +3724,10 @@ function lfoModuleHtml(idx){
   <div class="mod-head" style="margin-bottom:5px;">
     <span class="mod-title" style="font-size:.66rem;">LFO ${idx}</span>
     <button class="byp-btn off" id="lfo${idx}-enable-btn" onclick="toggleLfo(${idx})" style="padding:1px 7px;font-size:.58rem;">OFF</button>
+  </div>
+  <!-- v68: LFO presets — 6 slots, click recall · shift+click save -->
+  <div class="head-presets" id="lfo${idx}-presets" style="display:flex;gap:3px;flex-wrap:nowrap;margin-bottom:6px;">
+    ${[1,2,3,4,5,6].map(n => `<button class="head-preset-slot" data-slot="${n-1}" data-fx="lfo${idx}" onclick="handleLfoPreset(event, ${idx}, ${n-1})" title="Preset ${n} — click recall · shift+click save">${n}</button>`).join('')}
   </div>
 
   <div class="ctrl" style="margin-bottom:4px;">
@@ -3827,12 +3959,83 @@ function startLfoLoop(){
   tick();
 }
 
+/* ── LFO PRESETS (v68+) ──
+   6 slots per LFO. localStorage-backed (`fx_lfo${idx}_${slot}`). Click-to-
+   recall, shift+click-to-save. The save button slot lights green when full. */
+function getLfoSnapshot(idx){
+  const L = lfo(idx);
+  return {
+    enabled: L.enabled,
+    rateHz:  L.rateHz,
+    shape:   L.shape,
+    targets: L.targets.map(t => ({ paramKey: t.paramKey, min: t.min, max: t.max })),
+    rangesPerKey: { ...L.rangesPerKey },
+  };
+}
+function applyLfoSnapshot(idx, snap){
+  if (!snap) return;
+  const L = lfo(idx);
+  // Restore rangesPerKey memory first so target swaps see saved ranges.
+  L.rangesPerKey = { ...(snap.rangesPerKey || {}) };
+  // Rate + shape
+  if (typeof snap.rateHz === 'number') {
+    L.rateHz = snap.rateHz;
+    const sl = document.getElementById(`lfo${idx}-rate-sl`);
+    if (sl) sl.value = lfoRateLog.toPos(snap.rateHz);
+    setLfoRatePos(idx, lfoRateLog.toPos(snap.rateHz));
+  }
+  if (snap.shape) {
+    L.shape = snap.shape;
+    const sh = document.getElementById(`lfo${idx}-shape`);
+    if (sh) sh.value = snap.shape;
+  }
+  // Targets — set each via setLfoTarget so UI + range slider update.
+  if (Array.isArray(snap.targets)) {
+    for (let s = 0; s < snap.targets.length && s < 2; s++) {
+      const t = snap.targets[s];
+      const slot = s + 1;
+      const sel = document.getElementById(`lfo${idx}-target${slot}`);
+      if (sel) sel.value = t.paramKey || 'off';
+      setLfoTarget(idx, slot, t.paramKey || 'off');
+      if (t.paramKey !== 'off' && FX_TARGETS[t.paramKey]) {
+        L.targets[s].min = t.min;
+        L.targets[s].max = t.max;
+        updateLfoRangeUi(idx, slot);
+      }
+    }
+  }
+  // Enable state — apply LAST so applies fire with the right targets/ranges.
+  if (snap.enabled !== undefined && snap.enabled !== L.enabled) toggleLfo(idx);
+}
+function handleLfoPreset(e, idx, slot){
+  const key = `fx_lfo${idx}_${slot}`;
+  if (e.shiftKey) {
+    localStorage.setItem(key, JSON.stringify(getLfoSnapshot(idx)));
+    refreshLfoPresetSlots(idx);
+    return;
+  }
+  const raw = localStorage.getItem(key);
+  if (!raw) return;
+  try { applyLfoSnapshot(idx, JSON.parse(raw)); refreshLfoPresetSlots(idx); }
+  catch(err){ console.warn('lfo preset parse:', err); }
+}
+function refreshLfoPresetSlots(idx){
+  for (let s = 0; s < 6; s++) {
+    const btn = document.querySelector(`#lfo${idx}-presets .head-preset-slot[data-slot="${s}"]`);
+    if (!btn) continue;
+    const has = !!localStorage.getItem(`fx_lfo${idx}_${s}`);
+    btn.classList.toggle('saved', has);
+  }
+}
+
 // Public init — called once after the audio graph is up.
 function initLfo(){
   initLfoState();
   initLfoModules();
   // Default rate display
   for (let i = 1; i <= NUM_LFOS; i++) setLfoRatePos(i, lfoRateLog.toPos(2));
+  // Mark any pre-existing preset slots as saved
+  for (let i = 1; i <= NUM_LFOS; i++) refreshLfoPresetSlots(i);
   startLfoLoop();
 }
 
