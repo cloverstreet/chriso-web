@@ -184,6 +184,23 @@ body {
   background:rgba(30,30,30,.4); border-color:#555;
   color:#555; text-shadow:none; font-weight:400;
 }
+/* v69: IGN-IS button — sits next to the ON/OFF byp-btn on inputs/outputs.
+   When IGN is ON the module ignores IS preset recall + IDW updates (the
+   user's manual settings stay). Default-ON for mic/sig-gen/output so
+   loading an IS bank doesn't surprise the user. */
+.ign-btn {
+  padding:2px 6px; background:transparent;
+  border:1px solid #3a3a3a; color:#666;
+  font-family:'Courier New',monospace; font-size:.58rem;
+  font-weight:600; letter-spacing:.06em; cursor:pointer;
+  border-radius:2px; transition:all .15s; white-space:nowrap;
+  flex-shrink:0; margin-right:4px;
+}
+.ign-btn:hover { color:#aaa; border-color:#5a5a5a; }
+.ign-btn.on {
+  background:rgba(80,60,20,.35); border-color:#6a5520; color:#d8b860;
+  text-shadow:0 0 6px rgba(216,184,96,.35);
+}
 /* Preset slots row in header */
 .head-presets {
   flex-shrink:0;
@@ -569,7 +586,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 <!-- Version badge (always visible, top-right) -->
 <div id="version-badge" style="position:fixed;top:8px;right:10px;
      font-family:'Courier New',monospace;font-size:.6rem;letter-spacing:.16em;
-     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v68</div>
+     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v69</div>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
 <!-- START SCREEN                                                   -->
@@ -610,6 +627,8 @@ input.gain-meter-slider::-webkit-slider-thumb {
       <div class="module half" id="mic-module">
         <div class="mod-head">
           <span class="mod-title">MIC INPUT</span>
+          <button class="ign-btn on" id="mic-ign-btn" onclick="toggleIgnoreIs('mic')"
+            title="IGN-IS — when ON (default), this module ignores Interpolation Space preset recall + IDW updates. Toggle OFF to let IS drive this module.">IGN</button>
           <button class="byp-btn" id="input-mute" onclick="toggleMute('input')">ON</button>
         </div>
         <div class="ctrl">
@@ -667,6 +686,8 @@ input.gain-meter-slider::-webkit-slider-thumb {
       <div class="module half" id="siggen-module">
         <div class="mod-head">
           <span class="mod-title">SIGNAL GEN</span>
+          <button class="ign-btn on" id="siggen-ign-btn" onclick="toggleIgnoreIs('siggen')"
+            title="IGN-IS — when ON (default), this module ignores Interpolation Space preset recall + IDW updates.">IGN</button>
           <button class="byp-btn off" id="test-enable-btn" onclick="toggleTestTone()">OFF</button>
         </div>
         <div class="head-presets" id="siggen-head-presets" style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:7px;">
@@ -1082,6 +1103,8 @@ input.gain-meter-slider::-webkit-slider-thumb {
       <div class="module half" id="output-module">
         <div class="mod-head">
           <span class="mod-title">OUTPUT</span>
+          <button class="ign-btn on" id="output-ign-btn" onclick="toggleIgnoreIs('output')"
+            title="IGN-IS — when ON (default), this module ignores Interpolation Space preset recall + IDW updates. (Output is already excluded from IS state by convention; this button is here for future granular IGN.)">IGN</button>
           <button class="byp-btn" id="output-mute" onclick="toggleMute('output')">ON</button>
         </div>
         <div class="ctrl">
@@ -1459,14 +1482,11 @@ async function initAudio() {
       micInput.connect(micGainNode);
       micGainNode.connect(micAnalyser);
       // Populate channel selector from stream
-      const stream = micInput.mediaStream;
-      if (stream) {
-        const nCh = stream.getAudioTracks()[0]?.getSettings?.()?.channelCount || 1;
-        const chanSel = document.getElementById('input-channel');
-        chanSel.innerHTML = `<option value="mix">Mix (${nCh}ch)</option>`;
-        for (let i=0;i<nCh;i++){const o=document.createElement('option');o.value=i;o.textContent=`Ch ${i+1}`;chanSel.appendChild(o);}
-        document.getElementById('ch-note').textContent = nCh+' ch detected';
-      }
+      // v69: unified populate that reads from micInput's internal stream
+      // (Tone.UserMedia exposes it as `_mediaStream`, NOT `.mediaStream` —
+      // the old code's `.mediaStream` was undefined, so this block was a
+      // silent no-op and the channel selector stayed at "— init first —").
+      populateInputChannels();
     } catch(e) {
       document.getElementById('start-status').textContent = 'mic error: ' + e.message;
     }
@@ -1498,6 +1518,7 @@ async function initAudio() {
     showBoard();
     if (!psKeyboardSetup) { psSetupKeyboard(); psKeyboardSetup = true; }
     applyDefaultState(); // apply safe defaults
+    refreshIgnButtons(); // v69: reflect persisted IGN-IS state on the buttons
     // Slot 0 = permanent home preset at center (always reset to default state)
     requestAnimationFrame(() => {
       const homeState = getGlobalState();
@@ -1552,9 +1573,58 @@ async function changeInputDevice() {
     micGainNode.connect(micAnalyser);
     currentDeviceId = id;
     document.getElementById('ch-note').textContent = 'input active ✓';
+    // v69: populate channel selector from the opened track. If the device
+    // gives us multiple channels (e.g. multi-mic iPhone or a USB interface
+    // exposing 4/6/8 in), list them. Note: most phones expose only 1 ch
+    // via getUserMedia even when the hardware has 2-3 mics — iOS Safari
+    // hides those behind AVAudioSession which isn't exposed to web APIs.
+    populateInputChannels();
   } catch(e) {
     document.getElementById('ch-note').textContent = 'mic error: ' + e.message;
   }
+}
+
+// v69: read the currently-open mic track and populate the channel selector
+// with one option per available channel (or pairs for 2+). Without an open
+// track we leave the "— init first —" placeholder.
+function populateInputChannels(){
+  const sel = document.getElementById('input-channel');
+  if (!sel) return;
+  let chCount = 0, label = '';
+  try {
+    const stream = micInput && (micInput._mediaStream || micInput.stream || (micInput._stream && micInput._stream.mediaStream));
+    const track  = stream && stream.getAudioTracks && stream.getAudioTracks()[0];
+    if (track) {
+      const settings = track.getSettings ? track.getSettings() : {};
+      chCount = settings.channelCount || 0;
+      label = track.label || '';
+    }
+  } catch(e){}
+  if (!chCount) {
+    sel.innerHTML = '<option value="mix">— init first —</option>';
+    return;
+  }
+  let html = '';
+  if (chCount === 1) {
+    html = '<option value="0">Mono (Ch 1)</option>';
+  } else if (chCount === 2) {
+    html = '<option value="mix">Stereo (1-2)</option>'
+         + '<option value="0">Ch 1 only</option>'
+         + '<option value="1">Ch 2 only</option>';
+  } else {
+    html = `<option value="mix">All ${chCount} ch</option>`;
+    for (let i = 0; i < chCount; i += 2) {
+      const a = i + 1, b = Math.min(i + 2, chCount);
+      html += `<option value="${i}">Ch ${a}-${b}</option>`;
+    }
+    for (let i = 0; i < chCount; i++) {
+      html += `<option value="m${i}">Ch ${i+1} mono</option>`;
+    }
+  }
+  // Capability note: most phones / built-in mics still report 1 ch even
+  // when the hardware has multiple. Web APIs don't expose iOS multi-mic
+  // selection (Front/Bottom/Back) — that's behind AVAudioSession.
+  sel.innerHTML = html;
 }
 
 // Live latency readout — updates every 2s (outputLatency can change on device switch).
@@ -1846,7 +1916,7 @@ function setMicDirect(v){
   const g=parseFloat(v);
   if(micDirectG) micDirectG.gain.rampTo(g, paramRampTime);
   const el=document.getElementById('mic-direct-val');
-  if(el){el.textContent=g<0.001?'-inf dB':fmtDb(gainToDb(g))+' dB'; el.dataset.value=g;}
+  if(el){el.textContent=g<0.001?'-inf dB':fmtDb(gainToDb(g)); el.dataset.value=g;}
   const sl=document.getElementById('mic-direct-sl'); if(sl) sl.value=g;
   updateLvlThumb('mic-direct-thumb', g, -60, 6);
 }
@@ -1854,7 +1924,7 @@ function setTestDirect(v){
   const g=parseFloat(v);
   if(testDirectG) testDirectG.gain.rampTo(g, paramRampTime);
   const el=document.getElementById('test-direct-val');
-  if(el){el.textContent=g<0.001?'-inf dB':fmtDb(gainToDb(g))+' dB'; el.dataset.value=g;}
+  if(el){el.textContent=g<0.001?'-inf dB':fmtDb(gainToDb(g)); el.dataset.value=g;}
   const sl=document.getElementById('test-direct-sl'); if(sl) sl.value=g;
   updateLvlThumb('test-direct-thumb', g, -60, 6);
 }
@@ -1975,7 +2045,12 @@ function setPadBar(id, lin){
 
 // ── Default startup state ─────────────────────────────────────────
 function applyDefaultState() {
-  // Mic: muted by default (feedback prevention)
+  // v69: Mic defaults — gain at 0 dB ("ready to go"), MUTED for feedback safety,
+  // and IGNORE-IS toggled ON so loading an IS bank doesn't overwrite the user's
+  // mic settings until they explicitly opt in. User can un-mute and toggle IGN
+  // off when they want IS to control the mic.
+  const ig = document.getElementById('input-gain-db');
+  if (ig) { ig.value = 0; setInputGainDb(0); }
   inputMuted = false; toggleMute('input'); // toggles to muted
   // Sig gen: on
   testEnabled = false; toggleTestTone(); // toggles to enabled
@@ -2466,7 +2541,7 @@ function setDelayWet(v){
   const wv=parseFloat(v);
   if(!delayBypassed&&delayWetGain)delayWetGain.gain.rampTo(wv,paramRampTime);
   const wEl=document.getElementById('delay-wet-val');
-  if(wEl){wEl.textContent=wv<0.001?'-inf dB':fmtDb(gainToDb(wv))+' dB'; wEl.dataset.value=wv;}
+  if(wEl){wEl.textContent=wv<0.001?'-inf dB':fmtDb(gainToDb(wv)); wEl.dataset.value=wv;}
   const sl=document.getElementById('delay-wet'); if(sl) sl.value=wv;
   updateLvlThumb('delay-wet-thumb', wv, -60, 6);
 }
@@ -2474,7 +2549,7 @@ function setPitchToDelay(v){
   const g=parseFloat(v);
   if(pitchToDelayG)pitchToDelayG.gain.rampTo(g,paramRampTime);
   const el=document.getElementById('pitch-to-delay-val');
-  if(el){el.textContent=g<0.001?'-inf dB':fmtDb(gainToDb(g))+' dB'; el.dataset.value=g;}
+  if(el){el.textContent=g<0.001?'-inf dB':fmtDb(gainToDb(g)); el.dataset.value=g;}
   const sl=document.getElementById('pitch-to-delay'); if(sl) sl.value=g;
   // v68: drive XY pad crosshair X (gain axis -60..+6)
   const pan = parseFloat((document.getElementById('pitch-to-delay-pan-sl')||{value:0}).value)||0;
@@ -2484,7 +2559,7 @@ function setPitchToOut(v){
   const g=parseFloat(v);
   if(pitchToOutG)pitchToOutG.gain.rampTo(g,paramRampTime);
   const el=document.getElementById('pitch-to-out-val');
-  if(el){el.textContent=g<0.001?'-inf dB':fmtDb(gainToDb(g))+' dB'; el.dataset.value=g;}
+  if(el){el.textContent=g<0.001?'-inf dB':fmtDb(gainToDb(g)); el.dataset.value=g;}
   const sl=document.getElementById('pitch-to-out'); if(sl) sl.value=g;
   const pan = parseFloat((document.getElementById('pitch-to-out-pan-sl')||{value:0}).value)||0;
   updateXyCross('pitch-to-out-cross', g<=0.0001?-60:gainToDb(g), pan, -60, 6);
@@ -2522,7 +2597,7 @@ function setDelayToPitch(v){
   const g=parseFloat(v);
   if(delayToPitchG)delayToPitchG.gain.rampTo(g,paramRampTime);
   const el=document.getElementById('delay-to-pitch-val');
-  if(el){el.textContent=g<0.001?'-inf dB':fmtDb(gainToDb(g))+' dB'; el.dataset.value=g;}
+  if(el){el.textContent=g<0.001?'-inf dB':fmtDb(gainToDb(g)); el.dataset.value=g;}
   const sl=document.getElementById('delay-to-pitch'); if(sl) sl.value=g;
   updateLvlThumb('delay-to-pitch-thumb', g, -60, 6);
 }
@@ -2596,19 +2671,81 @@ function getGlobalState(){
     pitch:getFxState('pitch'), delay:getFxState('delay')
   };
 }
+/* ── IGNORE-IS (v69+) ──
+   Per-module toggle that, when ON, prevents Interpolation Space preset
+   recall + IDW blend updates from overwriting that module's params. The
+   module's settings are still saved into IS state when slots are written,
+   but recall is suppressed for that module. Defaults to ON for the modules
+   the user typically wants kept stable across IS exploration (mic + sig
+   gen + output).
+   FUTURE (per Christopher, May 2026): granular IGN — block subsets of
+   keys per module (e.g. block on/off + volume but still allow freq /
+   waveform changes via IS). For now this is module-level all-or-nothing. */
+const IGN_KEY = 'fx_ignore_is';
+const moduleIgnoreIs = (function loadIgn(){
+  const def = { mic: true, siggen: true, output: true };
+  try {
+    const raw = localStorage.getItem(IGN_KEY);
+    if (!raw) return def;
+    const obj = JSON.parse(raw);
+    return { ...def, ...obj };
+  } catch(e){ return def; }
+})();
+function saveIgnState(){
+  try { localStorage.setItem(IGN_KEY, JSON.stringify(moduleIgnoreIs)); } catch(e){}
+}
+function isIgn(moduleId){ return !!moduleIgnoreIs[moduleId]; }
+function refreshIgnButtons(){
+  for (const id of ['mic', 'siggen', 'output']) {
+    const btn = document.getElementById(`${id}-ign-btn`);
+    if (!btn) continue;
+    btn.classList.toggle('on', !!moduleIgnoreIs[id]);
+  }
+}
+function toggleIgnoreIs(moduleId){
+  moduleIgnoreIs[moduleId] = !moduleIgnoreIs[moduleId];
+  saveIgnState();
+  refreshIgnButtons();
+}
+// Module key buckets — which IS keys belong to which module. Used to skip
+// applying when that module's IGN is ON.
+const IGN_KEYS = {
+  mic:    ['inputGainDb', 'micPan', 'micDirect'],
+  siggen: ['testEnabled', 'testWave', 'testFreqHz', 'testGainDb', 'testPan', 'testDirect'],
+  output: ['outputGainDb', 'outputPan'],   // output keys are excluded from IS state anyway, kept here for completeness/future
+};
+// Strip ignored keys from a state object before applying it.
+function filterIgnoredKeys(s){
+  if (!s) return s;
+  const out = { ...s };
+  for (const moduleId in IGN_KEYS) {
+    if (!moduleIgnoreIs[moduleId]) continue;
+    for (const k of IGN_KEYS[moduleId]) delete out[k];
+  }
+  return out;
+}
+
 function applyGlobalState(s){
-  document.getElementById('input-gain-db').value=s.inputGainDb; setInputGainDb(s.inputGainDb);
-  // outputGainDb intentionally NOT restored — output module excluded from IS world
-  if(s.micPan!==undefined){const mp=document.getElementById('mic-pan-sl'); if(mp){mp.value=s.micPan; setMicPan(s.micPan);}}
-  if(s.micDirect!==undefined){const mdr=document.getElementById('mic-direct-sl'); if(mdr){mdr.value=s.micDirect; setMicDirect(s.micDirect);}}
-  if(s.testDirect!==undefined){const tdr=document.getElementById('test-direct-sl'); if(tdr){tdr.value=s.testDirect; setTestDirect(s.testDirect);}}
-  document.getElementById('test-wave').value=s.testWave; setTestWave(s.testWave);
-  setTestFreqHz(s.testFreqHz); document.getElementById('test-gain-sl').value=s.testGainDb; setTestGainDb(s.testGainDb);
-  if(s.testEnabled!==testEnabled) toggleTestTone();
-  // mic mute, output gain/mute, output device/channels — all preserved (not part of IS state)
-  if(s.pitchBypassed!==undefined && s.pitchBypassed!==pitchBypassed) toggleFxBypass('pitch');
-  if(s.delayBypassed!==undefined && s.delayBypassed!==delayBypassed) toggleFxBypass('delay');
-  applyFxState('pitch',s.pitch); applyFxState('delay',s.delay);
+  s = filterIgnoredKeys(s);   // v69: respect per-module IGN-IS
+  // Mic
+  if (s.inputGainDb !== undefined) {
+    document.getElementById('input-gain-db').value = s.inputGainDb;
+    setInputGainDb(s.inputGainDb);
+  }
+  if (s.micPan    !== undefined) { const mp =document.getElementById('mic-pan-sl');    if (mp)  { mp.value = s.micPan;    setMicPan(s.micPan); } }
+  if (s.micDirect !== undefined) { const mdr=document.getElementById('mic-direct-sl'); if (mdr) { mdr.value = s.micDirect; setMicDirect(s.micDirect); } }
+  // Sig gen
+  if (s.testDirect !== undefined) { const tdr=document.getElementById('test-direct-sl'); if (tdr) { tdr.value = s.testDirect; setTestDirect(s.testDirect); } }
+  if (s.testWave   !== undefined) { document.getElementById('test-wave').value = s.testWave; setTestWave(s.testWave); }
+  if (s.testFreqHz !== undefined) setTestFreqHz(s.testFreqHz);
+  if (s.testGainDb !== undefined) { document.getElementById('test-gain-sl').value = s.testGainDb; setTestGainDb(s.testGainDb); }
+  if (s.testEnabled !== undefined && s.testEnabled !== testEnabled) toggleTestTone();
+  // Output: outputGainDb / mute intentionally NOT restored — output excluded from IS world
+  // FX (always applied; future granular IGN could subdivide)
+  if (s.pitchBypassed !== undefined && s.pitchBypassed !== pitchBypassed) toggleFxBypass('pitch');
+  if (s.delayBypassed !== undefined && s.delayBypassed !== delayBypassed) toggleFxBypass('delay');
+  if (s.pitch) applyFxState('pitch', s.pitch);
+  if (s.delay) applyFxState('delay', s.delay);
 }
 // v61: When the listener is at home/center and the user shift-clicks (or shift-N's)
 // to save, place each slot at a clockwise position around the canvas instead of
