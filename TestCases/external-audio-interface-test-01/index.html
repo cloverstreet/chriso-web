@@ -58,6 +58,10 @@
         <button id="permBtn">1 · Grant Mic Access</button>
         <div class="lbl">Input Device</div>
         <select id="deviceSel" disabled><option>—</option></select>
+        <div class="kv">
+          <span class="lbl">iOS auto-gain</span>
+          <input type="checkbox" id="agcToggle" style="margin:0;">
+        </div>
         <button id="openBtn" disabled>2 · Open Stream</button>
         <button id="closeBtn" disabled>Stop Stream</button>
       </div>
@@ -135,6 +139,7 @@ let sourceNode = null, splitter = null;
 let masterMon = null;          // sums all armed channels
 let masterMeter = null;        // MeterStrip on masterMon
 let outRouter = null;          // shared makeOutputRouter
+let outLimiter = null;         // DynamicsCompressor before destination
 let channelStrips = [];
 let monitoring = false;
 let rafId = null;
@@ -197,9 +202,15 @@ $('closeBtn').addEventListener('click', closeStream);
 async function openStream() {
   if (stream) closeStream();
   const deviceId = $('deviceSel').value;
-  const constraints = W.micConstraints(deviceId, 32);  // ask high; browser delivers what it can
-  // Translate ideal-counted channels: tells Chrome we'd take more if available
+  const constraints = W.micConstraints(deviceId, 32);
   constraints.audio.channelCount = { ideal: 32 };
+  // iOS auto-gain toggle: when checked, let iOS Safari run its hardware
+  // AGC. On mobile that's the difference between "barely audible" and
+  // "usable loudness" because iOS's raw mic capture is very quiet by
+  // default. On a real audio interface (Fireface etc.), leave it off.
+  if ($('agcToggle') && $('agcToggle').checked) {
+    constraints.audio.autoGainControl = true;
+  }
 
   try {
     stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -229,18 +240,34 @@ async function openStream() {
   masterMon = audioCtx.createGain();
   masterMon.gain.value = W.dbToGain(0);
 
-  // Master output router: masterMon → split(2) → merge(maxCh) → destination
-  outRouter = W.makeOutputRouter(audioCtx, masterMon, [0, 1]);
+  // Output limiter — a transparent DynamicsCompressor sits between the
+  // master gain and the output router. Lets us safely raise the master
+  // slider ceiling to +30 dB on quiet sources (iPhone mic, etc.) without
+  // clipping the output. Threshold -10 dB, knee 12, ratio 8 — closer to
+  // brickwall limiter than musical compressor.
+  outLimiter = audioCtx.createDynamicsCompressor();
+  outLimiter.threshold.value = -10;
+  outLimiter.knee.value      = 12;
+  outLimiter.ratio.value     = 8;
+  outLimiter.attack.value    = 0.003;
+  outLimiter.release.value   = 0.15;
+  masterMon.connect(outLimiter);
+
+  // Output router on the LIMITER output, not raw masterMon — so every
+  // route to destination passes through the limiter.
+  outRouter = W.makeOutputRouter(audioCtx, outLimiter, [0, 1]);
   W.populateChannelPairs($('outChannelSel'), outRouter.maxCh);
   $('outChannelSel').disabled = false;
   $('vMaxCh').textContent = outRouter.maxCh + ' ch';
 
-  // Master meter strip — taps masterMon, slider drives masterMon.gain
+  // Master meter strip — gainMax raised from +12 → +30 dB. Quiet sources
+  // (iPhone mic with autoGainControl off) need much more digital boost
+  // than typical studio mics. The limiter (above) keeps the output safe.
   $('masterMeterMount').innerHTML = '';
   masterMeter = new W.MeterStrip($('masterMeterMount'), masterMon, {
     label: 'OUT',
     gainNode: masterMon,
-    gainMin: -60, gainMax: 12, gainDefault: 0,
+    gainMin: -60, gainMax: 30, gainDefault: 0,
     height: 100,
   });
   masterMeter.start();
@@ -259,7 +286,7 @@ function closeStream() {
   if (stream) stream.getTracks().forEach(t => t.stop());
   if (audioCtx) audioCtx.close();
   stream = null; audioCtx = null; sourceNode = null; splitter = null;
-  masterMon = null; outRouter = null; channelStrips = [];
+  masterMon = null; outRouter = null; outLimiter = null; channelStrips = [];
   $('rack').innerHTML = '<div class="empty-rack">no stream open</div>';
   $('masterMeterMount').innerHTML = '';
   ['Ch','SR','EC','NS','AGC','Base','Out'].forEach(k => setVal(k,'—'));
