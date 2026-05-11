@@ -586,7 +586,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 <!-- Version badge (always visible, top-right) -->
 <div id="version-badge" style="position:fixed;top:8px;right:10px;
      font-family:'Courier New',monospace;font-size:.6rem;letter-spacing:.16em;
-     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v70</div>
+     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v70.1</div>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
 <!-- START SCREEN                                                   -->
@@ -1295,6 +1295,7 @@ let delayOutSum=null; // sums dry+wet for delay output meter tap
 // fan out to both.
 let pitchShift, pitchShiftR, pitchDryG, pitchWetG;
 let pitchInSplitter, pitchOutMerger;
+let pitchBridgeL, pitchBridgeR;
 let pitchSumG, pitchToDelayG, pitchToOutG; // pitch post-mix sends
 let pitchToDelayPanner, pitchToOutPanner;  // v68: per-send pan
 let delayToPitchG; // delay→pitch feedback send
@@ -1370,17 +1371,23 @@ async function initAudio() {
     micPanner      = new Tone.Panner(0); // mic stereo pan
     preFxGain      = stereoGain(1);      // sums mic + test → FX
     inputMeter     = new Tone.Meter({ normalRange:true, smoothing:0.85 });
-    // v70: two pitch shifters in parallel for true stereo. Tone.PitchShift's
+    // v70.1: two pitch shifters in parallel for true stereo. Tone.PitchShift's
     // phase vocoder is fundamentally mono internally and centers its output
     // regardless of input panning. Split the incoming stereo into L+R,
     // pitch each independently, merge back to stereo.
-    // Using Tone.Split / Tone.Merge (not native ChannelSplitter/Merger) so
-    // the whole chain stays in Tone-land — native nodes don't accept Tone
-    // input wrappers in their .connect calls without manual unwrapping.
+    //
+    // Implementation note: Tone.Split / Tone.Merge in v14.8.49 don't accept
+    // the (dst, outIdx, inIdx) connect signature cleanly — they throw
+    // "A value with the given key could not be found" during init. Use
+    // NATIVE ChannelSplitter/Merger instead, with Tone.Gain bridges to
+    // cross the Tone↔native boundary (Tone.Gain.input/.output are native
+    // AudioNodes so native .connect accepts them as targets/sources).
     pitchShift     = new Tone.PitchShift({ pitch:0, windowSize:0.1 }); // L
     pitchShiftR    = new Tone.PitchShift({ pitch:0, windowSize:0.1 }); // R
-    pitchInSplitter= new Tone.Split(2);
-    pitchOutMerger = new Tone.Merge(2);
+    pitchInSplitter= Tone.context.rawContext.createChannelSplitter(2);
+    pitchOutMerger = Tone.context.rawContext.createChannelMerger(2);
+    pitchBridgeL   = new Tone.Gain(1);   // native splitter → bridge → Tone pitchShift
+    pitchBridgeR   = new Tone.Gain(1);
     pitchDryG      = stereoGain(0);
     pitchWetG      = stereoGain(1);
     pitchSumG      = stereoGain(1);   // sums dry+wet pitch output
@@ -1463,18 +1470,25 @@ async function initAudio() {
     // Pitch internal: preFxGain → dry+wet → pitchSumG
     // Dry path (used during true-bypass) — unchanged, preserves stereo natively.
     preFxGain.connect(pitchDryG);
-    // v70: STEREO PITCH SHIFT path via Tone.Split / Tone.Merge.
-    //   preFxGain → split → {L → pitchShift → merge.ch0,
-    //                        R → pitchShiftR → merge.ch1}
-    //                      → pitchWetG → pitchSumG.
-    // Tone.PitchShift's phase vocoder is mono internally and centers its
-    // output regardless of input panning, hence the dual-instance workaround.
-    preFxGain.connect(pitchInSplitter);
-    pitchInSplitter.connect(pitchShift,  0, 0);   // split ch0 (L) → pitchShift
-    pitchInSplitter.connect(pitchShiftR, 1, 0);   // split ch1 (R) → pitchShiftR
-    pitchShift.connect(pitchOutMerger,  0, 0);    // pitched L → merge ch0
-    pitchShiftR.connect(pitchOutMerger, 0, 1);    // pitched R → merge ch1
-    pitchOutMerger.connect(pitchWetG);
+    // v70.1: STEREO PITCH SHIFT path with native splitter/merger.
+    //   preFxGain → splitter → {ch0 → bridgeL → pitchShift,
+    //                           ch1 → bridgeR → pitchShiftR}
+    //   pitchShift / pitchShiftR → merger (input slots 0, 1) → pitchWetG.
+    //
+    // The native ChannelSplitter/Merger accept native AudioNodes only on
+    // their `.connect` calls — Tone.Gain's .input is a native GainNode so
+    // it works as a target. Going back into Tone from the merger uses
+    // pitchWetG.input (also a native gain). Tone PitchShift instances
+    // sit between bridges in pure Tone-land, where .connect handles
+    // wrapper unwrapping automatically.
+    preFxGain.connect(pitchInSplitter);                  // Tone.Gain → native splitter (Tone unwraps)
+    pitchInSplitter.connect(pitchBridgeL.input, 0);      // splitter ch0 → bridgeL (native target)
+    pitchInSplitter.connect(pitchBridgeR.input, 1);      // splitter ch1 → bridgeR
+    pitchBridgeL.connect(pitchShift);                    // Tone→Tone (clean)
+    pitchBridgeR.connect(pitchShiftR);                   // Tone→Tone
+    pitchShift.connect(pitchOutMerger,  0, 0);           // Tone PitchShift → native merger ch0
+    pitchShiftR.connect(pitchOutMerger, 0, 1);           // Tone PitchShift → native merger ch1
+    pitchOutMerger.connect(pitchWetG.input);             // native merger → Tone.Gain (.input is native)
     pitchDryG.connect(pitchSumG); pitchWetG.connect(pitchSumG);
     // Pitch sends (post internal mix): to delay, and direct to output
     // v68: gain → panner per send so each send can be pan-positioned independently
