@@ -155,6 +155,10 @@
         <select id="outDeviceSel" disabled><option>—</option></select>
         <div class="lbl">Output channel pair</div>
         <select id="outChannelSel" disabled><option>Ch 1-2</option></select>
+        <label class="agc-row" style="display:flex; align-items:center; gap:8px; padding:6px 0;">
+          <input type="checkbox" id="agcToggle" style="width:18px; height:18px; touch-action:none;">
+          <span class="lbl" style="cursor:pointer">iOS auto-gain&nbsp;(check on phones if mic is too quiet)</span>
+        </label>
         <button id="step2NextBtn" disabled>Next</button>
       </div>
     </div>
@@ -435,10 +439,15 @@ function refreshStep2NextEligibility() {
   $('step2NextBtn').disabled = !(permissionGranted && $('deviceSel').value !== undefined && $('outDeviceSel').value !== undefined);
 }
 
+// Restore previous AGC choice so iPhone users don't have to re-tick each visit
+const savedAgc = sessionStorage.getItem('tf.autoGainControl');
+if (savedAgc === '1') $('agcToggle').checked = true;
+
 $('step2NextBtn').addEventListener('click', () => {
   sessionStorage.setItem('tf.inputDeviceId',     $('deviceSel').value);
   sessionStorage.setItem('tf.outputDeviceId',    $('outDeviceSel').value);
   sessionStorage.setItem('tf.outputChannelPair', $('outChannelSel').value);
+  sessionStorage.setItem('tf.autoGainControl',   $('agcToggle').checked ? '1' : '0');
   $('s2Summary').textContent = compactDeviceLabel($('deviceSel')) + ' → ' + compactDeviceLabel($('outDeviceSel'));
   goToStep(3);
   startMicTest();
@@ -453,8 +462,11 @@ function compactDeviceLabel(sel) {
 // ── Step 3: Mic test ───────────────────────────────────
 async function startMicTest() {
   if (testStream) stopMicTest();
+  const useAgc = $('agcToggle').checked;
+  const cons = W.micConstraints($('deviceSel').value, 1);
+  if (useAgc) cons.audio.autoGainControl = true;
   try {
-    testStream = await navigator.mediaDevices.getUserMedia(W.micConstraints($('deviceSel').value, 1));
+    testStream = await navigator.mediaDevices.getUserMedia(cons);
   } catch (e) { alert('Mic open failed: ' + e.message); return; }
 
   testCtx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
@@ -465,17 +477,31 @@ async function startMicTest() {
   testMicGain   = testCtx.createGain(); testMicGain.gain.value = W.dbToGain(0);
   testMicSource.connect(testMicGain);
 
-  // Monitor path (off by default)
+  // Monitor path through a transparent limiter so cranked-up master gain
+  // doesn't clip the destination. Limiter: threshold -10, knee 12, ratio 8.
+  const testLimiter = testCtx.createDynamicsCompressor();
+  testLimiter.threshold.value = -10;
+  testLimiter.knee.value      = 12;
+  testLimiter.ratio.value     = 8;
+  testLimiter.attack.value    = 0.003;
+  testLimiter.release.value   = 0.15;
   testMonGain = testCtx.createGain(); testMonGain.gain.value = W.dbToGain(-12);
   testMicGain.connect(testMonGain);
+  testMonGain.connect(testLimiter);
+  // testLimiter → destination wired by the monitor toggle below
 
+  // Self meter — gainMax raised +12 → +30 so quiet sources (iPhone mic
+  // with AGC off, distant lavs) have usable headroom. Limiter keeps the
+  // output safe at high boost values.
   $('testMeterMount').innerHTML = '';
   testMeter = new W.MeterStrip($('testMeterMount'), testMicGain, {
     label: 'YOUR MIC', gainNode: testMicGain,
-    gainMin: -30, gainMax: 12, gainDefault: 0,
+    gainMin: -30, gainMax: 30, gainDefault: 0,
     height: 90, stereo: false,
   });
   testMeter.start();
+  // Stash the limiter so the monitor toggle can connect through it
+  testCtx.__tfLimiter = testLimiter;
 
   $('vSR').textContent    = (testCtx.sampleRate || 48000) + ' Hz';
   $('vFloor').textContent = ((testCtx.baseLatency + testCtx.outputLatency) * 1000).toFixed(2) + ' ms';
@@ -494,12 +520,17 @@ function stopMicTest() {
 $('monitorBtn').addEventListener('click', () => {
   if (!testCtx) return;
   monitoring = !monitoring;
+  // Connect the limiter, not the raw gain, to destination — so the master
+  // can be cranked without clipping when AGC's off and we're chasing
+  // iPhone mic levels.
+  const lim = testCtx.__tfLimiter;
   if (monitoring) {
-    testMonGain.connect(testCtx.destination);
+    if (lim) lim.connect(testCtx.destination);
+    else testMonGain.connect(testCtx.destination);
     $('monitorBtn').classList.add('active');
     $('monitorBtn').textContent = 'Monitor: ON';
   } else {
-    try { testMonGain.disconnect(testCtx.destination); } catch (e) {}
+    try { if (lim) lim.disconnect(testCtx.destination); else testMonGain.disconnect(testCtx.destination); } catch (e) {}
     $('monitorBtn').classList.remove('active');
     $('monitorBtn').textContent = 'Monitor: OFF';
   }

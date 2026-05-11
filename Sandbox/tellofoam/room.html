@@ -180,6 +180,7 @@ let peer = null;
 let myStream = null;
 let audioCtx = null;
 let micSource = null, micGain = null, micDest = null;
+let outLimiter = null;   // DynamicsCompressor between local audio and destination
 let selfMeter = null;
 let muted = false;
 const peers = new Map();
@@ -218,9 +219,14 @@ function setDot(id, state) {
 async function openLocalAudio() {
   // Use saved deviceId if present and non-empty, else system default
   const deviceId = SAVED_INPUT || undefined;
+  // AGC opt-in carried over from entrance Step 2 — required on iPhone
+  // for usable mic loudness. Default off everywhere else.
+  const useAgc = sessionStorage.getItem('tf.autoGainControl') === '1';
+  const cons = W.micConstraints(deviceId, 1);
+  if (useAgc) cons.audio.autoGainControl = true;
   let rawStream;
   try {
-    rawStream = await navigator.mediaDevices.getUserMedia(W.micConstraints(deviceId, 1));
+    rawStream = await navigator.mediaDevices.getUserMedia(cons);
   } catch (e) {
     throw new Error('mic open: ' + e.message);
   }
@@ -230,17 +236,31 @@ async function openLocalAudio() {
     try { await audioCtx.setSinkId(SAVED_OUTPUT); } catch (e) { console.warn('setSinkId:', e); }
   }
 
+  // Output limiter — transparent DynamicsCompressor sitting between every
+  // local audio source (self-monitor, incoming peers) and audioCtx.destination.
+  // Lets self mic + per-peer gains be cranked without clipping the output.
+  // Threshold -10, knee 12, ratio 8 — brickwall-ish.
+  outLimiter = audioCtx.createDynamicsCompressor();
+  outLimiter.threshold.value = -10;
+  outLimiter.knee.value      = 12;
+  outLimiter.ratio.value     = 8;
+  outLimiter.attack.value    = 0.003;
+  outLimiter.release.value   = 0.15;
+  outLimiter.connect(audioCtx.destination);
+
   micSource = audioCtx.createMediaStreamSource(rawStream);
   micGain   = audioCtx.createGain(); micGain.gain.value = W.dbToGain(0);
   micDest   = audioCtx.createMediaStreamDestination();
   micSource.connect(micGain).connect(micDest);
   myStream  = micDest.stream;
 
-  // Self meter
+  // Self meter — gainMax raised +12 → +30 so quiet sources (iPhone mic
+  // with AGC off, distant lavs) can be boosted enough for peers to hear.
+  // The boosted signal feeds WebRTC encoders which clip-protect downstream.
   $('selfMeterMount').innerHTML = '';
   selfMeter = new W.MeterStrip($('selfMeterMount'), micGain, {
     label: 'YOUR MIC', gainNode: micGain,
-    gainMin: -30, gainMax: 12, gainDefault: 0,
+    gainMin: -30, gainMax: 30, gainDefault: 0,
     height: 100, stereo: false,
   });
   selfMeter.start();
@@ -454,7 +474,10 @@ function attachRemoteAudio(peerObj, remoteStream) {
   peerObj.source = audioCtx.createMediaStreamSource(remoteStream);
   peerObj.gain   = audioCtx.createGain(); peerObj.gain.gain.value = W.dbToGain(0);
   peerObj.source.connect(peerObj.gain);
-  peerObj.gain.connect(audioCtx.destination);
+  // Route through the shared output limiter (created in openLocalAudio)
+  // so a peer who joins loud can't clip the destination, and so a quiet
+  // peer can be cranked without risk.
+  peerObj.gain.connect(outLimiter || audioCtx.destination);
 
   // Chrome remote-stream workaround
   const ghost = document.createElement('audio');
