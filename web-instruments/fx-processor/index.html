@@ -586,7 +586,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 <!-- Version badge (always visible, top-right) -->
 <div id="version-badge" style="position:fixed;top:8px;right:10px;
      font-family:'Courier New',monospace;font-size:.6rem;letter-spacing:.16em;
-     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v69</div>
+     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v70</div>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
 <!-- START SCREEN                                                   -->
@@ -1288,7 +1288,13 @@ let pitchInSplit=null, pitchOutSplit=null, delayInSplit=null, delayOutSplit=null
 let pitchInAnL=null, pitchInAnR=null, pitchOutAnL=null, pitchOutAnR=null;
 let delayInAnL=null, delayInAnR=null, delayOutAnL=null, delayOutAnR=null;
 let delayOutSum=null; // sums dry+wet for delay output meter tap
-let pitchShift, pitchDryG, pitchWetG;
+// v70: pitchShift kept as the L-channel processor (legacy name preserved
+// so the rest of the code, LFO targets, preset state, etc. keep working);
+// pitchShiftR is the dedicated R-channel sibling. Together they preserve
+// stereo placement through pitch shifting. setPitchSemi / setPitchWindow
+// fan out to both.
+let pitchShift, pitchShiftR, pitchDryG, pitchWetG;
+let pitchInSplitter, pitchOutMerger;
 let pitchSumG, pitchToDelayG, pitchToOutG; // pitch post-mix sends
 let pitchToDelayPanner, pitchToOutPanner;  // v68: per-send pan
 let delayToPitchG; // delay→pitch feedback send
@@ -1364,7 +1370,17 @@ async function initAudio() {
     micPanner      = new Tone.Panner(0); // mic stereo pan
     preFxGain      = stereoGain(1);      // sums mic + test → FX
     inputMeter     = new Tone.Meter({ normalRange:true, smoothing:0.85 });
-    pitchShift     = new Tone.PitchShift({ pitch:0, windowSize:0.1 });
+    // v70: two pitch shifters in parallel for true stereo. Tone.PitchShift's
+    // phase vocoder is fundamentally mono internally and centers its output
+    // regardless of input panning. Split the incoming stereo into L+R,
+    // pitch each independently, merge back to stereo.
+    // Using Tone.Split / Tone.Merge (not native ChannelSplitter/Merger) so
+    // the whole chain stays in Tone-land — native nodes don't accept Tone
+    // input wrappers in their .connect calls without manual unwrapping.
+    pitchShift     = new Tone.PitchShift({ pitch:0, windowSize:0.1 }); // L
+    pitchShiftR    = new Tone.PitchShift({ pitch:0, windowSize:0.1 }); // R
+    pitchInSplitter= new Tone.Split(2);
+    pitchOutMerger = new Tone.Merge(2);
     pitchDryG      = stereoGain(0);
     pitchWetG      = stereoGain(1);
     pitchSumG      = stereoGain(1);   // sums dry+wet pitch output
@@ -1445,7 +1461,20 @@ async function initAudio() {
     micPanner.connect(micDirectG); micDirectG.connect(recordTap); // DIRECT → OUT bypass
     preFxGain.connect(inputMeter);
     // Pitch internal: preFxGain → dry+wet → pitchSumG
-    preFxGain.connect(pitchDryG); preFxGain.connect(pitchShift); pitchShift.connect(pitchWetG);
+    // Dry path (used during true-bypass) — unchanged, preserves stereo natively.
+    preFxGain.connect(pitchDryG);
+    // v70: STEREO PITCH SHIFT path via Tone.Split / Tone.Merge.
+    //   preFxGain → split → {L → pitchShift → merge.ch0,
+    //                        R → pitchShiftR → merge.ch1}
+    //                      → pitchWetG → pitchSumG.
+    // Tone.PitchShift's phase vocoder is mono internally and centers its
+    // output regardless of input panning, hence the dual-instance workaround.
+    preFxGain.connect(pitchInSplitter);
+    pitchInSplitter.connect(pitchShift,  0, 0);   // split ch0 (L) → pitchShift
+    pitchInSplitter.connect(pitchShiftR, 1, 0);   // split ch1 (R) → pitchShiftR
+    pitchShift.connect(pitchOutMerger,  0, 0);    // pitched L → merge ch0
+    pitchShiftR.connect(pitchOutMerger, 0, 1);    // pitched R → merge ch1
+    pitchOutMerger.connect(pitchWetG);
     pitchDryG.connect(pitchSumG); pitchWetG.connect(pitchSumG);
     // Pitch sends (post internal mix): to delay, and direct to output
     // v68: gain → panner per send so each send can be pan-positioned independently
@@ -2144,15 +2173,16 @@ function toggleFxBypass(fx){
   if(fx==='pitch'){
     pitchBypassed=!pitchBypassed;
     if(pitchBypassed){
-      // TRUE bypass: disconnect pitchShift entirely (eliminates its internal latency).
-      // Route signal through the (formerly "dry") path so it still reaches pitchSumG.
+      // TRUE bypass: disconnect the entire stereo pitch chain (eliminates
+      // its internal latency). Route via dry path so audio still reaches pitchSumG.
       pitchDryG.gain.rampTo(1,r); pitchWetG.gain.rampTo(0,r);
-      try { pitchShift.disconnect(pitchWetG); } catch(e){}
-      try { preFxGain.disconnect(pitchShift); } catch(e){}
+      try { preFxGain.disconnect(pitchInSplitter); } catch(e){}
+      // The pitchShift outputs still connect to pitchOutMerger and merger to
+      // pitchWetG — leave those alone; with no input to splitter the merger
+      // outputs silence anyway and pitchWetG is ramped to 0.
     } else {
-      // Reconnect pitchShift; v55 = always 100% wet at the pitch output (no dry/wet slider).
-      try { preFxGain.connect(pitchShift); } catch(e){}
-      try { pitchShift.connect(pitchWetG); } catch(e){}
+      // Reconnect the splitter input so stereo pitch resumes.
+      try { preFxGain.connect(pitchInSplitter); } catch(e){}
       pitchWetG.gain.rampTo(1,r); pitchDryG.gain.rampTo(0,r);
     }
     const pb=document.getElementById('pitch-bypass-btn');
@@ -2497,7 +2527,10 @@ function recordTimestamp(){
 }
 
 function setPitchSemi(v){
-  const st=parseFloat(v); if(pitchShift)pitchShift.pitch=st;
+  const st=parseFloat(v);
+  // v70: fan out to both stereo pitch shifters.
+  if(pitchShift)  pitchShift.pitch  = st;
+  if(pitchShiftR) pitchShiftR.pitch = st;
   const disp = pitchFineMode
     ? (st>=0?'+':'')+st.toFixed(2)   // fine: 2dp = cents display
     : (st>=0?'+':'')+Math.round(st); // coarse: integer semitones
@@ -2505,7 +2538,14 @@ function setPitchSemi(v){
   document.getElementById('pitch-semi-val').dataset.value=st;
 }
 function setPitchHz(hz){const st=Math.max(-36,Math.min(36,hzToSemi(Math.max(1,parseFloat(hz))))); document.getElementById('pitch-semi').value=st; setPitchSemi(st);}
-function setPitchWindow(v){if(pitchShift)pitchShift.windowSize=parseFloat(v); const ms=Math.round(parseFloat(v)*1000); document.getElementById('pitch-window-val').textContent=parseFloat(v).toFixed(2)+'s (~'+ms+'ms lat.)';}
+function setPitchWindow(v){
+  const ws=parseFloat(v);
+  // v70: fan out to both stereo pitch shifters.
+  if(pitchShift)  pitchShift.windowSize  = ws;
+  if(pitchShiftR) pitchShiftR.windowSize = ws;
+  const ms=Math.round(ws*1000);
+  document.getElementById('pitch-window-val').textContent=ws.toFixed(2)+'s (~'+ms+'ms lat.)';
+}
 function setPitchType(v){document.getElementById('pitch-window').value=v; setPitchWindow(v);}
 // v55: pitch is always 100% wet. setPitchWetDry kept as a no-op so old presets
 // and legacy code paths don't crash. dryG stays at 0, wetG stays at 1.
@@ -3755,7 +3795,11 @@ const FX_TARGETS = {
     fmt(v){ return (v >= 0 ? '+' : '') + round2(v) + ' st'; },
     parse(s){ return parseFloat(String(s).replace(/[^0-9.\-+]/g,'')); },
     apply(v){
-      if (pitchShift && !pitchBypassed) pitchShift.pitch = v;
+      // v70: write to both L/R pitch shifters so LFO modulation stays stereo.
+      if (!pitchBypassed) {
+        if (pitchShift)  pitchShift.pitch  = v;
+        if (pitchShiftR) pitchShiftR.pitch = v;
+      }
       // v68: drive the pitch slider thumb visually
       const sl = document.getElementById('pitch-semi');
       if (sl) sl.value = Math.max(-24, Math.min(24, v));
