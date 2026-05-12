@@ -586,7 +586,7 @@ input.gain-meter-slider::-webkit-slider-thumb {
 <!-- Version badge (always visible, top-right) -->
 <div id="version-badge" style="position:fixed;top:8px;right:10px;
      font-family:'Courier New',monospace;font-size:.6rem;letter-spacing:.16em;
-     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v70.1</div>
+     color:#555;pointer-events:none;z-index:50;">FX PROCESSOR · v71</div>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
 <!-- START SCREEN                                                   -->
@@ -745,18 +745,30 @@ input.gain-meter-slider::-webkit-slider-thumb {
           <span><span class="k">gain</span> <span class="ctrl-val" id="test-gain-val" data-value="-6" title="Click to type a precise dB value">-6 dB</span></span>
           <span><span class="k">pan</span> <span class="ctrl-val" id="test-pan-val" data-value="0" title="Click to type pan (L100..R100 or 0)">C</span></span>
         </div>
-        <!-- DIRECT → OUT — v65 level slider w/ stereo meter -->
-        <div style="margin-bottom:5px;padding-top:5px;border-top:1px solid #1a1a1a;">
-          <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px;">
-            <label style="font-size:.62rem;letter-spacing:.08em;color:#888;">DIRECT → OUT</label>
-            <span class="ctrl-val" id="test-direct-val" data-value="-60" title="Click to type a precise dB value (-inf..+6)">-inf dB</span>
+        <!-- DIRECT → OUT — v71 XY gain/pan/meter pad w/ side label.
+             SIG GEN's direct-out path has its own panner (testDirectPanner)
+             that previously mirrored testPanner via setTestPan. Now it's
+             independently controllable: X = gain (-60..+6 dB), Y = pan. -->
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;padding-top:5px;border-top:1px solid #1a1a1a;">
+          <div style="flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-start;min-width:78px;">
+            <label style="font-size:.62rem;letter-spacing:.08em;color:#aaa;">DIRECT → OUT</label>
+            <div style="display:flex;flex-direction:column;font-size:.54rem;color:#666;letter-spacing:.04em;line-height:1.35;margin-top:2px;">
+              <span><span style="color:#555;letter-spacing:.1em;">G </span><span class="ctrl-val" id="test-direct-val" data-value="0" title="Click to type a precise dB value (-inf..+6)">-inf dB</span></span>
+              <span><span style="color:#555;letter-spacing:.1em;">P </span><span class="ctrl-val" id="test-direct-pan-val" data-value="0" title="Click to type pan">C</span></span>
+            </div>
           </div>
-          <input type="range" id="test-direct-sl" min="0" max="1" step="0.01" value="0" style="display:none;">
-          <div class="lvl-slider" id="test-direct-pad" title="SIG GEN direct send to output (-60 dB..-inf to +6 dB). Drag · dblclick = 0 dB.">
-            <div class="lvl-meter-l" id="test-direct-meter-l"></div>
-            <div class="lvl-meter-r" id="test-direct-meter-r"></div>
-            <div class="lvl-zero-line"></div>
-            <div class="lvl-thumb" id="test-direct-thumb"></div>
+          <input type="range" id="test-direct-sl"     min="0"  max="1" step="0.01" value="0" style="display:none;">
+          <input type="range" id="test-direct-pan-sl" min="-1" max="1" step="0.01" value="0" style="display:none;">
+          <div class="gp-pad" id="test-direct-pad" style="--zero-x:90.9%;flex:1;height:30px;"
+               title="Sig gen → master out. L/R = gain (-60..+6 dB), U/D = pan. Drag · dblclick = 0 dB / center.">
+            <div class="gp-meter gp-meter-l" id="test-direct-meter-l"></div>
+            <div class="gp-meter gp-meter-r" id="test-direct-meter-r"></div>
+            <div class="gp-center-line"></div>
+            <div class="gp-zero-line"></div>
+            <div class="gp-zero-label">0</div>
+            <div class="gp-cross" id="test-direct-cross">
+              <div class="gp-vline"></div><div class="gp-hline"></div><div class="gp-puck"></div>
+            </div>
           </div>
         </div>
         <!-- ADSR (hidden in steady mode) — gain+meter moved into XY pad above -->
@@ -1548,10 +1560,12 @@ async function initAudio() {
     initLfo();
     // v65: bind level sliders (1D — sends with no pan dimension).
     bindLvlSlider('mic-direct-pad',     -60, 6, v => setMicDirect(v));
-    bindLvlSlider('test-direct-pad',    -60, 6, v => setTestDirect(v));
     bindLvlSlider('delay-wet-pad',      -60, 6, v => setDelayWet(v));
     bindLvlSlider('delay-to-pitch-pad', -60, 6, v => setDelayToPitch(v));
-    // v68: pitch sends are now XY gain/pan pads — gain on X, pan on Y.
+    // v68: pitch sends are XY gain/pan pads. v71: sig-gen DIRECT → OUT too.
+    bindGainPanPad('test-direct-pad', -60, 6,
+      db => setTestDirect(db <= -60 ? 0 : dbToGain(db)),
+      v  => setTestDirectPan(v));
     bindGainPanPad('pitch-to-delay-pad', -60, 6,
       db => setPitchToDelay(db <= -60 ? 0 : dbToGain(db)),
       v  => setPitchToDelayPan(v));
@@ -1837,7 +1851,8 @@ function toggleTestTone(){
 function setTestPan(v) {
   const pan = parseFloat(v);
   if (testPanner)       testPanner.pan.rampTo(pan, 0.05);
-  if (testDirectPanner) testDirectPanner.pan.rampTo(pan, 0.05);   // v68: direct-out follows
+  // v71: testDirectPanner is now independently controlled via setTestDirectPan,
+  // not mirrored. The user wanted DIRECT → OUT to have its own pan dimension.
   const el = document.getElementById('test-pan-val');
   if (el) {
     if (Math.abs(pan) < 0.03) el.textContent = 'C';
@@ -1914,22 +1929,42 @@ function _setBarPair(prefix, lin){
   const l = document.getElementById(prefix+'-meter-l'); if (l) l.style.width = pct.toFixed(1)+'%';
   const r = document.getElementById(prefix+'-meter-r'); if (r) r.style.width = pct.toFixed(1)+'%';
 }
+// v71: pan-aware variant for the XY-pad sends. Takes a mono source level
+// and a pan value (-1..+1), splits via equal-power into L/R, and drives
+// each meter independently — so dragging pan on the pad visibly moves
+// energy from one bar to the other.
+function _setBarPairPanned(prefix, monoLin, pan){
+  const p  = Math.max(-1, Math.min(1, pan || 0));
+  const theta = (p + 1) / 2 * Math.PI / 2;
+  const lLin = monoLin * Math.cos(theta);
+  const rLin = monoLin * Math.sin(theta);
+  const pct = (lin) => {
+    if (lin < SILENCE) return 0;
+    const db = gainToDb(lin);
+    return Math.max(0, Math.min(100, (db + 60) / 66 * 100));
+  };
+  const l = document.getElementById(prefix+'-meter-l'); if (l) l.style.width = pct(lLin).toFixed(1)+'%';
+  const r = document.getElementById(prefix+'-meter-r'); if (r) r.style.width = pct(rLin).toFixed(1)+'%';
+}
 function updateSendMeters(){
   // Mic direct: micPanner output × micDirectG. Approximate with mic RMS × send gain.
   const micRms = getAnalyserRMS(micAnalyser) || 0;
   const micPostMute = inputMuted ? 0 : micRms;
   const micDirectGain = (micDirectG && micDirectG.gain) ? micDirectG.gain.value : 0;
   _setBarPair('mic-direct', micPostMute * micDirectGain);
-  // Sig-gen direct: testAnalyser × testDirectG.
+  // Sig-gen direct: testAnalyser × testDirectG, panned by testDirectPanner.
   const tRms = getAnalyserRMS(testAnalyser) || 0;
   const testDirectGain = (testDirectG && testDirectG.gain) ? testDirectG.gain.value : 0;
-  _setBarPair('test-direct', tRms * testDirectGain);
-  // Pitch sends: pitchOutAnL/R as the source level, scaled by send gain.
-  const pIn = (getAnalyserRMS(pitchOutAnL) + getAnalyserRMS(pitchOutAnR)) * 0.5 || 0;
+  const testDirectPan  = (testDirectPanner && testDirectPanner.pan) ? testDirectPanner.pan.value : 0;
+  _setBarPairPanned('test-direct', tRms * testDirectGain, testDirectPan);
+  // Pitch sends: pitchOutAnL/R as the source level, scaled by send gain, panned by per-send panner.
+  const pIn  = (getAnalyserRMS(pitchOutAnL) + getAnalyserRMS(pitchOutAnR)) * 0.5 || 0;
   const p2dG = (pitchToDelayG && pitchToDelayG.gain) ? pitchToDelayG.gain.value : 0;
   const p2oG = (pitchToOutG   && pitchToOutG.gain)   ? pitchToOutG.gain.value   : 0;
-  _setBarPair('pitch-to-delay', pIn * p2dG);
-  _setBarPair('pitch-to-out',   pIn * p2oG);
+  const p2dP = (pitchToDelayPanner && pitchToDelayPanner.pan) ? pitchToDelayPanner.pan.value : 0;
+  const p2oP = (pitchToOutPanner   && pitchToOutPanner.pan)   ? pitchToOutPanner.pan.value   : 0;
+  _setBarPairPanned('pitch-to-delay', pIn * p2dG, p2dP);
+  _setBarPairPanned('pitch-to-out',   pIn * p2oG, p2oP);
   // Delay → out: delayOutAnL/R as the post-delay source level, scaled by wet gain.
   const dOut = (getAnalyserRMS(delayOutAnL) + getAnalyserRMS(delayOutAnR)) * 0.5 || 0;
   const dwG = (delayWetGain && delayWetGain.gain) ? delayWetGain.gain.value : 0;
@@ -1969,7 +2004,23 @@ function setTestDirect(v){
   const el=document.getElementById('test-direct-val');
   if(el){el.textContent=g<0.001?'-inf dB':fmtDb(gainToDb(g)); el.dataset.value=g;}
   const sl=document.getElementById('test-direct-sl'); if(sl) sl.value=g;
-  updateLvlThumb('test-direct-thumb', g, -60, 6);
+  // v71: drive XY pad crosshair X (gain axis -60..+6).
+  const pan = parseFloat((document.getElementById('test-direct-pan-sl')||{value:0}).value)||0;
+  updateXyCross('test-direct-cross', g<=0.0001?-60:gainToDb(g), pan, -60, 6);
+}
+function setTestDirectPan(v){
+  const p = Math.max(-1, Math.min(1, parseFloat(v)));
+  if (testDirectPanner) testDirectPanner.pan.rampTo(p, 0.05);
+  const el = document.getElementById('test-direct-pan-val');
+  if (el) {
+    if (Math.abs(p) < 0.03) el.textContent = 'C';
+    else if (p < 0) el.textContent = 'L' + Math.round(Math.abs(p)*100);
+    else el.textContent = 'R' + Math.round(p*100);
+    el.dataset.value = p;
+  }
+  const sl = document.getElementById('test-direct-pan-sl'); if (sl) sl.value = p;
+  const g = parseFloat((document.getElementById('test-direct-sl')||{value:0}).value)||0;
+  updateXyCross('test-direct-cross', g<=0.0001?-60:gainToDb(g), p, -60, 6);
 }
 
 function setSigGenMode(mode){

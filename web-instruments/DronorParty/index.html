@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DronorParty — v0.10</title>
+<title>DronorParty — v0.17</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 <style>
 /* ── Canonical gain/meter strip CSS ─────────────────────────────────────
@@ -156,6 +156,7 @@ input.gain-meter-slider::-webkit-slider-thumb { width: 0; height: 0; background:
 .adsr-handle { fill:#0d0d0d; stroke:#c8a854; stroke-width:1.2; cursor:grab; }
 .adsr-handle:hover { fill:#c8a854; }
 .adsr-handle.dragging { cursor:grabbing; fill:#c8a854; }
+.adsr-handle:focus    { stroke:#e8c874; outline:none; fill:#3a2a10; }
 .adsr-gridline { stroke:#1a1a1a; stroke-width:1; }
 .adsr-gridlabel { font-family:'Courier New',monospace; font-size:6px; fill:#444; letter-spacing:.04em; }
 .adsr-pointlabel { font-family:'Courier New',monospace; font-size:7px; fill:#c8a854; pointer-events:auto; }
@@ -375,8 +376,8 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
 </head>
 <body>
 
-<div id="version-badge">DronorParty v0.16</div>
-<div id="stage-indicator">v2 / ADSR moved to noise burst · DC-removed · decay default 0.99</div>
+<div id="version-badge">DronorParty v0.17</div>
+<div id="stage-indicator">v3 / burst excite scaled 0.25× · ADSR readability standard · ↑↓←→ on focused handle</div>
 
 <div id="start-screen">
   <h1>DronorParty</h1>
@@ -1420,6 +1421,14 @@ function createDelayChain(ctx) {
 // Each burst has its DC component removed before injection so the loop
 // doesn't accumulate sub-fundamental rumble after rapid replucking.
 const PLUCK_MAX_BURST_SEC = 5;
+// v0.17: scale ADSR-shaped noise burst amplitude. v0.16 moved ADSR from
+// output-gate to noise-burst-shape — but with default ADSR levels
+// (aLevel=1, dLevel=0.85) and a long total (~595 ms), the burst was
+// injecting ~100× more energy into the 0.99-decay KS loop than the
+// pre-v0.16 "one-period noise burst" used to. Christopher: sound is
+// "too extreme"; lowering ADSR levels to 0 makes it sound like before.
+// Quarter-amplitude scale brings the natural-ring/excitation balance back.
+const BURST_EXCITE_SCALE = 0.25;
 function pluckKS(ks, freq, strength, brightness, adsr, detuneCents, haloPct) {
   if (!audioCtx || !ks) return;
   // DETUNE — random ± cents per pluck.
@@ -1469,7 +1478,8 @@ function pluckKS(ks, freq, strength, brightness, adsr, detuneCents, haloPct) {
     else if (i < aSamp + dSamp + sSamp)         envAmp = dLvl;
     else                                        envAmp = dLvl * (1 - (i - aSamp - dSamp - sSamp) / rSamp);
     if (envAmp < 0) envAmp = 0;
-    data[i] = (Math.random() * 2 - 1) * strength * envAmp;
+    // v0.17: scaled by BURST_EXCITE_SCALE to tame the post-v0.16 over-excitation.
+    data[i] = (Math.random() * 2 - 1) * strength * envAmp * BURST_EXCITE_SCALE;
     sum += data[i];
   }
   // Pass 2: subtract mean of the SHAPED buffer so the injected signal is
@@ -1856,7 +1866,14 @@ function adsrTimes(i) {
   const a = state.strings[i].adsr;
   return { tA: a.aMs, tD: a.aMs + a.dMs, tS: a.aMs + a.dMs + a.sMs, tR: a.aMs + a.dMs + a.sMs + a.rMs };
 }
-function adsrViewMaxMs(i) { return Math.max(adsrTimes(i).tR * 1.25, 500); }
+// v0.17: frozen during handle drag so the viewport doesn't zoom out as R
+// grows (which made R drags feel imprecise). Same standard as lfo-adsr-test v0.7.
+function adsrViewMaxMs(i) {
+  if (adsrDragState && adsrDragState.idx === i && adsrDragState.frozenViewMax) {
+    return adsrDragState.frozenViewMax;
+  }
+  return Math.max(adsrTimes(i).tR * 1.25, 500);
+}
 function adsrCoords(i) {
   const a = state.strings[i].adsr;
   const { w, h, mL, mR, mT, mB } = ADSR_VIEW;
@@ -1939,14 +1956,16 @@ function drawAdsr(i) {
   addSeg(c.peak.x,  c.peak.y,  c.decay.x, c.decay.y);
   addSeg(c.decay.x, c.decay.y, c.sust.x,  c.sust.y);
   addSeg(c.sust.x,  c.sust.y,  c.end.x,   c.end.y);
-  // Drag handles
+  // Drag handles — v0.17: focusable so arrow keys nudge the selected handle.
   const addHandle = (p, name) => {
     const el = document.createElementNS(NS, 'circle');
     el.setAttribute('cx', p.x); el.setAttribute('cy', p.y);
     el.setAttribute('r', ADSR_HANDLE_R);
     el.setAttribute('class', 'adsr-handle');
+    el.setAttribute('tabindex', '0');
     el.dataset.name = name; el.dataset.idx = i;
     el.addEventListener('pointerdown', onAdsrHandlePointerDown);
+    el.addEventListener('keydown',     onAdsrHandleKeyDown);
     svg.appendChild(el);
   };
   addHandle(c.peak,  'peak');
@@ -1963,10 +1982,16 @@ function drawAdsr(i) {
     el.dataset.idx = i;
     svg.appendChild(el);
   };
-  addLabel(c.peak.x  - 8, c.peak.y  - 5, a.aMs + 'ms',         'aTime');
-  addLabel(c.decay.x - 8, c.decay.y + 9, a.dMs + 'ms',         'dTime');
-  addLabel(c.sust.x  - 8, c.sust.y  + 9, a.sMs + 'ms',         'sTime');
-  addLabel(Math.min(c.end.x - 14, w - mR - 18), c.end.y - 2, a.rMs + 'ms', 'rTime');
+  // v0.17 readability standard:
+  //   • ms displays use Math.round (ints — sub-ms precision wasn't useful).
+  //   • D's label moved ABOVE its handle (was below, collided with S).
+  //   • All ms displays clamp to the plot area so labels don't drift past mR.
+  const rightEdge = w - mR;
+  const clampX = (x, wEst) => Math.max(mL, Math.min(rightEdge - wEst, x));
+  addLabel(clampX(c.peak.x  - 8, 22), c.peak.y  - 5, Math.round(a.aMs) + 'ms', 'aTime');
+  addLabel(clampX(c.decay.x - 8, 22), c.decay.y - 5, Math.round(a.dMs) + 'ms', 'dTime');   // above (was +9)
+  addLabel(clampX(c.sust.x  - 8, 22), c.sust.y  + 9, Math.round(a.sMs) + 'ms', 'sTime');
+  addLabel(clampX(c.end.x   - 14, 22), c.end.y  - 2, Math.round(a.rMs) + 'ms', 'rTime');
 }
 function bindAdsrLabels(i) {
   const wrap = document.querySelector(`[data-adsr-svg="${i}"]`).parentElement;
@@ -2021,7 +2046,10 @@ function onAdsrHandlePointerDown(e) {
   const name = e.target.dataset.name;
   e.target.classList.add('dragging');
   e.target.setPointerCapture(e.pointerId);
-  adsrDragState = { idx, name, pointerId: e.pointerId, el: e.target, svg: e.target.closest('svg') };
+  // v0.17: snapshot viewMax for the drag duration so dragging R doesn't
+  // zoom-out as it grows (matches lfo-adsr-test v0.7 standard).
+  const frozenViewMax = Math.max(adsrTimes(idx).tR * 1.25, 500);
+  adsrDragState = { idx, name, pointerId: e.pointerId, el: e.target, svg: e.target.closest('svg'), frozenViewMax };
   window.addEventListener('pointermove', onAdsrHandlePointerMove);
   window.addEventListener('pointerup',   onAdsrHandlePointerUp);
 }
@@ -2036,17 +2064,20 @@ function onAdsrHandlePointerMove(e) {
   const yClamp = Math.max(mT, Math.min(h - mB, p.y));
   const amp = 1 - (yClamp - mT) / plotH;
   const a = state.strings[adsrDragState.idx].adsr;
+  // v0.17: ms values are ints across the board — Math.round() at the drag
+  // handler is the chokepoint. (Display also Math.rounds, but storing as
+  // float would cause subsequent re-renders to show fractional ms.)
   if (adsrDragState.name === 'peak') {
-    a.aMs    = Math.max(1, Math.min(30000, ms));
+    a.aMs    = Math.round(Math.max(1, Math.min(30000, ms)));
     a.aLevel = Math.max(0, Math.min(1, amp));
     if (a.dLevel > a.aLevel) a.dLevel = a.aLevel;
   } else if (adsrDragState.name === 'decay') {
-    a.dMs    = Math.max(1, Math.min(30000, ms - a.aMs));
+    a.dMs    = Math.round(Math.max(1, Math.min(30000, ms - a.aMs)));
     a.dLevel = Math.max(0, Math.min(a.aLevel, amp));
   } else if (adsrDragState.name === 'sust') {
-    a.sMs = Math.max(1, Math.min(60000, ms - a.aMs - a.dMs));
+    a.sMs = Math.round(Math.max(1, Math.min(60000, ms - a.aMs - a.dMs)));
   } else if (adsrDragState.name === 'end') {
-    a.rMs = Math.max(1, Math.min(30000, ms - a.aMs - a.dMs - a.sMs));
+    a.rMs = Math.round(Math.max(1, Math.min(30000, ms - a.aMs - a.dMs - a.sMs)));
   }
   drawAdsr(adsrDragState.idx);
 }
@@ -2057,6 +2088,53 @@ function onAdsrHandlePointerUp(e) {
   adsrDragState = null;
   window.removeEventListener('pointermove', onAdsrHandlePointerMove);
   window.removeEventListener('pointerup',   onAdsrHandlePointerUp);
+}
+// v0.17: arrow-key nudges on the currently-focused handle.
+//   Left/Right adjusts the time axis (-1/+1 ms, Shift = ±10 ms).
+//   Up/Down adjusts the level axis (±0.01, Shift = ±0.05).
+//   Re-renders the ADSR via drawAdsr — the handle that's redrawn keeps the
+//   same dataset.name/idx, but the DOM element is new, so we move focus
+//   back onto it after the redraw.
+function onAdsrHandleKeyDown(e) {
+  const idx  = parseInt(this.dataset.idx, 10);
+  const name = this.dataset.name;
+  const a    = state.strings[idx].adsr;
+  const big  = e.shiftKey ? 10 : 1;
+  let consumed = true;
+  switch (e.key) {
+    case 'ArrowLeft':
+      if (name === 'peak')        a.aMs = Math.max(1, a.aMs - big);
+      else if (name === 'decay')  a.dMs = Math.max(1, a.dMs - big);
+      else if (name === 'sust')   a.sMs = Math.max(1, a.sMs - big);
+      else if (name === 'end')    a.rMs = Math.max(1, a.rMs - big);
+      break;
+    case 'ArrowRight':
+      if (name === 'peak')        a.aMs = Math.min(30000, a.aMs + big);
+      else if (name === 'decay')  a.dMs = Math.min(30000, a.dMs + big);
+      else if (name === 'sust')   a.sMs = Math.min(60000, a.sMs + big);
+      else if (name === 'end')    a.rMs = Math.min(30000, a.rMs + big);
+      break;
+    case 'ArrowUp':
+      if (name === 'peak')        a.aLevel = Math.min(1, a.aLevel + (e.shiftKey ? 0.05 : 0.01));
+      else if (name === 'decay')  a.dLevel = Math.min(a.aLevel, a.dLevel + (e.shiftKey ? 0.05 : 0.01));
+      else consumed = false;
+      break;
+    case 'ArrowDown':
+      if (name === 'peak')        { a.aLevel = Math.max(0, a.aLevel - (e.shiftKey ? 0.05 : 0.01)); if (a.dLevel > a.aLevel) a.dLevel = a.aLevel; }
+      else if (name === 'decay')  a.dLevel = Math.max(0, a.dLevel - (e.shiftKey ? 0.05 : 0.01));
+      else consumed = false;
+      break;
+    default:
+      consumed = false;
+  }
+  if (consumed) {
+    e.preventDefault();
+    drawAdsr(idx);
+    // After redraw, the handle DOM is new; refocus it so chained arrow
+    // presses stay on the same logical handle.
+    const newEl = document.querySelector(`[data-adsr-svg="${idx}"] .adsr-handle[data-name="${name}"]`);
+    if (newEl) newEl.focus();
+  }
 }
 
 function wireOutputControls() {
