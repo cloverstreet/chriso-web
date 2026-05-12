@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DronorParty — v0.18</title>
+<title>DronorParty — v0.18.1</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 <style>
 /* ── Canonical gain/meter strip CSS ─────────────────────────────────────
@@ -376,8 +376,8 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
 </head>
 <body>
 
-<div id="version-badge">DronorParty v0.18</div>
-<div id="stage-indicator">v4 / EXCITE slider · ADSR Attack-only burst · Jawari + Halo turned up</div>
+<div id="version-badge">DronorParty v0.18.1</div>
+<div id="stage-indicator">v5 / decay 0.993 default · ADSR → single ATTACK slider · halo pre-brightness + faster rise</div>
 
 <div id="start-screen">
   <h1>DronorParty</h1>
@@ -706,7 +706,7 @@ for (let i = 0; i < STRING_COUNT; i++) {
     pattern:   DEFAULT_PATTERN,
     intensity: 1.0,
     brightness: 1500,
-    decay:      0.99,                           // v0.16: was 0.975 — natural ring is now audible (output isn't gated by ADSR), so default longer ring
+    decay:      0.993,                          // v0.18: 0.99 → 0.993 (Christopher: longer natural ring by default; the model decay is THE primary tail-shaper now that ADSR D/S/R are out of the burst pipeline)
     pan:        0,
     gain:       -6,
     jawari:     0,                              // 0-100% wet of the soft-clip waveshaper
@@ -745,7 +745,7 @@ function defaultStringFull(i) {
     pattern:    DEFAULT_PATTERN,
     intensity:  1.0,
     brightness: 1500,
-    decay:      0.99,                            // v0.16: was 0.975
+    decay:      0.993,                           // v0.18: 0.99 → 0.993 (default factory-preset decay)
     gain:       -6,
     pan:        0,
     jawari:     0,
@@ -813,6 +813,7 @@ function loadTuningPreset(idx) {
       const inpJaw = $(`[data-jawari="${i}"]`);      if (inpJaw)  inpJaw.value  = s.jawari;
       const inpDet = $(`[data-detune="${i}"]`);      if (inpDet)  inpDet.value  = s.detune;
       const inpHal = $(`[data-halo="${i}"]`);        if (inpHal)  inpHal.value  = s.halo;
+      const inpAtk = $(`[data-attack="${i}"]`);      if (inpAtk)  inpAtk.value  = s.adsr.aMs;
       // Update the readouts
       const v = sel => document.querySelector(sel);
       const vOff = v(`[data-offset-val="${i}"]`);    if (vOff) vOff.textContent = (s.offset > 0 ? '+' : '') + s.offset + '%';
@@ -823,10 +824,10 @@ function loadTuningPreset(idx) {
       const vJaw = v(`[data-jawari-val="${i}"]`);    if (vJaw) vJaw.textContent = s.jawari + '%';
       const vDet = v(`[data-detune-val="${i}"]`);    if (vDet) vDet.textContent = '±' + s.detune + '¢';
       const vHal = v(`[data-halo-val="${i}"]`);      if (vHal) vHal.textContent = s.halo + '%';
+      const vAtk = v(`[data-attack-val="${i}"]`);    if (vAtk) vAtk.textContent = Math.round(s.adsr.aMs) + ' ms';
       const vGn  = v(`[data-str-gain-val="${i}"]`);  if (vGn)  vGn.textContent  = s.gain.toFixed(0) + ' dB';
       const vPan = v(`[data-pan-val="${i}"]`);       if (vPan) vPan.textContent = panLabel(s.pan);
       drawBargraph(i);
-      drawAdsr(i);
       updateGpCross(i);
       // Push live audio updates
       if (s.audio && audioCtx) {
@@ -1074,11 +1075,15 @@ function buildStringStrips() {
         </div>
         <input type="range" data-detune="${idx}" min="0" max="50" step="1" value="${s.detune}">
       </div>
-      <!-- ADSR envelope editor -->
-      <div title="ADSR envelope shapes the NOISE BURST that excites the KS string (input-side, not output gating). v0.18: only the Attack ramp is heard in the burst — the rest of the burst is a fixed quick fade-out. D/S/R are kept in the widget for now but don't extend the burst (kept the KS DECAY as the dominant tail-shaper, per the design note that the model's decay > ADSR's release). Drag handles, click any value to type, ←/→ ↑/↓ on a focused handle to nudge.">
-        <div class="adsr-svg-wrap">
-          <svg class="adsr-svg" data-adsr-svg="${idx}" viewBox="0 0 ${ADSR_VIEW.w} ${ADSR_VIEW.h}" preserveAspectRatio="none"></svg>
+      <!-- v0.18.1: ADSR widget replaced with a single ATTACK slider.
+           The burst is now "Attack ramp then fixed 30 ms tail to 0", so the
+           D/S/R handles never did anything useful. One knob, clear behavior. -->
+      <div class="slider-row" title="ATTACK — ramp time of the noise burst that excites the KS string. Short attack (1-5 ms) = pluck/strike. Long attack (200+ ms) = bowed-on sound, like dragging into the string. The KS model's natural decay (DECAY slider) handles the audible tail — this only shapes the excitation ramp-in.">
+        <div class="slider-label-row">
+          <span class="slider-label">ATTACK</span>
+          <span class="ctrl-val" data-attack-val="${idx}">${s.adsr.aMs} ms</span>
         </div>
+        <input type="range" data-attack="${idx}" min="1" max="2000" step="1" value="${s.adsr.aMs}">
       </div>
       <!-- 2D Gain/Pan/Meter pad -->
       <div title="Gain (left↔right) + pan (top↔bottom) + stereo level meters in one pad. Drag to set both, double-click to reset to 0 dB / center. Crosshairs show set position; bars show real-time level.">
@@ -1353,7 +1358,11 @@ function createKSChain(ctx) {
   shaper.connect(jwWet);
   jwDry.connect(panner);
   jwWet.connect(panner);
-  filter.connect(haloDelay);
+  // v0.18.1: tap the halo INPUT from loopFIR (pre-brightness-filter) so it
+  // sees the full KS string spectrum. Previously fed from `filter` (which
+  // cuts above ~2.5 kHz), starving the 1.4 kHz comb resonance of upper-
+  // harmonic material to ring — hence "I don't hear any effect from Halo".
+  loopFIR.connect(haloDelay);
   haloEnv.connect(panner);
   panner.connect(strGain);
 
@@ -1517,16 +1526,19 @@ function pluckKS(ks, freq, strength, brightness, adsr, detuneCents, haloPct) {
   src.connect(ks.sumNode);
   src.start(t);
 
-  // HALO — comb-filter swell, v0.18 made more impactful.
-  //   Peak gain ×1.5 (haloPct=100 → 1.5× nominal), so the comb really
-  //   blooms instead of barely whispering. Fall extended to 3 s for a
-  //   longer, more meditative tail.
+  // HALO — comb-filter swell, v0.18.1 fixed to actually be audible.
+  //   v0.18 rise was 0.5 s but at typical tempi (250 ms per 8th note)
+  //   each new pluck CANCELED the previous halo envelope before it
+  //   reached peak. Net: halo stuck near 0 forever. New rise = 0.12 s
+  //   so it blooms even between fast plucks. Fall stays long (3 s).
+  //   Peak ×2.0 (was ×1.5) so 50%-100% halo settings are obviously
+  //   present in the mix.
   if (ks.haloEnv && haloPct != null && haloPct > 0) {
-    const peak = (haloPct / 100) * 1.5;
+    const peak = (haloPct / 100) * 2.0;
     const h = ks.haloEnv.gain;
     h.cancelScheduledValues(t);
     h.setValueAtTime(0, t);
-    h.linearRampToValueAtTime(peak, t + 0.5);
+    h.linearRampToValueAtTime(peak, t + 0.12);
     h.linearRampToValueAtTime(0,    t + 3.0);
   }
 }
@@ -1725,6 +1737,7 @@ function wireStringControls() {
     else if (t.dataset.jawari    != null) { i = +t.dataset.jawari;    kind = 'jawari'; }
     else if (t.dataset.halo      != null) { i = +t.dataset.halo;      kind = 'halo'; }
     else if (t.dataset.detune    != null) { i = +t.dataset.detune;    kind = 'detune'; }
+    else if (t.dataset.attack    != null) { i = +t.dataset.attack;    kind = 'attack'; }
     if (!(i >= 0)) return;
     const s = state.strings[i];
     const v = parseFloat(t.value);
@@ -1773,6 +1786,18 @@ function wireStringControls() {
         s.detune = v;
         document.querySelector(`[data-detune-val="${i}"]`).textContent = '±' + v + '¢';
         // Detune is applied per-pluck in pluckKS; nothing to push here.
+        break;
+      case 'attack':
+        // v0.18.1: single ATTACK slider replaces the full ADSR widget.
+        // Only s.adsr.aMs / aLevel matter for the burst; force the rest
+        // to inert defaults so the pluck pipeline stays clean.
+        s.adsr.aMs    = v;
+        s.adsr.aLevel = 1.0;
+        s.adsr.dMs    = 1;
+        s.adsr.dLevel = 1.0;
+        s.adsr.sMs    = 0;
+        s.adsr.rMs    = 1;
+        document.querySelector(`[data-attack-val="${i}"]`).textContent = Math.round(v) + ' ms';
         break;
     }
   });
@@ -2478,11 +2503,11 @@ async function startAudio() {
   refreshNoteDisplay();
   refreshClockDisplay();
 
-  // Per-string: bind 2D gain/pan pad + draw the ADSR SVG + initial cross
+  // Per-string: bind 2D gain/pan pad + initial cross. v0.18.1: ADSR widget
+  // removed — replaced by single ATTACK slider that uses the normal
+  // input-event chain, so no SVG init needed.
   state.strings.forEach((s, i) => {
     bindGainPanPad(i);
-    bindAdsrLabels(i);
-    drawAdsr(i);
     updateGpCross(i);
     // Initialize the gain/pan readouts
     const gv = document.querySelector(`[data-str-gain-val="${i}"]`);
