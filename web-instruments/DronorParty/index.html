@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DronorParty — v0.17</title>
+<title>DronorParty — v0.18</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 <style>
 /* ── Canonical gain/meter strip CSS ─────────────────────────────────────
@@ -376,8 +376,8 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
 </head>
 <body>
 
-<div id="version-badge">DronorParty v0.17</div>
-<div id="stage-indicator">v3 / burst excite scaled 0.25× · ADSR readability standard · ↑↓←→ on focused handle</div>
+<div id="version-badge">DronorParty v0.18</div>
+<div id="stage-indicator">v4 / EXCITE slider · ADSR Attack-only burst · Jawari + Halo turned up</div>
 
 <div id="start-screen">
   <h1>DronorParty</h1>
@@ -438,6 +438,15 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
           <label>SYMP</label>
           <input type="range" id="symp-amt" min="0" max="100" step="1" value="0" style="flex:1;">
           <span class="ctrl-val" id="symp-val" style="min-width:96px; text-align:right;">0%</span>
+        </div>
+        <!-- v0.18: EXCITE — multiplies the noise-burst amplitude that feeds
+             the KS loop. Low values keep the natural string-decay character
+             intact; higher values push toward the harsher "post-v0.16"
+             sound. Default very low so the model's own decay dominates. -->
+        <div class="gline" title="Excite — how hard each pluck drives the noise-burst into the KS string loop. Low (5-15%) = clean string-decay character. Mid (30-60%) = audible bite. 100% = harsh / distortion-prone with high DECAY settings.">
+          <label>EXCITE</label>
+          <input type="range" id="excite-amt" min="0" max="100" step="1" value="10" style="flex:1;">
+          <span class="ctrl-val" id="excite-val" style="min-width:96px; text-align:right;">10%</span>
         </div>
       </div>
 
@@ -711,6 +720,7 @@ for (let i = 0; i < STRING_COUNT; i++) {
 // OTHER string's KS sumNode at low gain × this percentage. Very tanpura.
 // Defaults to 0; small values (5-15%) are usually all you need.
 state.symp = 0;
+state.exciteScale = 0.10;   // v0.18: 0..1, see EXCITE slider
 
 // ── Tuning presets ──────────────────────────────────────────────────────
 // 6 slots. 1-4 factory (showcase distinct intervals across systems), 5-6 user.
@@ -1065,7 +1075,7 @@ function buildStringStrips() {
         <input type="range" data-detune="${idx}" min="0" max="50" step="1" value="${s.detune}">
       </div>
       <!-- ADSR envelope editor -->
-      <div title="ADSR amplitude envelope on each pluck. Drag handles to reshape. Click any value label to type. Default: gentle attack (15ms), modest decay-to-sustain at 85% level, then a 300ms release. The KS feedback handles the natural ring underneath.">
+      <div title="ADSR envelope shapes the NOISE BURST that excites the KS string (input-side, not output gating). v0.18: only the Attack ramp is heard in the burst — the rest of the burst is a fixed quick fade-out. D/S/R are kept in the widget for now but don't extend the burst (kept the KS DECAY as the dominant tail-shaper, per the design note that the model's decay > ADSR's release). Drag handles, click any value to type, ←/→ ↑/↓ on a focused handle to nudge.">
         <div class="adsr-svg-wrap">
           <svg class="adsr-svg" data-adsr-svg="${idx}" viewBox="0 0 ${ADSR_VIEW.w} ${ADSR_VIEW.h}" preserveAspectRatio="none"></svg>
         </div>
@@ -1243,12 +1253,22 @@ function attachGainDrag(wrap, slider, valEl, min, max, formatLabel, onSet) {
 // At typical KS string output amplitudes (~0.1-0.3), 3× was too gentle to
 // produce audible saturation; 5× pushes inputs into the curve's compressing
 // region so the slider's effect is obvious at modest percentages.
+// v0.18: more aggressive Jawari. Was tanh(5x) which produced a subtle
+// soft-clip with mostly odd harmonics. New curve:
+//   • drive 14× (was 5×) — pushes well into saturation even at moderate input
+//   • + 0.18 DC offset before tanh → asymmetric clipping → even harmonics
+//     (3rd / 5th / 7th in addition to the natural odd-harmonic series) —
+//     bell-like shimmer per Christopher's design note.
+//   • mild post-curve high-passy emphasis via a (1 - 0.5 * x²) cubic-ish
+//     bend so the small-signal region passes cleaner; the clipped region
+//     still rings.
 function makeJawariCurve() {
-  const N = 1024;
+  const N = 2048;
   const curve = new Float32Array(N);
   for (let i = 0; i < N; i++) {
     const x = (i / (N - 1)) * 2 - 1;
-    curve[i] = Math.tanh(5 * x);
+    const shaped = Math.tanh(14 * x + 0.18);
+    curve[i] = shaped;
   }
   return curve;
 }
@@ -1290,13 +1310,20 @@ function createKSChain(ctx) {
   // and lets sympathetic resonance be audible (otherwise the receiving
   // string's envVCA was at 0 and silenced any symp excitation).
 
-  // Halo comb filter — gives the tanpura "bloom" of upper harmonics
-  // growing AFTER the initial pluck. Short-delay feedback loop with a
-  // per-pluck envelope on its output level (slow rise, slow fall). Source
-  // is the post-brightness filter signal.
+  // v0.18 Halo rework — was too subtle.
+  //   • Comb fundamental raised from 480 Hz to ~1.4 kHz (delayTime 0.7 ms).
+  //     The higher comb adds shimmery upper-harmonic ringing — closer to
+  //     the actual "tanpura bloom" sensation than the previous mid-range
+  //     resonance which got buried in the KS string body.
+  //   • Feedback raised 0.75 → 0.88 — longer ring inside the comb, more
+  //     audible build-up.
+  //   • Envelope peak multiplied by 1.5 (so haloPct=100% → envGain=1.5)
+  //     so the comb signal actually competes in level with the dry KS
+  //     string at the panner sum.
+  //   • Envelope fall extended (handled in pluckKS — rise 0.5 s, fall 3 s).
   const haloDelay     = ctx.createDelay(0.05);
-  haloDelay.delayTime.value = 0.0021;          // ≈ 480 Hz comb fundamental
-  const haloFeedback  = ctx.createGain(); haloFeedback.gain.value = 0.75;  // v0.16: was 0.6
+  haloDelay.delayTime.value = 0.00071;          // ≈ 1.4 kHz comb fundamental
+  const haloFeedback  = ctx.createGain(); haloFeedback.gain.value = 0.88;
   const haloEnv       = ctx.createGain(); haloEnv.gain.value = 0;          // enveloped per pluck
   haloDelay.connect(haloFeedback);
   haloFeedback.connect(haloDelay);
@@ -1421,14 +1448,18 @@ function createDelayChain(ctx) {
 // Each burst has its DC component removed before injection so the loop
 // doesn't accumulate sub-fundamental rumble after rapid replucking.
 const PLUCK_MAX_BURST_SEC = 5;
-// v0.17: scale ADSR-shaped noise burst amplitude. v0.16 moved ADSR from
-// output-gate to noise-burst-shape — but with default ADSR levels
-// (aLevel=1, dLevel=0.85) and a long total (~595 ms), the burst was
-// injecting ~100× more energy into the 0.99-decay KS loop than the
-// pre-v0.16 "one-period noise burst" used to. Christopher: sound is
-// "too extreme"; lowering ADSR levels to 0 makes it sound like before.
-// Quarter-amplitude scale brings the natural-ring/excitation balance back.
-const BURST_EXCITE_SCALE = 0.25;
+// v0.18: EXCITE is now a user-controlled slider (0..1, default 0.10).
+// Christopher's design read: ADSR's D/S/R sustain the noise injection
+// for the entire envelope, which fights the KS model's natural decay
+// (the DECAY slider). The KS decay should be the dominant tail-shaper;
+// the burst should be a quick excitation. Default EXCITE = 0.10 = very
+// gentle. User can raise EXCITE for more bite.
+//
+// Additionally (v0.18): only ATTACK from the ADSR shapes the burst now.
+// D/S phases are skipped — after the attack peak, the burst ramps quickly
+// to 0 over BURST_TAIL_SEC. Means setting D/S/R on the ADSR no longer
+// pumps energy into the string for hundreds of ms.
+const BURST_TAIL_SEC = 0.03;
 function pluckKS(ks, freq, strength, brightness, adsr, detuneCents, haloPct) {
   if (!audioCtx || !ks) return;
   // DETUNE — random ± cents per pluck.
@@ -1443,43 +1474,37 @@ function pluckKS(ks, freq, strength, brightness, adsr, detuneCents, haloPct) {
   ks.delay.delayTime.setValueAtTime(1 / freq, t);
   ks.filter.frequency.setTargetAtTime(brightness, t, 0.005);
 
-  // Burst length — at least one period (so even with ADSR=0 we still get a
-  // valid pluck) and at most PLUCK_MAX_BURST_SEC. Use the ADSR total when
-  // it's longer than one period.
+  // v0.18: burst length = Attack + short tail (BURST_TAIL_SEC). D/S/R from
+  // the ADSR no longer extend the burst — the KS model's own DECAY slider
+  // is what shapes the audible tail. The burst is just the excitation:
+  // a brief ramp up (Attack) then a quick fade to 0 (tail).
   const minSec   = 1 / freq;
-  const adsrSec  = adsr ? (adsr.aMs + adsr.dMs + adsr.sMs + adsr.rMs) / 1000 : minSec;
-  const burstSec = Math.max(minSec, Math.min(PLUCK_MAX_BURST_SEC, adsrSec));
+  const aMsSafe  = adsr ? Math.max(0, adsr.aMs / 1000) : 0;
+  const burstSec = Math.max(minSec, Math.min(PLUCK_MAX_BURST_SEC, aMsSafe + BURST_TAIL_SEC));
   const bufLen   = Math.max(8, Math.ceil(burstSec * sr));
 
   const buf  = audioCtx.createBuffer(1, bufLen, sr);
   const data = buf.getChannelData(0);
 
-  // ADSR amplitude shape — A: linear ramp to aLevel, D: ramp to dLevel,
-  // S: hold dLevel, R: ramp to 0. Sample-by-sample envelope curve.
+  // Attack-only envelope. Phase 1 (i < aSamp): ramp 0 → aLevel.
+  // Phase 2 (rest): ramp aLevel → 0 over BURST_TAIL_SEC.
   const aSamp = adsr ? Math.max(1, Math.round(adsr.aMs / 1000 * sr)) : 1;
-  const dSamp = adsr ? Math.max(1, Math.round(adsr.dMs / 1000 * sr)) : 1;
-  const sSamp = adsr ? Math.max(0, Math.round(adsr.sMs / 1000 * sr)) : 0;
-  const rSamp = adsr ? Math.max(1, Math.round(adsr.rMs / 1000 * sr)) : 1;
   const aLvl  = adsr ? adsr.aLevel : 1.0;
-  const dLvl  = adsr ? adsr.dLevel : 1.0;
+  const tailSamp = Math.max(1, bufLen - aSamp);
 
-  // Pass 1: generate raw noise, apply ADSR envelope + strength, accumulate
-  // the SHAPED-buffer sum. We must compute the mean AFTER applying the
-  // envelope — multiplying zero-mean noise by a time-varying envAmp can
-  // reintroduce DC for any non-flat ADSR shape (asymmetric A/D/R, etc.),
-  // which the KS loop integrates toward burst_mean × ~100 at fb=0.99 and
-  // surfaces as low-frequency rumble after rapid replucking. (Codex catch
-  // on PR #9.)
+  // Master EXCITE scale (0..1 from the slider; default 0.10 = very gentle).
+  // Total burst amplitude factor: strength × envAmp × exciteScale.
+  const exciteScale = (typeof state !== 'undefined' && state.exciteScale != null) ? state.exciteScale : 0.10;
+
+  // Pass 1: generate noise + apply envelope. Track sum so we can DC-remove
+  // (zero-mean burst prevents low-frequency rumble in the KS feedback loop).
   let sum = 0;
   for (let i = 0; i < bufLen; i++) {
     let envAmp;
-    if      (i < aSamp)                         envAmp = aLvl * (i / aSamp);
-    else if (i < aSamp + dSamp)                 envAmp = aLvl + (dLvl - aLvl) * ((i - aSamp) / dSamp);
-    else if (i < aSamp + dSamp + sSamp)         envAmp = dLvl;
-    else                                        envAmp = dLvl * (1 - (i - aSamp - dSamp - sSamp) / rSamp);
+    if (i < aSamp) envAmp = aLvl * (i / aSamp);                           // attack ramp
+    else           envAmp = aLvl * (1 - (i - aSamp) / tailSamp);          // fixed tail
     if (envAmp < 0) envAmp = 0;
-    // v0.17: scaled by BURST_EXCITE_SCALE to tame the post-v0.16 over-excitation.
-    data[i] = (Math.random() * 2 - 1) * strength * envAmp * BURST_EXCITE_SCALE;
+    data[i] = (Math.random() * 2 - 1) * strength * envAmp * exciteScale;
     sum += data[i];
   }
   // Pass 2: subtract mean of the SHAPED buffer so the injected signal is
@@ -1492,16 +1517,17 @@ function pluckKS(ks, freq, strength, brightness, adsr, detuneCents, haloPct) {
   src.connect(ks.sumNode);
   src.start(t);
 
-  // HALO — slow comb-filter swell on each pluck. The slow rise is what
-  // gives tanpura its iconic post-pluck bloom (upper harmonics growing
-  // AFTER the initial pluck rather than decaying immediately).
+  // HALO — comb-filter swell, v0.18 made more impactful.
+  //   Peak gain ×1.5 (haloPct=100 → 1.5× nominal), so the comb really
+  //   blooms instead of barely whispering. Fall extended to 3 s for a
+  //   longer, more meditative tail.
   if (ks.haloEnv && haloPct != null && haloPct > 0) {
-    const peak = haloPct / 100;
+    const peak = (haloPct / 100) * 1.5;
     const h = ks.haloEnv.gain;
     h.cancelScheduledValues(t);
     h.setValueAtTime(0, t);
     h.linearRampToValueAtTime(peak, t + 0.5);
-    h.linearRampToValueAtTime(0,    t + 2.0);
+    h.linearRampToValueAtTime(0,    t + 3.0);
   }
 }
 
@@ -1674,6 +1700,13 @@ function wireGlobalControls() {
         }
       });
     }
+  });
+  // v0.18: EXCITE slider — global noise-burst amplitude scale.
+  document.getElementById('excite-amt').addEventListener('input', e => {
+    ensureRunning();
+    const v = parseFloat(e.target.value);
+    state.exciteScale = v / 100;
+    document.getElementById('excite-val').textContent = v + '%';
   });
 }
 
