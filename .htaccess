@@ -1,3 +1,19 @@
+# ── 301 redirects: Sandbox/* → development/* (moved 2026-05) ──────────
+# Permanent redirects for items that graduated out of /Sandbox/ into
+# /development/. Old bookmarks, social links, and search-engine results
+# auto-forward. Listed before the case-insensitive aliases so a request
+# like /Sandbox/cedar-siding-calculator/ is redirected before the alias
+# rule has a chance to fire.
+<IfModule mod_rewrite.c>
+RewriteEngine On
+
+RedirectMatch 301 ^/Sandbox/cedar-siding-calculator(/.*)?$ /development/cedar-siding-calculator$1
+RedirectMatch 301 ^/Sandbox/accumulatedDrifts(/.*)?$       /development/accumulatedDrifts$1
+RedirectMatch 301 ^/Sandbox/experiment1(/.*)?$             /development/experiment1$1
+RedirectMatch 301 ^/Sandbox/SidingCalculator-old(/.*)?$    /development/SidingCalculator-old$1
+RedirectMatch 301 ^/Sandbox/generate_music\.py$            /development/generate_music.py
+</IfModule>
+
 # ── Case-insensitive aliases for browsable directories ────────────────
 # Without these, /testcases/ misses the disk path /TestCases/, falls
 # through to the WordPress catch-all below, and ends up redirecting to

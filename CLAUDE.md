@@ -92,14 +92,20 @@ chriso.org/
     index.html, list.php   ← landing page that auto-discovers instruments
   TestCases/               ← isolated feature experiments
     web-audio-capture-test-01/
-  Sandbox/                 ← messy play / prototypes (in .gitignore for some subfolders)
+  Sandbox/                 ← rough play / prototypes still in flux
+  development/             ← projects that have graduated out of Sandbox (in active dev)
+    cedar-siding-calculator/, accumulatedDrifts/, experiment1/,
+    SidingCalculator-old/, generate_music.py
   about/, lessons/, glitchpage/
+  index1/, index2/, index3/  ← alt front-page variations
   uploads/                 ← has participant data — NEVER commit contents
   _myNotes/                ← personal, local-only
   media-operaRelated/      ← large media files, local-only
 ```
 
-**Do NOT commit:** `node_modules/`, `dist/` in Sandbox/TestCases, `_myNotes/`, `media-operaRelated/`, `uploads/participantFiles/`, any `.vscode/sftp.json` (all already in `.gitignore`).
+**Do NOT commit:** `node_modules/`, `dist/` in Sandbox/TestCases/development, `_myNotes/`, `media-operaRelated/`, `uploads/participantFiles/`, any `.vscode/sftp.json` (all already in `.gitignore`).
+
+**Note on /Sandbox/ → /development/ moves (2026-05):** cedar-siding-calculator, accumulatedDrifts, experiment1, SidingCalculator-old, and generate_music.py moved from `Sandbox/` to `development/`. Old `chriso.org/Sandbox/<name>/` URLs 301-redirect to `chriso.org/development/<name>/` via root `.htaccess`. `git log --follow` recovers per-file history.
 
 ---
 

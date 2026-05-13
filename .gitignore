@@ -9,6 +9,7 @@ calendar/api/config.local.php
 # ── Build output (can regenerate) ────────────────────────────
 Sandbox/*/dist/
 TestCases/*/dist/
+development/*/dist/
 
 # ── Personal / private content ────────────────────────────────
 _myNotes/
