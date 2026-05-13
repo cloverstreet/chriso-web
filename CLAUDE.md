@@ -95,7 +95,8 @@ chriso.org/
   Sandbox/                 ← rough play / prototypes still in flux
   development/             ← projects that have graduated out of Sandbox (in active dev)
     cedar-siding-calculator/, accumulatedDrifts/, experiment1/,
-    SidingCalculator-old/, generate_music.py
+    SidingCalculator-old/
+    scripts/               ← loose standalone scripts (generate_music.py, etc.)
   widgets/                 ← reusable audio widgets (audio-widgets.css/js, CHANGES.md)
                              — load via absolute `/widgets/audio-widgets.{css,js}`
   about/, lessons/, glitchpage/

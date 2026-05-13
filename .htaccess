@@ -1,3 +1,13 @@
+# ── Serve .py files as plain text instead of CGI ──────────────────────
+# Without this, requesting any .py URL triggers Apache's CGI handler
+# and returns 500 (the scripts aren't set up for CGI). ForceType makes
+# them readable as source in the browser, which is what we want for
+# /development/scripts/* and any future Python uploads.
+<FilesMatch "\.py$">
+  SetHandler default-handler
+  ForceType text/plain
+</FilesMatch>
+
 # ── 301 redirects: Sandbox/* → development/* (moved 2026-05) ──────────
 # Permanent redirects for items that graduated out of /Sandbox/ into
 # /development/. Old bookmarks, social links, and search-engine results
@@ -11,7 +21,8 @@ RedirectMatch 301 ^/Sandbox/cedar-siding-calculator(/.*)?$ /development/cedar-si
 RedirectMatch 301 ^/Sandbox/accumulatedDrifts(/.*)?$       /development/accumulatedDrifts$1
 RedirectMatch 301 ^/Sandbox/experiment1(/.*)?$             /development/experiment1$1
 RedirectMatch 301 ^/Sandbox/SidingCalculator-old(/.*)?$    /development/SidingCalculator-old$1
-RedirectMatch 301 ^/Sandbox/generate_music\.py$            /development/generate_music.py
+RedirectMatch 301 ^/Sandbox/generate_music\.py$            /development/scripts/generate_music.py
+RedirectMatch 301 ^/development/generate_music\.py$        /development/scripts/generate_music.py
 
 # TestCases/_shared/ promoted to top-level /widgets/ (2026-05-13)
 RedirectMatch 301 ^/TestCases/_shared(/.*)?$               /widgets$1
