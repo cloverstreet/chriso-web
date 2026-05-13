@@ -12,6 +12,13 @@ RedirectMatch 301 ^/Sandbox/accumulatedDrifts(/.*)?$       /development/accumula
 RedirectMatch 301 ^/Sandbox/experiment1(/.*)?$             /development/experiment1$1
 RedirectMatch 301 ^/Sandbox/SidingCalculator-old(/.*)?$    /development/SidingCalculator-old$1
 RedirectMatch 301 ^/Sandbox/generate_music\.py$            /development/generate_music.py
+
+# TestCases/_shared/ promoted to top-level /widgets/ (2026-05-13)
+RedirectMatch 301 ^/TestCases/_shared(/.*)?$               /widgets$1
+
+# buffer-shuffler was a duplicate stub in TestCases — canonical lives at
+# /web-instruments/buffer-shuffler/. Replaces an HTML meta-refresh stub.
+RedirectMatch 301 ^/TestCases/buffer-shuffler(/.*)?$       /web-instruments/buffer-shuffler$1
 </IfModule>
 
 # ── Case-insensitive aliases for browsable directories ────────────────

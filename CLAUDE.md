@@ -96,6 +96,8 @@ chriso.org/
   development/             ← projects that have graduated out of Sandbox (in active dev)
     cedar-siding-calculator/, accumulatedDrifts/, experiment1/,
     SidingCalculator-old/, generate_music.py
+  widgets/                 ← reusable audio widgets (audio-widgets.css/js, CHANGES.md)
+                             — load via absolute `/widgets/audio-widgets.{css,js}`
   about/, lessons/, glitchpage/
   index1/, index2/, index3/  ← alt front-page variations
   uploads/                 ← has participant data — NEVER commit contents
@@ -106,6 +108,8 @@ chriso.org/
 **Do NOT commit:** `node_modules/`, `dist/` in Sandbox/TestCases/development, `_myNotes/`, `media-operaRelated/`, `uploads/participantFiles/`, any `.vscode/sftp.json` (all already in `.gitignore`).
 
 **Note on /Sandbox/ → /development/ moves (2026-05):** cedar-siding-calculator, accumulatedDrifts, experiment1, SidingCalculator-old, and generate_music.py moved from `Sandbox/` to `development/`. Old `chriso.org/Sandbox/<name>/` URLs 301-redirect to `chriso.org/development/<name>/` via root `.htaccess`. `git log --follow` recovers per-file history.
+
+**Note on /TestCases/_shared/ → /widgets/ promotion (2026-05-13):** the shared `audio-widgets.{css,js}` (formerly nested under `TestCases/_shared/`) graduated to top-level `/widgets/`. All consumers now load via absolute paths (`<link href="/widgets/audio-widgets.css">`, `<script src="/widgets/audio-widgets.js">`) so future moves won't break references. Old `/TestCases/_shared/*` URLs 301-redirect. Also: `TestCases/buffer-shuffler/` removed (was a stub redirecting to `/web-instruments/buffer-shuffler/`); request now 301s directly via `.htaccess` instead of HTML meta-refresh.
 
 ---
 

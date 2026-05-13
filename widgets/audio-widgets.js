@@ -2,7 +2,7 @@
    audio-widgets.js
    MeterStrip — the canonical gain/meter widget extracted from FX Processor.
    Same visual + interaction spec as fx-processor/index.html, packaged so any
-   page can drop in <script src="../_shared/audio-widgets.js"></script> and
+   page can drop in <script src="/widgets/audio-widgets.js"></script> and
    instantiate consistent widgets.
 
    Usage:

@@ -1,4 +1,6 @@
-# `TestCases/_shared/` — Change Log & Migration Notes
+# `/widgets/` — Change Log & Migration Notes
+
+> **Moved 2026-05-13:** this folder was `TestCases/_shared/`; promoted to top-level `/widgets/` so the audio widgets are a first-class shared resource. Old `/TestCases/_shared/*` URLs 301-redirect to `/widgets/*` via root `.htaccess`. Historical entries below still reference the old path for accuracy of the timeline.
 
 This file is **for Claude Code instances** (and future-Christopher) working
 on chriso.org instruments that consume the shared widgets in this folder.
