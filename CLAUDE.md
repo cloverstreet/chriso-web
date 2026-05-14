@@ -112,6 +112,8 @@ chriso.org/
 
 **Note on /TestCases/_shared/ → /widgets/ promotion (2026-05-13):** the shared `audio-widgets.{css,js}` (formerly nested under `TestCases/_shared/`) graduated to top-level `/widgets/`. All consumers now load via absolute paths (`<link href="/widgets/audio-widgets.css">`, `<script src="/widgets/audio-widgets.js">`) so future moves won't break references. Old `/TestCases/_shared/*` URLs 301-redirect. Also: `TestCases/buffer-shuffler/` removed (was a stub redirecting to `/web-instruments/buffer-shuffler/`); request now 301s directly via `.htaccess` instead of HTML meta-refresh.
 
+**Note on Sandbox/glitch_replay → Sandbox/AVBufShuf rename (2026-05-13):** the AV (audio+video) buffer-shuffler experiment was renamed. Two top-level files kept (`CanvasRing_glitch01.html` = current Canvas+AudioWorklet ring buffer attempt; `glitch_replay_selectable_v8.html` = last MSE attempt, for comparison). Seven superseded iterations (v1–v7) moved to `Sandbox/AVBufShuf/archive/`. Old `/Sandbox/glitch_replay/*` URLs 301-redirect to `/Sandbox/AVBufShuf/*`. Project paused; see Bench Notes for the carry-forward.
+
 ---
 
 ## Notion — the cross-session knowledge base

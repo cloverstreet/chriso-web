@@ -27,6 +27,9 @@ RedirectMatch 301 ^/development/generate_music\.py$        /development/scripts/
 # TestCases/_shared/ promoted to top-level /widgets/ (2026-05-13)
 RedirectMatch 301 ^/TestCases/_shared(/.*)?$               /widgets$1
 
+# Sandbox/glitch_replay renamed to Sandbox/AVBufShuf (2026-05-13)
+RedirectMatch 301 ^/Sandbox/glitch_replay(/.*)?$           /Sandbox/AVBufShuf$1
+
 # buffer-shuffler was a duplicate stub in TestCases — canonical lives at
 # /web-instruments/buffer-shuffler/. Replaces an HTML meta-refresh stub.
 RedirectMatch 301 ^/TestCases/buffer-shuffler(/.*)?$       /web-instruments/buffer-shuffler$1
