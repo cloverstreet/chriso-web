@@ -59,7 +59,7 @@
         <div class="lbl">Input Device</div>
         <select id="deviceSel" disabled><option>—</option></select>
         <div class="kv">
-          <span class="lbl">iOS auto-gain</span>
+          <span class="lbl">auto-gain</span>
           <input type="checkbox" id="agcToggle" style="margin:0;">
         </div>
         <button id="openBtn" disabled>2 · Open Stream</button>
@@ -204,10 +204,11 @@ async function openStream() {
   const deviceId = $('deviceSel').value;
   const constraints = W.micConstraints(deviceId, 32);
   constraints.audio.channelCount = { ideal: 32 };
-  // iOS auto-gain toggle: when checked, let iOS Safari run its hardware
-  // AGC. On mobile that's the difference between "barely audible" and
-  // "usable loudness" because iOS's raw mic capture is very quiet by
-  // default. On a real audio interface (Fireface etc.), leave it off.
+  // auto-gain toggle: when checked, passes autoGainControl: true to
+  // getUserMedia. The browser engages its hardware/native AGC, which on
+  // phones is the difference between "barely audible" and "usable
+  // loudness" because the raw mic capture is very quiet by default.
+  // On a real audio interface, almost always leave it off.
   if ($('agcToggle') && $('agcToggle').checked) {
     constraints.audio.autoGainControl = true;
   }

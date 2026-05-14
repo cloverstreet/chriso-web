@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Tellofone TC#03 — PeerJS 2-Tab WebRTC Audio</title>
+<title>Peer Connection Test 01 — PeerJS 2-Tab WebRTC Audio</title>
 <link rel="stylesheet" href="/widgets/audio-widgets.css">
 <style>
   .docs { font-size:.62rem; line-height:1.7; color:var(--text-2nd); max-width:580px; }
@@ -12,7 +12,7 @@
 </head>
 <body>
 
-<div class="title">Tellofone TC#03 · PeerJS 2-Tab WebRTC Audio</div>
+<div class="title">Peer Connection Test 01 · PeerJS 2-Tab WebRTC Audio</div>
 <div class="subtitle">prove signaling + p2p audio + per-peer gain · open in two tabs</div>
 
 <div class="warn">⚠ Headphones required when both tabs are on the same machine — speaker → mic → speaker → mic = feedback loop.</div>
@@ -49,6 +49,10 @@
         <button id="permBtn">Grant Mic Access</button>
         <div class="lbl">Input Device</div>
         <select id="deviceSel" disabled><option>—</option></select>
+        <div class="kv">
+          <span class="lbl">auto-gain</span>
+          <input type="checkbox" id="agcToggle" style="margin:0; touch-action:none;">
+        </div>
         <button id="openMicBtn" disabled>Open Mic</button>
         <button id="muteBtn" class="danger" disabled>Mute Self</button>
       </div>
@@ -134,6 +138,7 @@ let micSource = null, micGain = null, micDest = null;
 let activeCall = null;
 let remoteSource = null, peerGain = null;
 let outRouter = null;      // routes peerGain to selected output channel pair
+let outLimiter = null;     // DynamicsCompressor before destination
 let sendMeter = null, recvMeter = null;
 let statsTimer = null;
 let muted = false, peerMuted = false;
@@ -232,15 +237,29 @@ async function openMic() {
   if (audioCtx) await audioCtx.close();
 
   const deviceId = $('deviceSel').value;
+  const useAgc = $('agcToggle') && $('agcToggle').checked;
+  const cons = W.micConstraints(deviceId, 1);
+  if (useAgc) cons.audio.autoGainControl = true;
   let rawStream;
   try {
-    rawStream = await navigator.mediaDevices.getUserMedia(W.micConstraints(deviceId, 1));
+    rawStream = await navigator.mediaDevices.getUserMedia(cons);
   } catch (e) { alert('getUserMedia failed: ' + e.message); return; }
 
   audioCtx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
   if ($('outDeviceSel').value && audioCtx.setSinkId) {
     try { await audioCtx.setSinkId($('outDeviceSel').value); } catch(e) { console.warn('setSinkId:', e); }
   }
+
+  // Output limiter — transparent DynamicsCompressor between every local
+  // audio source and audioCtx.destination. Lets send/recv gains crank
+  // without clipping the speaker. Threshold -10, knee 12, ratio 8.
+  outLimiter = audioCtx.createDynamicsCompressor();
+  outLimiter.threshold.value = -10;
+  outLimiter.knee.value      = 12;
+  outLimiter.ratio.value     = 8;
+  outLimiter.attack.value    = 0.003;
+  outLimiter.release.value   = 0.15;
+  outLimiter.connect(audioCtx.destination);
 
   const settings = rawStream.getAudioTracks()[0].getSettings();
   $('vEC').textContent  = String(settings.echoCancellation);
@@ -254,11 +273,13 @@ async function openMic() {
   micSource.connect(micGain).connect(micDest);
   myStream  = micDest.stream;
 
-  // Send-side meter — taps post-gain
+  // Send-side meter — taps post-gain. gainMax raised +12 → +30 dB so
+  // quiet sources (phone mic with auto-gain off, distant lavs) have
+  // usable digital boost. WebRTC encoders downstream clip-protect.
   $('sendMeterMount').innerHTML = '';
   sendMeter = new W.MeterStrip($('sendMeterMount'), micGain, {
     label: 'OUT (TO PEER)', gainNode: micGain,
-    gainMin: -30, gainMax: 12, gainDefault: 0,
+    gainMin: -30, gainMax: 30, gainDefault: 0,
     height: 100, stereo: false,
   });
   sendMeter.start();
@@ -369,11 +390,12 @@ function setupRemoteAudio(remoteStream) {
   $('vMaxCh').textContent = outRouter.maxCh + ' ch';
   outRouter.enable();  // immediately route to destination so peer is audible
 
-  // Receive meter
+  // Receive meter. gainMax bumped to +30 dB to match the send side so
+  // a quiet peer can be cranked up; the outLimiter keeps the output safe.
   $('recvMeterMount').innerHTML = '';
   recvMeter = new W.MeterStrip($('recvMeterMount'), peerGain, {
     label: 'IN (FROM PEER)', gainNode: peerGain,
-    gainMin: -60, gainMax: 12, gainDefault: 0,
+    gainMin: -60, gainMax: 30, gainDefault: 0,
     height: 100, stereo: false,
   });
   recvMeter.start();
