@@ -6,7 +6,37 @@
 <title>TelloFoam — Room</title>
 <link rel="stylesheet" href="../../TestCases/_shared/audio-widgets.css">
 <style>
-  body { padding: 14px 12px 80px; touch-action: manipulation; }
+  /* Room-page contrast bump and edge padding — iPhone edge-swipe (back / control center)
+     fires when UI is too close to either side. Wider gutters move
+     touchable elements inboard. env(safe-area-inset-*) honors notch + home
+     indicator on devices that report them; max() falls back to 28px. */
+  :root {
+    --text-primary: #e8e8e8;
+    --text-2nd:     #d0c8b4;
+    --text-dim:     #aa8a52;
+    --text-muted:   #8a7848;
+    --amber-bright: #ffd07a;
+  }
+  body {
+    padding-top:    max(20px, env(safe-area-inset-top));
+    padding-bottom: max(80px, env(safe-area-inset-bottom));
+    padding-left:   max(28px, env(safe-area-inset-left));
+    padding-right:  max(28px, env(safe-area-inset-right));
+    touch-action: manipulation;
+  }
+  /* Larger base text — the .lbl/.val pair carries everything; bump both. */
+  .lbl    { font-size: .78rem !important; letter-spacing: .12em; color: var(--text-dim) !important; }
+  .val    { font-size: .82rem !important; color: var(--text-primary) !important; }
+  .docs   { font-size: .82rem !important; line-height: 1.65; color: var(--text-2nd) !important; }
+  .module .mod-head { font-size: .9rem; color: var(--amber-bright); }
+  button  { font-size: .82rem; padding: 9px 14px; }
+  .copy-btn { font-size: .74rem; padding: 6px 10px; }
+  /* iPhone-safe: never let interactive UI sit within 20px of the screen edge */
+  .strip   { padding: 10px 16px !important; gap: 14px !important; }
+  .strip button { padding: 7px 14px !important; font-size: .74rem !important; }
+  .strip .me, .strip .room-name { font-size: 1rem !important; }
+  .strip .stat .lbl, .strip .stat .val { font-size: .72rem !important; }
+  .room-state { font-size: .76rem !important; padding: 9px 16px !important; color: var(--text-2nd); }
 
   /* ── Status strip ──────────────────────────────────────── */
   .strip {
@@ -145,19 +175,30 @@ const $ = id => document.getElementById(id);
 
 // ── Mode + identity ───────────────────────────────────
 const params = new URLSearchParams(location.search);
-const IS_HOST = params.get('host') === '1' || sessionStorage.getItem('tf.isHost') === '1';
-const MY_NAME = (params.get('name') || sessionStorage.getItem('tf.name') || (IS_HOST ? 'Host' : 'Guest')).slice(0, 24);
+const OPTED_HOST = params.get('host') === '1' || sessionStorage.getItem('tf.isHost') === '1';
+const MY_NAME = (params.get('name') || sessionStorage.getItem('tf.name') || 'Guest').slice(0, 24);
 const MY_CODE = params.get('code') || sessionStorage.getItem('tf.code') || '';
 const HOST_PEER_ID = 'tellofoam-room-host';
+
+// Mic gain (dB) chosen in entrance Step 3 mic-test. Restored at openLocalAudio.
+const SAVED_MIC_GAIN_DB = parseFloat(sessionStorage.getItem('tf.micGainDb'));
+
+// Role is determined at broker registration time: anyone can be the first
+// to claim HOST_PEER_ID and become the host of the room. The 5x-title-click
+// flag (OPTED_HOST) is now just a "I want host status" preference — if the
+// ID is already taken we'll still drop to guest. This is the multi-peer
+// fix: nobody has to know to opt-in for the room to work.
+let isHost = false;
 
 // Saved device choices from entry. Fall back to system default if missing.
 const SAVED_INPUT  = sessionStorage.getItem('tf.inputDeviceId');     // null = not saved → use default
 const SAVED_OUTPUT = sessionStorage.getItem('tf.outputDeviceId');
 const SAVED_PAIR   = sessionStorage.getItem('tf.outputChannelPair');
 
-// Guard: a guest reaching /room.html without an entry walkthrough is
-// probably bookmarking / pasting URLs. Send them through the entry.
-if (!IS_HOST && (SAVED_INPUT === null || !MY_CODE)) {
+// Guard: a user reaching /room.html without an entry walkthrough is probably
+// bookmarking / pasting URLs. Send them through the entry. Host opt-in
+// users still need device choices but skip the code check.
+if (SAVED_INPUT === null || (!OPTED_HOST && !MY_CODE)) {
   document.querySelectorAll('.strip, .room-state, .row').forEach(el => el.style.display = 'none');
   $('missingEntry').style.display = 'block';
   throw new Error('Missing entry-state — redirected to setup');
@@ -171,8 +212,12 @@ const HOST_CODES = {
 };
 const codeUsage = new Map();
 
-$('roleBadge').textContent = IS_HOST ? 'host' : 'guest';
-$('roleBadge').classList.toggle('host', IS_HOST);
+// Role badge is updated on broker connect; default to guest until determined.
+function refreshRoleUI() {
+  $('roleBadge').textContent = isHost ? 'host' : 'guest';
+  $('roleBadge').classList.toggle('host', isHost);
+}
+refreshRoleUI();
 $('meName').textContent = MY_NAME;
 
 // ── Audio + peer state ─────────────────────────────────
@@ -257,12 +302,16 @@ async function openLocalAudio() {
   // Self meter — gainMax raised +12 → +30 so quiet sources (iPhone mic
   // with AGC off, distant lavs) can be boosted enough for peers to hear.
   // The boosted signal feeds WebRTC encoders which clip-protect downstream.
+  // Restore the mic gain (dB) the user dialed in during entrance Step 3.
+  // Falls back to 0 dB if not saved or non-finite.
+  const initialMicDb = (Number.isFinite(SAVED_MIC_GAIN_DB)) ? SAVED_MIC_GAIN_DB : 0;
   $('selfMeterMount').innerHTML = '';
   selfMeter = new W.MeterStrip($('selfMeterMount'), micGain, {
     label: 'YOUR MIC', gainNode: micGain,
-    gainMin: -30, gainMax: 30, gainDefault: 0,
+    gainMin: -30, gainMax: 30, gainDefault: initialMicDb,
     height: 100, stereo: false,
   });
+  selfMeter.setGainDb(initialMicDb);  // explicitly apply to the gain node
   selfMeter.start();
 
   $('muteSelfBtn').disabled = false;
@@ -276,46 +325,95 @@ function initPeer() {
       { urls: 'stun:stun1.l.google.com:19302' },
     ]},
   };
-  peer = IS_HOST ? new Peer(HOST_PEER_ID, opts) : new Peer(opts);
+  // First-arrival-as-host: every user attempts to claim HOST_PEER_ID. The
+  // first to register wins → becomes host. Subsequent users get an
+  // 'unavailable-id' error during initial registration → fall back to a
+  // random ID and join as a guest. Once registration resolves (either
+  // success or 'unavailable-id'), we never re-evaluate role for this tab.
+  let resolved = false;
+  const hostPeer = new Peer(HOST_PEER_ID, opts);
 
-  peer.on('open', id => {
-    setDot('dotBroker', 'ok');
-    if (IS_HOST) {
-      setRoomState('host · room open · waiting for guests', 'connected');
+  hostPeer.on('open', () => {
+    if (resolved) return;
+    resolved = true;
+    peer = hostPeer;
+    isHost = true;
+    onPeerReady();
+  });
+  hostPeer.on('error', err => {
+    if (!resolved && err.type === 'unavailable-id') {
+      // Host already exists — become a guest.
+      resolved = true;
+      try { hostPeer.destroy(); } catch (e) {}
+      becomeGuest(opts);
+    } else if (!resolved) {
+      // Broker reach failure before either branch resolved.
+      resolved = true;
+      onPeerError(err);
     } else {
-      setRoomState('connected to broker · joining room…', 'connecting');
-      connectToHost();
+      // Post-resolve error on whichever Peer wound up active.
+      onPeerError(err);
     }
   });
-  peer.on('error', err => {
-    setDot('dotBroker', 'err');
-    if (err.type === 'unavailable-id') {
-      setRoomState('host id taken — another host tab is open?', 'failed');
-    } else if (err.type === 'peer-unavailable') {
-      setRoomState('host is offline — room is closed', 'failed');
-    } else {
-      setRoomState('peer error: ' + err.type, 'failed');
-    }
+  hostPeer.on('disconnected', () => { if (resolved && peer === hostPeer) onBrokerDisconnected(); });
+  hostPeer.on('close',        () => { if (resolved && peer === hostPeer) onPeerClosed(); });
+  hostPeer.on('connection', dataConn => {
+    if (resolved && peer === hostPeer && isHost) bindHostSideDataConn(dataConn);
   });
-  peer.on('disconnected', () => { setDot('dotBroker', 'warn'); setRoomState('disconnected from broker', 'failed'); });
-  peer.on('close',        () => { setDot('dotBroker', 'err');  setRoomState('peer closed', 'failed'); });
+  hostPeer.on('call', mediaCall => incomingMediaCall(mediaCall));
+}
 
-  peer.on('connection', dataConn => {
-    if (IS_HOST) bindHostSideDataConn(dataConn);
-  });
+function becomeGuest(opts) {
+  peer = new Peer(opts);
+  isHost = false;
+  peer.on('open', () => onPeerReady());
+  peer.on('error', err => onPeerError(err));
+  peer.on('disconnected', () => onBrokerDisconnected());
+  peer.on('close', () => onPeerClosed());
+  peer.on('connection', () => { /* guests don't accept incoming data conns in v0 */ });
+  peer.on('call', mediaCall => incomingMediaCall(mediaCall));
+}
 
-  peer.on('call', mediaCall => {
-    if (!myStream) {
-      pendingIncomingCalls.push(mediaCall);
-      if (!peers.has(mediaCall.peer)) {
-        const isHostId = mediaCall.peer === HOST_PEER_ID;
-        addPeerEntry(mediaCall.peer, isHostId ? 'Host' : 'Joining…');
-      }
-      return;
+function onPeerReady() {
+  refreshRoleUI();
+  setDot('dotBroker', 'ok');
+  if (isHost) {
+    setRoomState('host · room open · waiting for guests', 'connected');
+  } else {
+    setRoomState('connected to broker · joining room…', 'connecting');
+    connectToHost();
+  }
+}
+function onPeerError(err) {
+  setDot('dotBroker', 'err');
+  if (err.type === 'peer-unavailable') {
+    setRoomState('host is offline — room is closed', 'failed');
+  } else if (err.type === 'unavailable-id') {
+    // Only reached if user opted into host explicitly via ?host=1 AND lost the
+    // race AND we didn't fall back (we always fall back now, but kept for
+    // diagnostic clarity).
+    setRoomState('host id taken — couldn\'t claim it', 'failed');
+  } else {
+    setRoomState('peer error: ' + err.type, 'failed');
+  }
+}
+function onBrokerDisconnected() { setDot('dotBroker', 'warn'); setRoomState('disconnected from broker', 'failed'); }
+function onPeerClosed()         { setDot('dotBroker', 'err');  setRoomState('peer closed', 'failed'); }
+
+function incomingMediaCall(mediaCall) {
+  // Shared between host and guest paths. If our mic isn't open yet, queue
+  // the call and answer it when openLocalAudio finishes (handled by
+  // drainPendingCalls).
+  if (!myStream) {
+    pendingIncomingCalls.push(mediaCall);
+    if (!peers.has(mediaCall.peer)) {
+      const isHostId = mediaCall.peer === HOST_PEER_ID;
+      addPeerEntry(mediaCall.peer, isHostId ? 'Host' : 'Joining…');
     }
-    mediaCall.answer(myStream);
-    bindMediaCall(mediaCall);
-  });
+    return;
+  }
+  mediaCall.answer(myStream);
+  bindMediaCall(mediaCall);
 }
 
 // ── Guest: connect to host ─────────────────────────────
@@ -447,7 +545,7 @@ function drainPendingCalls() {
       try { mediaCall.answer(myStream); bindMediaCall(mediaCall); } catch (e) {}
     }
   }
-  if (!IS_HOST) setRoomState('in room', 'connected');
+  if (!isHost) setRoomState('in room', 'connected');
 }
 
 function bindMediaCall(mediaCall) {
@@ -459,7 +557,7 @@ function bindMediaCall(mediaCall) {
     if (!statsTimer) startStatsLoop();
   });
   mediaCall.on('close', () => {
-    if (!IS_HOST && mediaCall.peer === HOST_PEER_ID) {
+    if (!isHost && mediaCall.peer === HOST_PEER_ID) {
       setRoomState('host disconnected — room closed', 'failed');
       teardownAllPeers();
     }

@@ -6,7 +6,34 @@
 <title>TelloFoam</title>
 <link rel="stylesheet" href="../../TestCases/_shared/audio-widgets.css">
 <style>
-  body { padding: 32px 16px 80px; touch-action: manipulation; }
+  /* Entrance contrast bump + iPhone-safe edge padding. iOS back/control-
+     center swipes fire if anything interactive sits within ~20px of the
+     screen edge — `env(safe-area-inset-*)` reports notch & home-indicator
+     spaces; `max()` enforces 28px minimum either way. */
+  :root {
+    --text-primary: #e8e8e8;
+    --text-2nd:     #d0c8b4;
+    --text-dim:     #aa8a52;
+    --text-muted:   #8a7848;
+    --amber-bright: #ffd07a;
+  }
+  body {
+    padding-top:    max(36px, env(safe-area-inset-top));
+    padding-bottom: max(80px, env(safe-area-inset-bottom));
+    padding-left:   max(28px, env(safe-area-inset-left));
+    padding-right:  max(28px, env(safe-area-inset-right));
+    touch-action: manipulation;
+  }
+  .lbl  { font-size: .78rem !important; letter-spacing: .12em; color: var(--text-dim) !important; }
+  .val  { font-size: .82rem !important; color: var(--text-primary) !important; }
+  .docs { font-size: .82rem !important; line-height: 1.65; color: var(--text-2nd) !important; }
+  .module .mod-head { font-size: .9rem; color: var(--amber-bright); }
+  button { font-size: .82rem; padding: 10px 14px; }
+  /* Form fields more readable on phones */
+  select, input[type=text], textarea {
+    font-size: .82rem !important; padding: 9px 10px !important;
+    color: var(--text-primary) !important;
+  }
   .hero { text-align:center; padding-bottom:8px; }
   .hero-title {
     font-family:'Courier New',monospace;
@@ -537,6 +564,12 @@ $('monitorBtn').addEventListener('click', () => {
 });
 
 $('step3NextBtn').addEventListener('click', () => {
+  // Persist the mic gain (dB) the user dialed in so the room opens at the
+  // same level. testMicGain.gain is linear; convert back to dB.
+  if (testMicGain) {
+    const db = W.gainToDb(testMicGain.gain.value);
+    if (Number.isFinite(db)) sessionStorage.setItem('tf.micGainDb', String(db));
+  }
   $('s3Summary').textContent = 'mic verified · ' + $('vFloor').textContent + ' floor';
   stopMicTest();  // close test stream — room re-opens with same deviceId
   goToStep(4);
