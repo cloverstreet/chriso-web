@@ -96,14 +96,51 @@
   .row { padding-top: 8px; align-items:flex-start; }
   .module { min-width: 220px; }
 
+  /* "In the Room" grid: 1 col on phone, 2 on tablet, 3 on desktop.
+     The self card is pinned first via order:-1; everyone else falls in. */
+  #peersMount {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  @media (min-width: 720px)  { #peersMount { grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 1100px) { #peersMount { grid-template-columns: 1fr 1fr 1fr; } }
+
   .peer-card {
-    display:flex; flex-direction:column; gap:6px;
-    background:var(--bg-page); border:1px solid var(--border-dim); padding:8px;
+    display:flex; flex-direction:column; gap:8px;
+    background:var(--bg-page); border:1px solid var(--border-dim); padding:10px 12px;
   }
+  .peer-card.self  { border-color: var(--amber); }
   .peer-card .peer-name {
-    font-size:.72rem; color:var(--amber); letter-spacing:.12em; text-transform:uppercase;
+    font-size:.96rem; color:var(--text-primary); letter-spacing:.04em;
   }
-  .peer-card .peer-meta { font-size:.58rem; color:var(--text-dim); letter-spacing:.08em; }
+  .peer-card .peer-name .you {
+    font-size:.72rem; color:var(--text-dim); letter-spacing:.1em; margin-left:6px;
+  }
+  .peer-card .peer-name .pcrole {
+    font-size:.72rem; color:var(--text-dim); letter-spacing:.1em; margin-left:6px;
+  }
+  .peer-card .peer-name .pcrole.host { color: var(--green); }
+  .peer-card .peer-meta { font-size:.7rem; color:var(--text-dim); letter-spacing:.08em; }
+  /* Card body laid out so the meter is a horizontal strip and the meter-dB
+     + gain-dB sit side by side underneath, mute below. */
+  .peer-card .meter-host { display: block; }
+  .peer-card .below-meter {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 12px; padding-top: 2px;
+  }
+  .peer-card .below-meter .meter-db,
+  .peer-card .below-meter .gain-db {
+    font-family: 'Fraunces', serif; font-weight: 300;
+    font-size: .82rem; color: var(--text-2nd);
+    letter-spacing: .04em;
+  }
+  .peer-card .below-meter .meter-db { color: var(--text-dim); }
+  .peer-card .below-meter .gain-db  { color: var(--amber-bright); }
+  .peer-card .below-meter .gain-db .glbl { font-size:.62rem; color: var(--text-dim); margin-right: 4px; letter-spacing:.12em; text-transform:uppercase; }
+  .peer-card .mute {
+    width: 100%; padding: 8px 0; font-size: .8rem;
+  }
   .peers-empty { padding:14px; font-size:.62rem; color:var(--text-muted); letter-spacing:.14em; text-align:center; }
 
   .docs { font-size:.62rem; line-height:1.7; color:var(--text-2nd); max-width:520px; }
@@ -134,7 +171,10 @@
   <a href="index.html"><button class="danger">Leave</button></a>
 </div>
 
-<!-- Row 2: status indicators — audio / mic / online / peers / RTT. -->
+<!-- Row 2: status indicators. "Net" is packet round-trip from getStats.
+     "Audio" is an estimate of full glass-to-glass latency (mic capture
+     + encode + half-RTT + jitter buffer + decode + speaker buffer) —
+     much higher than Net and closer to what you actually perceive. -->
 <div class="strip strip-status">
   <span class="stat"><span class="lbl">Audio</span><span class="dot" id="dotAudio"></span></span>
   <span class="sep">·</span>
@@ -144,32 +184,19 @@
   <span class="sep">·</span>
   <span class="stat"><span class="lbl">Peers</span><span class="val" id="peerCount">0</span></span>
   <span class="sep">·</span>
-  <span class="stat"><span class="lbl">RTT</span><span class="val" id="rttVal">—</span></span>
+  <span class="stat"><span class="lbl">Net</span><span class="val" id="rttVal">—</span></span>
+  <span class="sep">·</span>
+  <span class="stat"><span class="lbl">E2E</span><span class="val" id="audioE2E">—</span></span>
 </div>
 
 <div class="room-state connecting" id="roomState">initializing…</div>
 
-<div class="row" id="mainLayout">
-
-  <div class="col">
-    <div class="module">
-      <div class="mod-head">Your Mic</div>
-      <div class="mod-body">
-        <div id="selfMeterMount"></div>
-        <button id="muteSelfBtn" class="danger" disabled style="width:100%; margin-top:6px;">Mute</button>
-      </div>
-    </div>
+<!-- Single "In the Room" module — self is pinned first as a peer card. -->
+<div class="module" style="width:100%; max-width:1200px">
+  <div class="mod-head">In the Room</div>
+  <div class="mod-body" id="peersMount">
+    <div class="peers-empty">opening audio…</div>
   </div>
-
-  <div class="col" style="min-width:340px">
-    <div class="module">
-      <div class="mod-head">In the Room</div>
-      <div class="mod-body" id="peersMount">
-        <div class="peers-empty">no one else here yet</div>
-      </div>
-    </div>
-  </div>
-
 </div>
 
 <!-- Hidden: shown only if entry-state is missing -->
@@ -319,35 +346,11 @@ async function openLocalAudio() {
   // Restore the mic gain (dB) the user dialed in during entrance Step 3.
   // Falls back to 0 dB if not saved or non-finite.
   const initialMicDb = (Number.isFinite(SAVED_MIC_GAIN_DB)) ? SAVED_MIC_GAIN_DB : 0;
-  $('selfMeterMount').innerHTML = '';
-  selfMeter = new W.MeterStrip($('selfMeterMount'), micGain, {
-    label: 'GAIN', gainNode: micGain,
-    gainMin: -30, gainMax: 30, gainDefault: initialMicDb,
-    height: 100, stereo: false,
-  });
-  selfMeter.setGainDb(initialMicDb);
-
-  // DOM tweak: the canonical MeterStrip puts the gain-dB value in the
-  // top-right of the ctrl-row and the signal-level dB under the meter.
-  // For the self mic we want the GAIN VALUE under the meter (where the
-  // signal-level readout lived) — it's the more useful number for the
-  // user, who's setting their own level. Move the .ctrl-val element to
-  // replace the .db-readout, and drop the signal readout.
-  (function repositionGainValue() {
-    const valEl = selfMeter.el.querySelector('[data-role="gain-val"]');
-    const readoutEl = selfMeter.el.querySelector('[data-readout]');
-    if (valEl && readoutEl) {
-      valEl.style.display = 'block';
-      valEl.style.textAlign = 'center';
-      valEl.style.marginTop = '4px';
-      readoutEl.parentNode.insertBefore(valEl, readoutEl);
-      readoutEl.remove();
-    }
-  })();
-
-  selfMeter.start();
-
-  $('muteSelfBtn').disabled = false;
+  // Self enters the room as a pinned-first peer card. Mute + meter live
+  // inside it just like everyone else's card. Role label is set to '?'
+  // for the moment we have a mic but haven't resolved host-vs-guest yet;
+  // onPeerReady() will update it once the broker accepts our registration.
+  addSelfCard(initialMicDb);
 }
 
 // ── PeerJS setup ───────────────────────────────────────
@@ -409,6 +412,7 @@ function becomeGuest(opts) {
 
 function onPeerReady() {
   refreshRoleUI();
+  refreshSelfRole();
   setDot('dotBroker', 'ok');
   if (isHost) {
     setRoomState('host · room open · waiting for guests', 'connected');
@@ -597,6 +601,115 @@ function bindMediaCall(mediaCall) {
   });
 }
 
+// ── Card builder + meter mounter ───────────────────────
+// One DOM shape for everyone. Self gets a `(you)` tag and an amber border.
+// The header reads `name (you?) (host/guest)`, and the meter strip's two
+// dB readouts (signal level + user-set gain) are pulled out of the canonical
+// MeterStrip layout and stacked under the meter in a single flex row.
+function buildPeerCardDom(peerObj) {
+  const card = document.createElement('div');
+  card.className = 'peer-card' + (peerObj.isSelf ? ' self' : '');
+  card.dataset.peerId = peerObj.peerId;
+  const isHostPeer = peerObj.peerId === HOST_PEER_ID;
+  card.innerHTML = `
+    <div class="peer-name">
+      <span data-name>${escapeHtml(peerObj.name)}</span>
+      ${peerObj.isSelf ? '<span class="you">(you)</span>' : ''}
+      <span class="pcrole${isHostPeer || peerObj.isSelfHost ? ' host' : ''}" data-pcrole>(${peerObj.isSelf ? '…' : (isHostPeer ? 'host' : 'guest')})</span>
+    </div>
+    <div class="peer-meta" data-meta>${peerObj.isSelf ? 'your mic' : (isHostPeer ? 'host · connecting' : 'guest · connecting')}</div>
+    <div class="meter-host" data-meter-mount></div>
+    <button class="opt danger mute" data-mute${peerObj.isSelf ? '' : ' disabled'}>Mute</button>
+  `;
+  return card;
+}
+
+// Mount a MeterStrip inside a card's data-meter-mount, then restructure
+// its readouts so the live signal-level dB and the user-set gain dB sit
+// side-by-side underneath the meter (left + right). Returns the meter.
+function mountMeterInCard(card, gainNode, opts) {
+  const mount = card.querySelector('[data-meter-mount]');
+  mount.innerHTML = '';
+  const meter = new W.MeterStrip(mount, gainNode, { label: '', ...opts });
+  const readoutEl = meter.el.querySelector('[data-readout]');
+  const gainValEl = meter.el.querySelector('[data-role="gain-val"]');
+  if (readoutEl && gainValEl) {
+    const row = document.createElement('div');
+    row.className = 'below-meter';
+    readoutEl.className = 'meter-db';
+    const gainBox = document.createElement('span');
+    gainBox.className = 'gain-db';
+    const lbl = document.createElement('span');
+    lbl.className = 'glbl'; lbl.textContent = 'gain';
+    gainBox.appendChild(lbl);
+    gainBox.appendChild(gainValEl);
+    row.appendChild(readoutEl);
+    row.appendChild(gainBox);
+    const meterRow = meter.el.querySelector('.meter-row');
+    if (meterRow && meterRow.parentNode) {
+      meterRow.parentNode.insertBefore(row, meterRow.nextSibling);
+    }
+    const ctrlRow = meter.el.querySelector('.ctrl-row');
+    if (ctrlRow) ctrlRow.remove();
+  }
+  return meter;
+}
+
+// Update the (host)/(guest) suffix on a card. Called for self after onPeerReady
+// resolves the role, and for peers when their connection is verified.
+function setCardRole(peerObj, roleStr) {
+  if (!peerObj.cardEl) return;
+  const el = peerObj.cardEl.querySelector('[data-pcrole]');
+  if (!el) return;
+  el.textContent = '(' + roleStr + ')';
+  el.classList.toggle('host', roleStr === 'host');
+}
+
+// ── Add the self card (called from openLocalAudio after micGain exists) ─
+let selfPeer = null;
+function addSelfCard(initialDb) {
+  selfPeer = {
+    peerId: '_self',
+    name: MY_NAME,
+    isSelf: true,
+    gainNode: micGain,
+    meter: null,
+    cardEl: null,
+  };
+  const peersMount = $('peersMount');
+  if (peersMount.querySelector('.peers-empty')) peersMount.innerHTML = '';
+  const card = buildPeerCardDom(selfPeer);
+  peersMount.insertBefore(card, peersMount.firstChild);  // pinned first
+  selfPeer.cardEl = card;
+  // Mount the meter using micGain — same gain node that feeds outbound
+  // WebRTC. So this is "what your peers will hear", which is the useful
+  // thing for a self readout.
+  selfPeer.meter = mountMeterInCard(card, micGain, {
+    gainNode: micGain,
+    gainMin: -30, gainMax: 30, gainDefault: initialDb,
+    height: 96, stereo: false,
+  });
+  selfPeer.meter.setGainDb(initialDb);
+  selfPeer.meter.start();
+  selfMeter = selfPeer.meter;
+  setCardRole(selfPeer, '…');
+
+  // Wire mute (kills outbound mic track, doesn't affect what we hear)
+  const muteBtn = card.querySelector('[data-mute]');
+  muteBtn.addEventListener('click', () => {
+    muted = !muted;
+    if (myStream) myStream.getAudioTracks().forEach(t => t.enabled = !muted);
+    muteBtn.textContent = muted ? '✓ Muted' : 'Mute';
+    muteBtn.classList.toggle('active', muted);
+    if (muted) setDot('dotMic', 'warn'); else setDot('dotMic', 'ok');
+  });
+}
+
+// Called from onPeerReady once isHost is determined.
+function refreshSelfRole() {
+  if (selfPeer) setCardRole(selfPeer, isHost ? 'host' : 'guest');
+}
+
 function attachRemoteAudio(peerObj, remoteStream) {
   if (!audioCtx) return;
   if (peerObj.source) try { peerObj.source.disconnect(); } catch (e) {}
@@ -605,9 +718,6 @@ function attachRemoteAudio(peerObj, remoteStream) {
   peerObj.source = audioCtx.createMediaStreamSource(remoteStream);
   peerObj.gain   = audioCtx.createGain(); peerObj.gain.gain.value = W.dbToGain(0);
   peerObj.source.connect(peerObj.gain);
-  // Route through the shared output limiter (created in openLocalAudio)
-  // so a peer who joins loud can't clip the destination, and so a quiet
-  // peer can be cranked without risk.
   peerObj.gain.connect(outLimiter || audioCtx.destination);
 
   // Chrome remote-stream workaround
@@ -617,12 +727,10 @@ function attachRemoteAudio(peerObj, remoteStream) {
   document.body.appendChild(ghost);
   peerObj.ghostEl = ghost;
 
-  const meterMount = peerObj.cardEl.querySelector('[data-meter-mount]');
-  meterMount.innerHTML = '';
-  peerObj.meter = new W.MeterStrip(meterMount, peerObj.gain, {
-    label: peerObj.name, gainNode: peerObj.gain,
-    gainMin: -60, gainMax: 12, gainDefault: 0,
-    height: 90, stereo: false,
+  peerObj.meter = mountMeterInCard(peerObj.cardEl, peerObj.gain, {
+    gainNode: peerObj.gain,
+    gainMin: -60, gainMax: 30, gainDefault: 0,
+    height: 96, stereo: false,
   });
   peerObj.meter.start();
 
@@ -632,6 +740,7 @@ function attachRemoteAudio(peerObj, remoteStream) {
     metaEl.textContent = role + ' · connected';
     metaEl.style.color = 'var(--green)';
   }
+  setCardRole(peerObj, peerObj.peerId === HOST_PEER_ID ? 'host' : 'guest');
 
   const muteBtn = peerObj.cardEl.querySelector('[data-mute]');
   muteBtn.disabled = false;
@@ -657,17 +766,8 @@ function addPeerEntry(peerId, name) {
   const peersMount = $('peersMount');
   if (peersMount.querySelector('.peers-empty')) peersMount.innerHTML = '';
 
-  const card = document.createElement('div');
-  card.className = 'peer-card';
-  card.dataset.peerId = peerId;
-  card.innerHTML = `
-    <div class="kv">
-      <span class="peer-name" data-name>${escapeHtml(name)}</span>
-      <button class="copy-btn" data-mute disabled>Mute</button>
-    </div>
-    <div class="peer-meta" data-meta>${peerId === HOST_PEER_ID ? 'host' : 'guest'} · connecting</div>
-    <div data-meter-mount></div>
-  `;
+  const tempPeer = { peerId, name, isSelf: false };
+  const card = buildPeerCardDom(tempPeer);
   peersMount.appendChild(card);
 
   if (entry) { entry.name = name; entry.cardEl = card; }
@@ -686,7 +786,6 @@ function renderPeerName(peerId) {
   const p = peers.get(peerId);
   if (!p || !p.cardEl) return;
   p.cardEl.querySelector('[data-name]').textContent = p.name;
-  if (p.meter) p.meter.label = p.name;
 }
 
 function removePeerEntry(peerId) {
@@ -701,7 +800,8 @@ function removePeerEntry(peerId) {
   if (p.dataConn) try { p.dataConn.close(); } catch (e) {}
   peers.delete(peerId);
   updatePeerCount();
-  if (peers.size === 0) $('peersMount').innerHTML = '<div class="peers-empty">no one else here yet</div>';
+  // (Self card stays in peersMount whether or not anyone else is present —
+  // the peer-count stat in the top strip already says "alone" implicitly.)
 }
 
 function teardownAllPeers() {
@@ -710,33 +810,59 @@ function teardownAllPeers() {
 function updatePeerCount() { $('peerCount').textContent = String(peers.size); }
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-// ── Self-mute ──────────────────────────────────────────
-$('muteSelfBtn').addEventListener('click', () => {
-  muted = !muted;
-  if (myStream) myStream.getAudioTracks().forEach(t => t.enabled = !muted);
-  $('muteSelfBtn').textContent = muted ? '✓ Muted' : 'Mute';
-  $('muteSelfBtn').classList.toggle('active', muted);
-  if (muted) setDot('dotMic', 'warn'); else setDot('dotMic', 'ok');
-});
+// (Self-mute is wired inside the self card by addSelfCard() — the old
+//  top-strip Mute button + its global click handler are gone.)
 
-// ── Stats loop (RTT) ───────────────────────────────────
+// ── Stats loop — Net + Audio E2E ───────────────────────
+// "Net" is the WebRTC packet round-trip from getStats — accurate but
+// only measures the network leg (typically 5–50ms on LAN/WAN, sometimes
+// <10ms on the same WiFi). "Audio E2E" is an estimate of full glass-to-
+// glass audio latency: a quiet-source person's voice → their mic capture
+// + encode → network one-way → our jitter buffer + decode → our speaker
+// output buffer. Realistic values 80–250ms+. We can't measure the
+// remote-end captures exactly, so the remote side uses fixed estimates
+// (capture 25ms, encode 5ms); everything we can read live, we read live.
+// Closer to truth than just the network RTT, anyway.
 function startStatsLoop() {
   if (statsTimer) clearInterval(statsTimer);
   statsTimer = setInterval(async () => {
-    if (peers.size === 0) { $('rttVal').textContent = '—'; return; }
-    let sum = 0, n = 0;
+    let rttSum = 0, rttN = 0;
+    let jitTargetSum = 0, jitTargetN = 0;
     for (const p of peers.values()) {
       if (!p.mediaCall || !p.mediaCall.peerConnection) continue;
       try {
         const stats = await p.mediaCall.peerConnection.getStats();
         stats.forEach(s => {
-          if (s.type === 'candidate-pair' && s.state === 'succeeded' && s.nominated && s.currentRoundTripTime != null) {
-            sum += s.currentRoundTripTime; n++;
+          if (s.type === 'candidate-pair' && s.state === 'succeeded' && s.nominated
+              && typeof s.currentRoundTripTime === 'number') {
+            rttSum += s.currentRoundTripTime; rttN++;
+          }
+          if (s.type === 'inbound-rtp' && s.kind === 'audio') {
+            // jitterBufferTargetDelay is the configured target; live good number.
+            if (typeof s.jitterBufferTargetDelay === 'number' && typeof s.jitterBufferEmittedCount === 'number' && s.jitterBufferEmittedCount > 0) {
+              jitTargetSum += (s.jitterBufferTargetDelay / s.jitterBufferEmittedCount);
+              jitTargetN++;
+            } else if (typeof s.jitterBufferDelay === 'number' && typeof s.jitterBufferEmittedCount === 'number' && s.jitterBufferEmittedCount > 0) {
+              jitTargetSum += (s.jitterBufferDelay / s.jitterBufferEmittedCount);
+              jitTargetN++;
+            }
           }
         });
       } catch (e) {}
     }
-    $('rttVal').textContent = n ? (sum / n * 1000).toFixed(0) + 'ms' : '—';
+    const rttMs = rttN ? (rttSum / rttN * 1000) : null;
+    const jitMs = jitTargetN ? (jitTargetSum / jitTargetN * 1000) : 0;
+    $('rttVal').textContent = rttMs !== null ? rttMs.toFixed(0) + 'ms' : '—';
+    if (peers.size === 0 || rttMs === null) {
+      $('audioE2E').textContent = '—';
+      return;
+    }
+    const ctxLatMs = audioCtx ? ((audioCtx.baseLatency || 0) + (audioCtx.outputLatency || 0)) * 1000 : 0;
+    // Remote capture + encode estimates: 25ms + 5ms = 30ms. They're
+    // fixed assumptions since we can't read the remote side's audio
+    // graph. Local decode ~5ms.
+    const e2e = 25 + 5 + (rttMs / 2) + jitMs + 5 + ctxLatMs;
+    $('audioE2E').textContent = Math.round(e2e) + 'ms';
   }, 2000);
 }
 
