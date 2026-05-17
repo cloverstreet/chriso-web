@@ -49,12 +49,18 @@
     font-size:.8rem; color:var(--amber); letter-spacing:.18em;
     text-transform:uppercase; user-select:none;
   }
+  /* Role reads as a label for the username (no border, lowercase, dim).
+     "host" turns green when claimed. Trailing colon is decorative. */
   .strip .role {
-    font-size:.55rem; color:var(--text-muted); letter-spacing:.18em;
-    text-transform:uppercase; padding:2px 6px; border:1px solid var(--border-mute);
+    font-size:.7rem; color:var(--text-dim); letter-spacing:.12em;
+    text-transform:lowercase; padding:0; border:0;
   }
-  .strip .role.host { color:var(--green); border-color:var(--green); }
-  .strip .me { font-size:.62rem; color:var(--text-2nd); letter-spacing:.06em; }
+  .strip .role.host { color:var(--green); }
+  .strip .role::after { content:":"; opacity:.45; margin-left:1px; }
+  .strip .role-name { display:inline-flex; align-items:baseline; gap:6px; }
+  .strip .me { font-size:.92rem; color:var(--text-primary); letter-spacing:.04em; }
+  /* Two-row strip layout: top row is identity + leave; second row is status. */
+  .strip-status { border-top:0; padding-top:8px; padding-bottom:8px; }
   .strip .sep { color:var(--text-faint); }
   .strip .stat {
     display:inline-flex; align-items:center; gap:4px;
@@ -115,23 +121,30 @@
 </head>
 <body>
 
-<div class="strip">
+<!-- Row 1: identity + leave. Role is a *label* for the username
+     (lowercase, no border) — not a button. Mute lives inside the
+     "Your Mic" module, not in the strip. -->
+<div class="strip strip-top">
   <span class="room-name">TelloFoam</span>
-  <span class="role" id="roleBadge">guest</span>
-  <span class="me" id="meName">—</span>
-  <span class="sep">·</span>
-  <span class="stat"><span class="lbl">Online</span><span class="dot" id="dotBroker"></span></span>
-  <span class="sep">·</span>
+  <span class="role-name">
+    <span class="role" id="roleBadge">guest</span>
+    <span class="me" id="meName">—</span>
+  </span>
+  <span class="spacer"></span>
+  <a href="index.html"><button class="danger">Leave</button></a>
+</div>
+
+<!-- Row 2: status indicators — audio / mic / online / peers / RTT. -->
+<div class="strip strip-status">
   <span class="stat"><span class="lbl">Audio</span><span class="dot" id="dotAudio"></span></span>
   <span class="sep">·</span>
   <span class="stat"><span class="lbl">Mic</span><span class="dot" id="dotMic"></span></span>
   <span class="sep">·</span>
+  <span class="stat"><span class="lbl">Online</span><span class="dot" id="dotBroker"></span></span>
+  <span class="sep">·</span>
   <span class="stat"><span class="lbl">Peers</span><span class="val" id="peerCount">0</span></span>
   <span class="sep">·</span>
   <span class="stat"><span class="lbl">RTT</span><span class="val" id="rttVal">—</span></span>
-  <span class="spacer"></span>
-  <button id="muteSelfBtn" class="danger" disabled>Mute</button>
-  <a href="index.html"><button class="danger">Leave</button></a>
 </div>
 
 <div class="room-state connecting" id="roomState">initializing…</div>
@@ -140,9 +153,10 @@
 
   <div class="col">
     <div class="module">
-      <div class="mod-head">You</div>
+      <div class="mod-head">Your Mic</div>
       <div class="mod-body">
         <div id="selfMeterMount"></div>
+        <button id="muteSelfBtn" class="danger" disabled style="width:100%; margin-top:6px;">Mute</button>
       </div>
     </div>
   </div>
@@ -307,11 +321,30 @@ async function openLocalAudio() {
   const initialMicDb = (Number.isFinite(SAVED_MIC_GAIN_DB)) ? SAVED_MIC_GAIN_DB : 0;
   $('selfMeterMount').innerHTML = '';
   selfMeter = new W.MeterStrip($('selfMeterMount'), micGain, {
-    label: 'YOUR MIC', gainNode: micGain,
+    label: 'GAIN', gainNode: micGain,
     gainMin: -30, gainMax: 30, gainDefault: initialMicDb,
     height: 100, stereo: false,
   });
-  selfMeter.setGainDb(initialMicDb);  // explicitly apply to the gain node
+  selfMeter.setGainDb(initialMicDb);
+
+  // DOM tweak: the canonical MeterStrip puts the gain-dB value in the
+  // top-right of the ctrl-row and the signal-level dB under the meter.
+  // For the self mic we want the GAIN VALUE under the meter (where the
+  // signal-level readout lived) — it's the more useful number for the
+  // user, who's setting their own level. Move the .ctrl-val element to
+  // replace the .db-readout, and drop the signal readout.
+  (function repositionGainValue() {
+    const valEl = selfMeter.el.querySelector('[data-role="gain-val"]');
+    const readoutEl = selfMeter.el.querySelector('[data-readout]');
+    if (valEl && readoutEl) {
+      valEl.style.display = 'block';
+      valEl.style.textAlign = 'center';
+      valEl.style.marginTop = '4px';
+      readoutEl.parentNode.insertBefore(valEl, readoutEl);
+      readoutEl.remove();
+    }
+  })();
+
   selfMeter.start();
 
   $('muteSelfBtn').disabled = false;
