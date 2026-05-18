@@ -59,8 +59,19 @@
   .strip .role::after { content:":"; opacity:.45; margin-left:1px; }
   .strip .role-name { display:inline-flex; align-items:baseline; gap:6px; }
   .strip .me { font-size:.92rem; color:var(--text-primary); letter-spacing:.04em; }
-  /* Two-row strip layout: top row is identity + leave; second row is status. */
+  /* Two-row strip layout: top row is identity + state + leave; second row is status pills. */
   .strip-status { border-top:0; padding-top:8px; padding-bottom:8px; }
+  /* Inline state in row 1 — color-coded by class, no border (it's a state
+     readout, not a button). */
+  .strip .state-inline {
+    font-size:.72rem; letter-spacing:.06em;
+    padding:2px 6px;
+    color: var(--text-dim);
+  }
+  .strip .state-inline::before { content:"/ "; color:var(--text-faint); margin-right:2px; }
+  .strip .state-inline.connecting { color: var(--amber-bright); }
+  .strip .state-inline.connected  { color: var(--green); }
+  .strip .state-inline.failed     { color: var(--red); }
   .strip .sep { color:var(--text-faint); }
   .strip .stat {
     display:inline-flex; align-items:center; gap:4px;
@@ -121,27 +132,51 @@
     font-size:.72rem; color:var(--text-dim); letter-spacing:.1em; margin-left:6px;
   }
   .peer-card .peer-name .pcrole.host { color: var(--green); }
-  .peer-card .peer-meta { font-size:.7rem; color:var(--text-dim); letter-spacing:.08em; }
-  /* Card body laid out so the meter is a horizontal strip and the meter-dB
-     + gain-dB sit side by side underneath, mute below. */
+  /* Card body: gain readout ABOVE the meter, signal-level dB below it,
+     compact mute aligned right. No .peer-meta line — host/guest tag is
+     already in the header so it's a redundant copy. */
   .peer-card .meter-host { display: block; }
-  .peer-card .below-meter {
-    display: flex; justify-content: space-between; align-items: baseline;
-    gap: 12px; padding-top: 2px;
+  .peer-card .above-meter {
+    display: flex; justify-content: flex-end; align-items: baseline;
+    padding-bottom: 3px;
   }
-  .peer-card .below-meter .meter-db,
-  .peer-card .below-meter .gain-db {
+  .peer-card .above-meter .gain-db {
     font-family: 'Fraunces', serif; font-weight: 300;
-    font-size: .82rem; color: var(--text-2nd);
-    letter-spacing: .04em;
+    font-size: .82rem; color: var(--amber-bright); letter-spacing: .04em;
   }
-  .peer-card .below-meter .meter-db { color: var(--text-dim); }
-  .peer-card .below-meter .gain-db  { color: var(--amber-bright); }
-  .peer-card .below-meter .gain-db .glbl { font-size:.62rem; color: var(--text-dim); margin-right: 4px; letter-spacing:.12em; text-transform:uppercase; }
+  .peer-card .above-meter .gain-db .glbl {
+    font-size: .62rem; color: var(--text-dim);
+    margin-right: 4px; letter-spacing: .12em; text-transform: uppercase;
+  }
+  .peer-card .below-meter {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 12px; padding-top: 4px;
+  }
+  .peer-card .below-meter .meter-db {
+    font-family: 'Fraunces', serif; font-weight: 300;
+    font-size: .72rem; color: var(--text-dim); letter-spacing: .04em;
+  }
   .peer-card .mute {
-    width: 100%; padding: 8px 0; font-size: .8rem;
+    padding: 4px 12px; font-size: .68rem;
   }
   .peers-empty { padding:14px; font-size:.62rem; color:var(--text-muted); letter-spacing:.14em; text-align:center; }
+
+  /* Effects module — single horizontal row for now. */
+  .fx-row {
+    display:flex; align-items:center; gap:12px;
+    flex-direction:row !important;
+  }
+  .fx-row .fx-label {
+    font-size:.78rem; color:var(--text-dim); letter-spacing:.1em; text-transform:lowercase;
+    flex-shrink:0;
+  }
+  .fx-row .fx-slider {
+    flex:1; min-width:160px; max-width:380px;
+  }
+  .fx-row .fx-val {
+    font-family:'Fraunces', serif; font-size:.82rem; color:var(--amber-bright);
+    min-width:46px; text-align:right;
+  }
 
   .docs { font-size:.62rem; line-height:1.7; color:var(--text-2nd); max-width:520px; }
   .docs em { color:var(--amber); font-style:normal; }
@@ -158,15 +193,16 @@
 </head>
 <body>
 
-<!-- Row 1: identity + leave. Role is a *label* for the username
-     (lowercase, no border) — not a button. Mute lives inside the
-     "Your Mic" module, not in the strip. -->
+<!-- Row 1: identity + state + leave. Role is a *label* for the username,
+     not a button. State text ("Room Open", "in room", error messages)
+     lives inline here too — the dedicated room-state subline is gone. -->
 <div class="strip strip-top">
   <span class="room-name">TelloFoam</span>
   <span class="role-name">
     <span class="role" id="roleBadge">guest</span>
     <span class="me" id="meName">—</span>
   </span>
+  <span class="state-inline" id="roomState">initializing…</span>
   <span class="spacer"></span>
   <a href="index.html"><button class="danger">Leave</button></a>
 </div>
@@ -189,13 +225,24 @@
   <span class="stat"><span class="lbl">E2E</span><span class="val" id="audioE2E">—</span></span>
 </div>
 
-<div class="room-state connecting" id="roomState">initializing…</div>
 
 <!-- Single "In the Room" module — self is pinned first as a peer card. -->
 <div class="module" style="width:100%; max-width:1200px">
   <div class="mod-head">In the Room</div>
   <div class="mod-body" id="peersMount">
     <div class="peers-empty">opening audio…</div>
+  </div>
+</div>
+
+<!-- Effects bus (placeholder). Single stereo reverb send for now; can
+     swap to a binaural reverb later. Wet knob controls how loud the
+     reverb-return is mixed back into the room output. -->
+<div class="module" style="width:100%; max-width:1200px; margin-top:8px;">
+  <div class="mod-head">Effects</div>
+  <div class="mod-body fx-row">
+    <span class="fx-label">Reverb wet</span>
+    <input type="range" class="fx-slider" id="fxReverbWet" min="0" max="1" step="0.01" value="0.15">
+    <span class="fx-val" id="fxReverbWetVal">15%</span>
   </div>
 </div>
 
@@ -240,7 +287,7 @@ const SAVED_PAIR   = sessionStorage.getItem('tf.outputChannelPair');
 // bookmarking / pasting URLs. Send them through the entry. Host opt-in
 // users still need device choices but skip the code check.
 if (SAVED_INPUT === null || (!OPTED_HOST && !MY_CODE)) {
-  document.querySelectorAll('.strip, .room-state, .row').forEach(el => el.style.display = 'none');
+  document.querySelectorAll('.strip, .module').forEach(el => el.style.display = 'none');
   $('missingEntry').style.display = 'block';
   throw new Error('Missing entry-state — redirected to setup');
 }
@@ -267,6 +314,7 @@ let myStream = null;
 let audioCtx = null;
 let micSource = null, micGain = null, micDest = null;
 let outLimiter = null;   // DynamicsCompressor between local audio and destination
+let reverbConvolver = null, reverbWetGain = null;  // stereo reverb send/return
 let selfMeter = null;
 let muted = false;
 const peers = new Map();
@@ -277,7 +325,7 @@ let statsTimer = null;
 
 function setRoomState(text, cls) {
   $('roomState').textContent = text;
-  $('roomState').className = 'room-state ' + (cls || '');
+  $('roomState').className = 'state-inline ' + (cls || '');
 }
 function setDot(id, state) {
   const el = $(id);
@@ -301,6 +349,32 @@ function setDot(id, state) {
   setRoomState('connecting to broker…', 'connecting');
   initPeer();
 })();
+
+// Synthetic stereo impulse response for the placeholder reverb. Exponential
+// decay with `decay` shape parameter (higher → faster die-out). Each channel
+// is independent uncorrelated noise so the room reads as stereo, not mono.
+function makeReverbIR(audioCtx, duration = 2.0, decay = 2.0) {
+  const sr = audioCtx.sampleRate;
+  const len = Math.floor(duration * sr);
+  const buf = audioCtx.createBuffer(2, len, sr);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = buf.getChannelData(ch);
+    for (let i = 0; i < len; i++) {
+      const t = i / len;
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, decay);
+    }
+  }
+  return buf;
+}
+
+// Reverb wet slider (in the Effects module) — live updates reverbWetGain.
+// Wired here so it works whether or not audio has been initialized yet
+// (the gain node may not exist at page load).
+document.getElementById('fxReverbWet').addEventListener('input', (e) => {
+  const v = parseFloat(e.target.value);
+  document.getElementById('fxReverbWetVal').textContent = Math.round(v * 100) + '%';
+  if (reverbWetGain) reverbWetGain.gain.value = v;
+});
 
 async function openLocalAudio() {
   // Use saved deviceId if present and non-empty, else system default
@@ -333,6 +407,18 @@ async function openLocalAudio() {
   outLimiter.attack.value    = 0.003;
   outLimiter.release.value   = 0.15;
   outLimiter.connect(audioCtx.destination);
+
+  // Stereo reverb send. Each peer gain → outLimiter (dry) AND →
+  // reverbConvolver (wet). The convolver's output goes through
+  // reverbWetGain (slider-controlled) → outLimiter so the reverb return
+  // is still clip-protected. Placeholder for a future binaural reverb
+  // where each source's wet path could be HRTF-positioned independently.
+  reverbConvolver = audioCtx.createConvolver();
+  reverbConvolver.buffer = makeReverbIR(audioCtx, 2.2, 2.4);
+  reverbWetGain = audioCtx.createGain();
+  reverbWetGain.gain.value = parseFloat($('fxReverbWet').value) || 0.15;
+  reverbConvolver.connect(reverbWetGain);
+  reverbWetGain.connect(outLimiter);
 
   micSource = audioCtx.createMediaStreamSource(rawStream);
   micGain   = audioCtx.createGain(); micGain.gain.value = W.dbToGain(0);
@@ -415,9 +501,9 @@ function onPeerReady() {
   refreshSelfRole();
   setDot('dotBroker', 'ok');
   if (isHost) {
-    setRoomState('host · room open · waiting for guests', 'connected');
+    setRoomState('Room Open', 'connected');
   } else {
-    setRoomState('connected to broker · joining room…', 'connecting');
+    setRoomState('joining…', 'connecting');
     connectToHost();
   }
 }
@@ -478,7 +564,7 @@ function handleGuestSideMessage(msg) {
         addPeerEntry(p.peerId, p.name);
         callPeer(p.peerId);
       }
-      setRoomState(myStream ? 'in room' : 'admitted · waiting on audio…', myStream ? 'connected' : 'connecting');
+      setRoomState(myStream ? 'In Room' : 'admitted · waiting on audio…', myStream ? 'connected' : 'connecting');
       break;
     }
     case 'rejected':
@@ -582,7 +668,7 @@ function drainPendingCalls() {
       try { mediaCall.answer(myStream); bindMediaCall(mediaCall); } catch (e) {}
     }
   }
-  if (!isHost) setRoomState('in room', 'connected');
+  if (!isHost) setRoomState('In Room', 'connected');
 }
 
 function bindMediaCall(mediaCall) {
@@ -611,46 +697,63 @@ function buildPeerCardDom(peerObj) {
   card.className = 'peer-card' + (peerObj.isSelf ? ' self' : '');
   card.dataset.peerId = peerObj.peerId;
   const isHostPeer = peerObj.peerId === HOST_PEER_ID;
+  // Header: name (you?) (role). No separate peer-meta line — role is
+  // already in the header so the duplicate would be wasted real estate.
+  // Mute button is on the same row as the live signal dB so it doesn't
+  // need its own full-width line.
   card.innerHTML = `
     <div class="peer-name">
       <span data-name>${escapeHtml(peerObj.name)}</span>
       ${peerObj.isSelf ? '<span class="you">(you)</span>' : ''}
-      <span class="pcrole${isHostPeer || peerObj.isSelfHost ? ' host' : ''}" data-pcrole>(${peerObj.isSelf ? '…' : (isHostPeer ? 'host' : 'guest')})</span>
+      <span class="pcrole${isHostPeer ? ' host' : ''}" data-pcrole>(${peerObj.isSelf ? '…' : (isHostPeer ? 'host' : 'guest')})</span>
     </div>
-    <div class="peer-meta" data-meta>${peerObj.isSelf ? 'your mic' : (isHostPeer ? 'host · connecting' : 'guest · connecting')}</div>
     <div class="meter-host" data-meter-mount></div>
-    <button class="opt danger mute" data-mute${peerObj.isSelf ? '' : ' disabled'}>Mute</button>
   `;
   return card;
 }
 
 // Mount a MeterStrip inside a card's data-meter-mount, then restructure
-// its readouts so the live signal-level dB and the user-set gain dB sit
-// side-by-side underneath the meter (left + right). Returns the meter.
-function mountMeterInCard(card, gainNode, opts) {
+// its readouts: gain VALUE goes ABOVE the meter, signal-level dB stays
+// BELOW (small + dim). Mute button goes in the same below-row, right side.
+// Returns the meter so the caller can wire setGainDb etc.
+function mountMeterInCard(card, gainNode, opts, muteOpts) {
   const mount = card.querySelector('[data-meter-mount]');
   mount.innerHTML = '';
   const meter = new W.MeterStrip(mount, gainNode, { label: '', ...opts });
+
   const readoutEl = meter.el.querySelector('[data-readout]');
   const gainValEl = meter.el.querySelector('[data-role="gain-val"]');
-  if (readoutEl && gainValEl) {
-    const row = document.createElement('div');
-    row.className = 'below-meter';
-    readoutEl.className = 'meter-db';
+  const meterRow  = meter.el.querySelector('.meter-row');
+
+  // Above-meter row: gain value, right-aligned.
+  if (gainValEl && meterRow) {
+    const above = document.createElement('div');
+    above.className = 'above-meter';
     const gainBox = document.createElement('span');
     gainBox.className = 'gain-db';
     const lbl = document.createElement('span');
     lbl.className = 'glbl'; lbl.textContent = 'gain';
     gainBox.appendChild(lbl);
     gainBox.appendChild(gainValEl);
-    row.appendChild(readoutEl);
-    row.appendChild(gainBox);
-    const meterRow = meter.el.querySelector('.meter-row');
-    if (meterRow && meterRow.parentNode) {
-      meterRow.parentNode.insertBefore(row, meterRow.nextSibling);
-    }
-    const ctrlRow = meter.el.querySelector('.ctrl-row');
-    if (ctrlRow) ctrlRow.remove();
+    above.appendChild(gainBox);
+    meterRow.parentNode.insertBefore(above, meterRow);
+  }
+  const ctrlRow = meter.el.querySelector('.ctrl-row');
+  if (ctrlRow) ctrlRow.remove();
+
+  // Below-meter row: signal-level dB (left, dim) + Mute button (right, compact).
+  if (readoutEl && meterRow) {
+    const below = document.createElement('div');
+    below.className = 'below-meter';
+    readoutEl.className = 'meter-db';
+    below.appendChild(readoutEl);
+    const muteBtn = document.createElement('button');
+    muteBtn.className = 'opt danger mute';
+    muteBtn.setAttribute('data-mute', '');
+    muteBtn.textContent = 'Mute';
+    if (muteOpts && muteOpts.disabled) muteBtn.disabled = true;
+    below.appendChild(muteBtn);
+    meterRow.parentNode.insertBefore(below, meterRow.nextSibling);
   }
   return meter;
 }
@@ -719,6 +822,10 @@ function attachRemoteAudio(peerObj, remoteStream) {
   peerObj.gain   = audioCtx.createGain(); peerObj.gain.gain.value = W.dbToGain(0);
   peerObj.source.connect(peerObj.gain);
   peerObj.gain.connect(outLimiter || audioCtx.destination);
+  // Wet send — same gain feeds the reverb in parallel. Wet level is
+  // governed by reverbWetGain, controlled by the Reverb slider in the
+  // Effects module.
+  if (reverbConvolver) peerObj.gain.connect(reverbConvolver);
 
   // Chrome remote-stream workaround
   const ghost = document.createElement('audio');
