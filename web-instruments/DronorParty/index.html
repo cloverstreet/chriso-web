@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DronorParty — v0.19</title>
+<title>DronorParty — v0.20</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 <style>
 /* ── Canonical gain/meter strip CSS ─────────────────────────────────────
@@ -187,10 +187,66 @@ body {
   align-items:center; padding:16px 12px; overflow-x:auto;
 }
 
-#version-badge {
-  position:fixed; top:8px; right:10px;
-  font-family:'Courier New',monospace; font-size:.85rem;   /* v0.19: was .6rem — readable from across the desk */
-  letter-spacing:.16em; color:#888; pointer-events:none; z-index:50;
+/* v0.20: title + version + About chip moved to top-LEFT and consolidated
+   in a single header strip. Old #version-badge / #stage-indicator floats
+   replaced with this; the About button opens a modal panel with the long
+   description + simple instructions. */
+#app-header {
+  position:fixed; top:8px; left:12px; z-index:50;
+  display:flex; align-items:baseline; gap:14px;
+  font-family:'Courier New',monospace;
+  pointer-events:auto;
+}
+#app-header .name {
+  font-size:1.05rem; letter-spacing:.18em; color:#c8a854; font-weight:normal;
+}
+#app-header .ver {
+  font-size:.7rem; letter-spacing:.10em; color:#666;
+}
+#app-header .about-btn {
+  background:transparent; border:1px solid #555; color:#999;
+  font-family:'Courier New',monospace; font-size:.7rem;
+  letter-spacing:.14em; cursor:pointer;
+  padding:2px 9px; border-radius:2px; transition:all .15s;
+}
+#app-header .about-btn:hover { color:#c8a854; border-color:#c8a854; }
+#about-panel {
+  position:fixed; top:0; left:0; right:0; bottom:0;
+  background:rgba(0,0,0,.82);
+  display:none; align-items:flex-start; justify-content:center;
+  z-index:200; padding:60px 20px 20px;
+}
+#about-panel.open { display:flex; }
+#about-panel .panel {
+  max-width:680px; width:100%;
+  background:#0d0d0d; border:1px solid #2a2a2a; border-radius:4px;
+  padding:24px 28px; color:#bbb;
+  font-family:'Courier New',monospace; font-size:.85rem; line-height:1.7;
+  letter-spacing:.04em;
+  max-height:80vh; overflow-y:auto;
+}
+#about-panel h2 {
+  color:#c8a854; font-size:1.1rem; letter-spacing:.16em;
+  margin:0 0 14px; font-weight:normal;
+}
+#about-panel h3 {
+  color:#999; font-size:.85rem; letter-spacing:.14em;
+  margin:18px 0 6px; font-weight:normal; text-transform:uppercase;
+}
+#about-panel .close-btn {
+  float:right; margin-top:-4px; background:transparent;
+  border:1px solid #555; color:#999;
+  font-family:'Courier New',monospace; font-size:.85rem;
+  cursor:pointer; padding:2px 10px; border-radius:2px;
+}
+#about-panel .close-btn:hover { color:#c8a854; border-color:#c8a854; }
+#about-panel p { margin:0 0 10px; }
+#about-panel ul { margin:0 0 10px 18px; padding:0; }
+#about-panel li { margin-bottom:4px; }
+#about-panel .kbd {
+  background:#1a1a1a; border:1px solid #2a2a2a;
+  padding:1px 6px; border-radius:2px; color:#c8a854;
+  font-size:.78rem;
 }
 
 #start-screen {
@@ -215,6 +271,11 @@ body {
 
 #board { display:none; flex-direction:row; align-items:flex-start; gap:8px; }
 .col-wrap { display:flex; flex-direction:column; gap:6px; flex-shrink:0; }
+/* v0.20: FX column stacks ring-mod / delay / reverb together to reclaim
+   horizontal space (was 3 separate columns). Slightly tighter gap so the
+   stack stays compact. */
+.fx-col { gap:8px; }
+.fx-col > .module { min-width:188px; }
 
 /* Module shell */
 .module {
@@ -366,19 +427,77 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
   margin-top:18px;
 }
 
-/* Stage indicator (so we know which build step is live) */
-#stage-indicator {
-  position:fixed; bottom:8px; right:10px;
-  font-family:'Courier New',monospace; font-size:.78rem;   /* v0.19: was .56rem */
-  letter-spacing:.14em; color:#777; pointer-events:none; z-index:50;
-  text-transform:uppercase;
-}
+/* v0.20: stage indicator retired — long change-notes moved into the
+   About panel. The version chip in #app-header is enough at-a-glance. */
 </style>
 </head>
 <body>
 
-<div id="version-badge">DronorParty v0.19</div>
-<div id="stage-indicator">v6 / SYMP safe · reverb on · readable text + v0.18.1 baseline (EXCITE · ATTACK · halo fix)</div>
+<!-- v0.20: top-left header — name + version + About button. -->
+<div id="app-header">
+  <span class="name">DronorParty</span>
+  <span class="ver">v0.20</span>
+  <button class="about-btn" onclick="document.getElementById('about-panel').classList.add('open')">ABOUT</button>
+</div>
+
+<!-- About panel — descriptive text + instructions. Hidden until About clicked. -->
+<div id="about-panel" onclick="if(event.target.id==='about-panel') this.classList.remove('open')">
+  <div class="panel">
+    <button class="close-btn" onclick="document.getElementById('about-panel').classList.remove('open')">CLOSE</button>
+    <h2>DronorParty</h2>
+    <p>A polyrhythmic drone instrument built around 8 Karplus-Strong strings.
+       Each string is plucked on its own divisor of the global tempo, so the
+       strings drift in and out of phase forever — a slow, evolving drone
+       that never quite repeats.</p>
+
+    <h3>How to play</h3>
+    <ul>
+      <li>Click <b>START</b>. The drone begins immediately at a default tuning.</li>
+      <li>Each string strip has its own controls: ratio (pitch), divisor (rhythm),
+          attack, decay (ring-time), brightness, jawari, halo, detune, pan + gain.</li>
+      <li>Top bar: <b>TEMPO</b> sets the master clock. <b>SYMP</b> couples strings
+          together — at low settings (3-10%) you get the tanpura "halo".
+          <b>EXCITE</b> sets how hard each pluck drives the loop.</li>
+      <li>Right column: ring-mod, delay, reverb. Reverb is on by default.</li>
+      <li>Tuning system dropdown changes the chord. Tuning preset slots
+          (1-4 factory, 5-6 user) save the full per-string state.</li>
+    </ul>
+
+    <h3>Keyboard</h3>
+    <ul>
+      <li><span class="kbd">space</span> — toggle audio engine on/off</li>
+      <li><span class="kbd">1</span>–<span class="kbd">8</span> — manual pluck of string N</li>
+    </ul>
+
+    <h3>Notes</h3>
+    <ul>
+      <li><b>SYMP at high values</b> is now amplitude-clamped — the v0.20 in-loop
+          tanh limiter prevents the cross-coupling runaway that earlier versions
+          could produce. If you ever do hear painful blow-up at any setting,
+          flag it as a bug.</li>
+      <li>Per-string <b>DECAY</b> is the primary tail-shaper. The <b>ATTACK</b>
+          slider only shapes how the noise burst ramps in — the string's
+          natural ring takes over after that.</li>
+    </ul>
+
+    <h3>Recent changes</h3>
+    <ul>
+      <li>v0.20: 8 strings (was 5), FX column consolidated, in-loop SYMP
+          safety limiter, Jawari volume compensation, About panel.</li>
+      <li>v0.19: SYMP send-side clamp + cap drop, reverb default ON,
+          larger non-module text.</li>
+      <li>v0.18.1: decay 0.993 default, ADSR widget → single ATTACK slider,
+          halo audibility fix, SPEC.md committed.</li>
+      <li>v0.18: EXCITE master slider, Attack-only burst, Jawari + Halo
+          turned up.</li>
+    </ul>
+
+    <p style="color:#666; font-size:.78rem; margin-top:18px;">
+      Source + architecture spec: see
+      <a href="SPEC.md" style="color:#c8a854;">SPEC.md</a> in the repo.
+    </p>
+  </div>
+</div>
 
 <div id="start-screen">
   <h1>DronorParty</h1>
@@ -458,11 +577,11 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
     </div>
   </div>
 
-  <!-- ─── RING MOD ──────────────────────────────────────────────────────
-       v0.12 — multiplies the dronor bus by a sine carrier. Adds bell-like
-       overtones at low carrier freqs (50-300 Hz), metallic shimmer at high
-       (1k+ Hz). Default OFF. -->
-  <div class="col-wrap">
+  <!-- ─── FX COLUMN (v0.20) — ring mod, delay, reverb stacked vertically
+       in a single column to reclaim horizontal space. -->
+  <div class="col-wrap fx-col">
+    <!-- ─── RING MOD ──────────────────────────────────────────────────
+         v0.12 — multiplies the dronor bus by a sine carrier. -->
     <div class="module ringmod" id="mod-ringmod">
       <div class="mod-head" title="Ring modulator. Dronor bus × sin(2π·FREQ·t). Low FREQ adds bell tones; high FREQ adds metallic shimmer; sub-audio FREQ (under ~20 Hz) acts like tremolo.">
         <div class="mod-title">RING MOD</div>
@@ -483,10 +602,8 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
         <input type="range" id="rm-amt" min="0" max="1" step="0.01" value="0.3">
       </div>
     </div>
-  </div>
 
-  <!-- ─── DELAY ──────────────────────────────────────────────────────── -->
-  <div class="col-wrap">
+    <!-- ─── DELAY ──────────────────────────────────────────────────────── -->
     <div class="module fx" id="mod-delay">
       <div class="mod-head" title="Delay/echo. Defaults bypassed; click ON to engage.">
         <div class="head-presets" title="Delay presets — click to recall, shift+click to save (slots 5-6 only). Bypass state is not part of presets.">
@@ -529,12 +646,9 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
         <input type="range" id="dly-wet" min="0" max="1" step="0.01" value="0.35">
       </div>
     </div>
-  </div>
 
-  <!-- ─── REVERB ─────────────────────────────────────────────────────────
-       v0.13 — convolution reverb at the end of the chain. Sits between
-       delay and output. IR is generated noise with exponential decay. -->
-  <div class="col-wrap">
+    <!-- ─── REVERB ─────────────────────────────────────────────────────
+         v0.13 — convolution reverb at the end of the chain. -->
     <div class="module reverb" id="mod-reverb">
       <div class="mod-head" title="Convolution reverb at end of chain. IR is procedurally generated decaying noise — adjustable tail length.">
         <div class="mod-title">REVERB</div>
@@ -602,20 +716,19 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
 </div>
 
 <div class="foot">
-  v0.19: SYMP cross-coupling is now hard-clamped (per-string tanh-shaped
-  send + cap dropped 0.15→0.06) — no more painful blow-up at high settings.
-  Reverb defaults ON (TIME 2.0 s, WET 30%). All non-module text bumped to
-  readable sizes. Sitting on v0.18.1's baseline: EXCITE master slider,
-  ADSR widget → single ATTACK slider, halo finally audible, default DECAY
-  0.993, SPEC.md committed alongside the code.
+  Polyrhythmic Karplus-Strong drone — 8 strings, each plucked on its own
+  divisor of the master clock, never quite repeating. Click <b>ABOUT</b>
+  (top-left) for instructions and the changelog.
 </div>
 
 <script>
 'use strict';
 
 // ── Build constants ─────────────────────────────────────────────────────
-const STRING_COUNT = 5;
-const DEFAULT_DIVISORS = [7, 11, 13, 17, 19];   // coprime polyrhythm (all prime)
+// v0.20: 5 → 8 strings. Divisor list extended with 23, 29, 31 — all prime
+// so polyrhythm remains coprime across all 8 strings.
+const STRING_COUNT = 8;
+const DEFAULT_DIVISORS = [7, 11, 13, 17, 19, 23, 29, 31];
 const DEFAULT_PATTERN  = '4321';
 
 // Tempo slider mapping. Slider position is 0..1 (sliderValue) and we map
@@ -647,17 +760,20 @@ const ADSR_HANDLE_R = 4;
 // dropdown nearly inaudible (only the 12-ET P5 differed by ~2 cents from
 // 1.5). v0.8 uses each system's *characteristic* interval so switching
 // systems audibly changes the chord.
+// v0.20: extended to 8 entries each. New positions are P5+octave (3),
+// 2-octave (4), and 2-octave+M3-ish (5×base interval) — a sub-bass to
+// upper-shimmer span that suits a drone.
 const TUNINGS = {
-  // unison · M3 · P5 · octave · M10 (M3 above octave) — full major spread
-  '12-ET':   [1, Math.pow(2, 4/12),  Math.pow(2, 7/12), 2,    Math.pow(2, 16/12)],
-  // unison · just M3 · just P5 · octave · just M3 above octave (5/2)
-  '5-limit': [1, 5/4,                3/2,              2,    5/2              ],
-  // unison · just M3 · just P5 · harmonic 7th · octave (just dom7 + 8ve)
-  '7-limit': [1, 5/4,                3/2,              7/4,  2                ],
-  // unison · pyth M3 · just P5 · octave · pyth M3 above octave
-  'pythag':  [1, 81/64,              3/2,              2,    81/32            ],
-  // tanpura-ish stack: root, P5, octave, P5+octave (= 12th), 2 octaves
-  'custom':  [1, 3/2,                2,                5/2,  3                ],
+  // unison · M3 · P5 · octave · M10 · P5+8ve · 2 octaves · M17
+  '12-ET':   [1, Math.pow(2, 4/12), Math.pow(2, 7/12), 2,    Math.pow(2, 16/12), Math.pow(2, 19/12), 4,    Math.pow(2, 28/12)],
+  // 5-limit JI: root · M3 · P5 · 8ve · M10 (5/2) · 12th (3) · 2 8ves · 17th
+  '5-limit': [1, 5/4,               3/2,              2,    5/2,                3,                   4,    5                 ],
+  // 7-limit: root · M3 · P5 · harmonic 7th · 8ve · 5/2 · 3 · 7/2 (h7+8ve)
+  '7-limit': [1, 5/4,               3/2,              7/4,  2,                  5/2,                 3,    7/2               ],
+  // pythagorean: root · pyth M3 · P5 · 8ve · pyth M10 · 12th · 2 8ves · pyth M17
+  'pythag':  [1, 81/64,             3/2,              2,    81/32,              3,                   4,    81/16             ],
+  // tanpura-ish stack: root, P5, octave, P5+8ve, 2 8ves, P5+2x8ve, 3 8ves, M3+3x8ve
+  'custom':  [1, 3/2,               2,                5/2,  3,                  4,                   6,    8                 ],
 };
 
 // Note names for display in the freq-field
@@ -839,7 +955,7 @@ function loadTuningPreset(idx) {
         s.audio.strGain.gain.setTargetAtTime(dbToGain(s.gain), t, 0.02);
         const wet = s.jawari / 100;
         s.audio.jwDry.gain.setTargetAtTime(1 - wet, t, 0.02);
-        s.audio.jwWet.gain.setTargetAtTime(wet,     t, 0.02);
+        s.audio.jwWet.gain.setTargetAtTime(wet * JAWARI_WET_COMP, t, 0.02);   // v0.20 vol comp
       }
     });
   }
@@ -1276,6 +1392,25 @@ function makeSympSendCurve() {
   return curve;
 }
 
+// v0.20 IN-LOOP soft limiter. The v0.19 send-side clamp was insufficient:
+// even tanh-clamped sympInput, the receiving KS loop integrates over time
+// (loop pole at feedback=0.993 → steady-state gain ≈ 143×), so persistent
+// small excitation at the string's resonant frequency still pumps the loop
+// up to clipping. Putting a soft tanh into the loop itself caps the LOOP
+// SIGNAL amplitude regardless of how aggressively it's being driven.
+// Curve = tanh(1.3 * x): nearly linear (≈ unity gain) for |x| < 0.5, then
+// gradual soft-knee saturation toward ±1.0. Natural KS character is
+// preserved at normal levels; only runaway growth gets clamped.
+function makeLoopLimiterCurve() {
+  const N = 2048;
+  const curve = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const x = (i / (N - 1)) * 2 - 1;
+    curve[i] = Math.tanh(1.3 * x);
+  }
+  return curve;
+}
+
 // v0.18: more aggressive Jawari. Was tanh(5x) which produced a subtle
 // soft-clip with mostly odd harmonics. New curve:
 //   • drive 14× (was 5×) — pushes well into saturation even at moderate input
@@ -1285,6 +1420,14 @@ function makeSympSendCurve() {
 //   • mild post-curve high-passy emphasis via a (1 - 0.5 * x²) cubic-ish
 //     bend so the small-signal region passes cleaner; the clipped region
 //     still rings.
+// v0.20 Jawari volume-compensation factor. The shaper (tanh(14x+0.18))
+// drives modest-amplitude KS signal hard into saturation where RMS
+// approaches ±1.0 — much louder than dry. Without comp, raising the
+// Jawari slider acted as a volume boost as much as a tone change.
+// 0.35 brings 100%-jawari output back close to dry RMS while preserving
+// the timbral shift. Applied wherever jwWet.gain is set.
+const JAWARI_WET_COMP = 0.35;
+
 function makeJawariCurve() {
   const N = 2048;
   const curve = new Float32Array(N);
@@ -1313,6 +1456,12 @@ function createKSChain(ctx) {
   const delay    = ctx.createDelay(0.5);
   delay.delayTime.value = 1 / 220;          // nonzero default; pluck overwrites
   const loopFIR  = ctx.createIIRFilter([0.5, 0.5], [1.0]);  // canonical KS
+  // v0.20 soft limiter in the loop — caps loop signal amplitude at ±1.0
+  // so SYMP / cross-coupling can't pump the loop into runaway growth.
+  // Nearly transparent below ~0.5 amplitude.
+  const loopLimiter = ctx.createWaveShaper();
+  loopLimiter.curve = makeLoopLimiterCurve();
+  loopLimiter.oversample = '2x';
   const feedback = ctx.createGain(); feedback.gain.value = 0.96;
   const filter   = ctx.createBiquadFilter();   // brightness (out-of-loop)
   filter.type = 'lowpass';
@@ -1368,13 +1517,18 @@ function createKSChain(ctx) {
   const panner   = ctx.createStereoPanner();
   const strGain  = ctx.createGain(); strGain.gain.value = 1;
 
-  // Feedback loop (stable)
+  // Feedback loop (stable). v0.20: loopLimiter inserted after loopFIR so
+  // the signal flowing back through `feedback` to sumNode is amplitude-
+  // clamped — SYMP excitation can no longer cause unbounded growth.
+  //   sumNode → delay → loopFIR → loopLimiter → feedback → sumNode
   sumNode.connect(delay);
   delay.connect(loopFIR);
-  loopFIR.connect(feedback);
+  loopFIR.connect(loopLimiter);
+  loopLimiter.connect(feedback);
   feedback.connect(sumNode);
-  // Output tap from the same loopFIR node (multi-destination ok)
-  loopFIR.connect(filter);
+  // Output tap from loopLimiter (post-clamp; same waveform that's actually
+  // ringing in the loop). Multi-destination ok.
+  loopLimiter.connect(filter);
   // After the brightness filter: dry path + jawari wet path both go directly
   // to the panner (no output envelope). Halo comb feeds from the same filter
   // node, and its enveloped output mixes into the panner alongside.
@@ -1387,7 +1541,7 @@ function createKSChain(ctx) {
   // sees the full KS string spectrum. Previously fed from `filter` (which
   // cuts above ~2.5 kHz), starving the 1.4 kHz comb resonance of upper-
   // harmonic material to ring — hence "I don't hear any effect from Halo".
-  loopFIR.connect(haloDelay);
+  loopLimiter.connect(haloDelay);   // v0.20: tap post-limiter for safe halo input
   haloEnv.connect(panner);
   panner.connect(strGain);
 
@@ -1728,12 +1882,15 @@ function wireGlobalControls() {
     const v = parseFloat(e.target.value);
     state.symp = v;
     document.getElementById('symp-val').textContent = v + '%';
-    // v0.19: cap lowered from 0.15 → 0.06. Even with the per-string
-    // sympSend tanh limiter, two strings tuned to a near-integer ratio
-    // could pump each other into runaway loop growth at the old cap.
-    // 0.06 keeps the SYMP effect audible (real tanpura cross-coupling
-    // is ~3-5%, this caps at 6%) while keeping the network stable.
-    const target = (v / 100) * 0.06;
+    // v0.20: cap lowered 0.06 → 0.03. Even with the v0.19 send-side tanh
+    // clamp, the receiving KS loop integrates over time (feedback=0.993
+    // → steady-state gain ~143×), so persistent matched-frequency input
+    // still pumps the loop into clipping. The v0.20 IN-LOOP limiter caps
+    // loop amplitude, AND this lower cap keeps the input drive itself
+    // below the threshold where the limiter has to constantly engage
+    // (engagement audibly compresses character). Real tanpura cross-
+    // coupling is ~3-5% so 3% still gives the halo effect.
+    const target = (v / 100) * 0.03;
     if (audioCtx) {
       state.strings.forEach(s => {
         if (s.audio && s.audio.sympInput) {
@@ -1802,7 +1959,7 @@ function wireStringControls() {
         const wet = v / 100;
         if (s.audio) {
           s.audio.jwDry.gain.setTargetAtTime(1 - wet, now, 0.02);
-          s.audio.jwWet.gain.setTargetAtTime(wet,     now, 0.02);
+          s.audio.jwWet.gain.setTargetAtTime(wet * JAWARI_WET_COMP, now, 0.02);  // v0.20 vol comp
         }
         break;
       }
@@ -2458,7 +2615,7 @@ async function startAudio() {
     // Initial jawari mix (default 0% wet)
     const wet = (s.jawari || 0) / 100;
     s.audio.jwDry.gain.value = 1 - wet;
-    s.audio.jwWet.gain.value = wet;
+    s.audio.jwWet.gain.value = wet * JAWARI_WET_COMP;   // v0.20 vol comp
     s.patternStep = 0;
   });
 
