@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DronorParty — v0.18.1</title>
+<title>DronorParty — v0.19</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 <style>
 /* ── Canonical gain/meter strip CSS ─────────────────────────────────────
@@ -189,25 +189,26 @@ body {
 
 #version-badge {
   position:fixed; top:8px; right:10px;
-  font-family:'Courier New',monospace; font-size:.6rem;
-  letter-spacing:.16em; color:#555; pointer-events:none; z-index:50;
+  font-family:'Courier New',monospace; font-size:.85rem;   /* v0.19: was .6rem — readable from across the desk */
+  letter-spacing:.16em; color:#888; pointer-events:none; z-index:50;
 }
 
 #start-screen {
-  display:flex; flex-direction:column; align-items:center; gap:18px; margin-top:18vh;
+  display:flex; flex-direction:column; align-items:center; gap:24px; margin-top:16vh;
 }
 #start-screen h1 {
-  font-size:1.4rem; letter-spacing:.18em; color:#c8a854;
+  font-size:2.2rem; letter-spacing:.18em; color:#c8a854;
   font-weight:normal;
 }
 #start-screen .blurb {
-  font-size:.7rem; letter-spacing:.08em; color:#666;
-  max-width:480px; text-align:center; line-height:1.7;
+  font-size:1rem;                  /* v0.19: was .7rem — humans read with their eyes */
+  letter-spacing:.06em; color:#999;
+  max-width:560px; text-align:center; line-height:1.7;
 }
 #start-btn {
-  padding:14px 44px; background:transparent;
+  padding:16px 52px; background:transparent;
   border:1px solid #c8a854; color:#c8a854;
-  font-family:'Courier New',monospace; font-size:.9rem;
+  font-family:'Courier New',monospace; font-size:1.15rem;  /* v0.19: was .9rem */
   letter-spacing:.2em; cursor:pointer; transition:all .2s;
 }
 #start-btn:hover { background:#c8a854; color:#000; }
@@ -360,24 +361,24 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
 
 /* Footer / hint area */
 .foot {
-  font-size:.56rem; color:#555; letter-spacing:.12em;
-  text-align:center; max-width:780px; line-height:1.7;
-  margin-top:14px;
+  font-size:.85rem; color:#888; letter-spacing:.06em;  /* v0.19: was .56rem / #555 / .12em — readable at arm's length */
+  text-align:center; max-width:900px; line-height:1.7;
+  margin-top:18px;
 }
 
 /* Stage indicator (so we know which build step is live) */
 #stage-indicator {
   position:fixed; bottom:8px; right:10px;
-  font-family:'Courier New',monospace; font-size:.56rem;
-  letter-spacing:.16em; color:#444; pointer-events:none; z-index:50;
+  font-family:'Courier New',monospace; font-size:.78rem;   /* v0.19: was .56rem */
+  letter-spacing:.14em; color:#777; pointer-events:none; z-index:50;
   text-transform:uppercase;
 }
 </style>
 </head>
 <body>
 
-<div id="version-badge">DronorParty v0.18.1</div>
-<div id="stage-indicator">v5 / decay 0.993 default · ADSR → single ATTACK slider · halo pre-brightness + faster rise</div>
+<div id="version-badge">DronorParty v0.19</div>
+<div id="stage-indicator">v6 / SYMP safe · reverb on · readable text + v0.18.1 baseline (EXCITE · ATTACK · halo fix)</div>
 
 <div id="start-screen">
   <h1>DronorParty</h1>
@@ -537,21 +538,21 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
     <div class="module reverb" id="mod-reverb">
       <div class="mod-head" title="Convolution reverb at end of chain. IR is procedurally generated decaying noise — adjustable tail length.">
         <div class="mod-title">REVERB</div>
-        <button class="byp-btn off" data-bypass="reverb" title="Toggle reverb on/off. When OFF, wet=0; settings preserved.">OFF</button>
+        <button class="byp-btn" data-bypass="reverb" title="Toggle reverb on/off. When OFF, wet=0; settings preserved.">ON</button>
       </div>
       <div class="slider-row" title="Reverb tail length in seconds. 0.5 = small room. 6 = cathedral-ish.">
         <div class="slider-label-row">
           <span class="slider-label">TIME</span>
-          <span class="ctrl-val" id="rv-time-val">2.5 s</span>
+          <span class="ctrl-val" id="rv-time-val">2.0 s</span>
         </div>
-        <input type="range" id="rv-time" min="0.3" max="6" step="0.1" value="2.5">
+        <input type="range" id="rv-time" min="0.3" max="6" step="0.1" value="2.0">
       </div>
       <div class="slider-row" title="Reverb wet send level out to master. Dry signal always passes through unchanged.">
         <div class="slider-label-row">
           <span class="slider-label">WET</span>
-          <span class="ctrl-val" id="rv-wet-val">35%</span>
+          <span class="ctrl-val" id="rv-wet-val">30%</span>
         </div>
-        <input type="range" id="rv-wet" min="0" max="1" step="0.01" value="0.35">
+        <input type="range" id="rv-wet" min="0" max="1" step="0.01" value="0.30">
       </div>
     </div>
   </div>
@@ -601,12 +602,12 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
 </div>
 
 <div class="foot">
-  v0.16: ADSR is now baked into the noise burst (input-side shaping) instead
-  of gating the output — DECAY is no longer overridden by ADSR's release,
-  symp resonance is now audible (other strings' meters move), and the
-  "kick-drum" click on rapid replucking is gone (DC removed from each burst).
-  Default decay 0.975 → 0.99 (longer natural ring). Jawari drive 3× → 5×
-  (more obvious at modest %). Halo feedback 0.6 → 0.75.
+  v0.19: SYMP cross-coupling is now hard-clamped (per-string tanh-shaped
+  send + cap dropped 0.15→0.06) — no more painful blow-up at high settings.
+  Reverb defaults ON (TIME 2.0 s, WET 30%). All non-module text bumped to
+  readable sizes. Sitting on v0.18.1's baseline: EXCITE master slider,
+  ADSR widget → single ATTACK slider, halo finally audible, default DECAY
+  0.993, SPEC.md committed alongside the code.
 </div>
 
 <script>
@@ -1171,7 +1172,7 @@ let ringModBypassed = true;    // default OFF
 let delayChain = null;         // simple delay (input → dry+wet w/ feedback)
 let delayBypassed = true;      // sliders inactive when bypassed (default OFF)
 let reverbChain = null;        // convolution reverb at end of chain
-let reverbBypassed = true;     // default OFF
+let reverbBypassed = false;    // v0.19: default ON (TIME 2.0 s, WET 30%)
 const RM_LO_HZ = 5, RM_HI_HZ = 5000;
 const rmSliderToHz = v => RM_LO_HZ * Math.pow(RM_HI_HZ / RM_LO_HZ, v);
 let outputGainNode = null;     // master output gain
@@ -1258,6 +1259,23 @@ function attachGainDrag(wrap, slider, valEl, min, max, formatLabel, onSet) {
 // At typical KS string output amplitudes (~0.1-0.3), 3× was too gentle to
 // produce audible saturation; 5× pushes inputs into the curve's compressing
 // region so the slider's effect is obvious at modest percentages.
+// v0.19 SAFETY waveshaper for sympathetic-resonance sends. Hard tanh with
+// high drive (8×) so any signal above ±0.13 is clamped to near ±1.0 by the
+// curve. Purpose: prevent KS-loop blow-up under cross-coupling regardless
+// of slider settings — two strings tuned to near-integer ratios could pump
+// each other into runaway loop growth even at the v0.18 cap of 0.15. With
+// this limiter on every send tap + the v0.19 cap drop to 0.06, the SYMP
+// network is firmly in stable territory.
+function makeSympSendCurve() {
+  const N = 1024;
+  const curve = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const x = (i / (N - 1)) * 2 - 1;
+    curve[i] = Math.tanh(8 * x);
+  }
+  return curve;
+}
+
 // v0.18: more aggressive Jawari. Was tanh(5x) which produced a subtle
 // soft-clip with mostly odd harmonics. New curve:
 //   • drive 14× (was 5×) — pushes well into saturation even at moderate input
@@ -1339,6 +1357,13 @@ function createKSChain(ctx) {
   // into the KS feedback sumNode so it acts like extra excitation.
   const sympInput = ctx.createGain(); sympInput.gain.value = 0;
   sympInput.connect(sumNode);
+  // v0.19 sympSend tap — each string's strGain feeds into this waveshaper
+  // before being fanned out to other strings' sympInputs. The shaper hard-
+  // clamps the outbound amplitude to ±1.0, so a single string's KS loop
+  // spiking can't excite peers beyond unity. Wired in startAudio() below.
+  const sympSend = ctx.createWaveShaper();
+  sympSend.curve = makeSympSendCurve();
+  sympSend.oversample = '2x';
 
   const panner   = ctx.createStereoPanner();
   const strGain  = ctx.createGain(); strGain.gain.value = 1;
@@ -1377,7 +1402,7 @@ function createKSChain(ctx) {
   splitter.connect(aR, 1);
 
   return { sumNode, delay, loopFIR, feedback, filter, jwDry, jwWet, shaper,
-           haloDelay, haloFeedback, haloEnv, sympInput,
+           haloDelay, haloFeedback, haloEnv, sympInput, sympSend,
            panner, strGain, aL, aR };
 }
 
@@ -1703,8 +1728,12 @@ function wireGlobalControls() {
     const v = parseFloat(e.target.value);
     state.symp = v;
     document.getElementById('symp-val').textContent = v + '%';
-    // Cap at 0.15 max even at slider 100%, to keep the system stable.
-    const target = (v / 100) * 0.15;
+    // v0.19: cap lowered from 0.15 → 0.06. Even with the per-string
+    // sympSend tanh limiter, two strings tuned to a near-integer ratio
+    // could pump each other into runaway loop growth at the old cap.
+    // 0.06 keeps the SYMP effect audible (real tanpura cross-coupling
+    // is ~3-5%, this caps at 6%) while keeping the network stable.
+    const target = (v / 100) * 0.06;
     if (audioCtx) {
       state.strings.forEach(s => {
         if (s.audio && s.audio.sympInput) {
@@ -2438,14 +2467,20 @@ async function startAudio() {
   dronorBus.gain.value = 1;
   state.strings.forEach(s => s.audio.strGain.connect(dronorBus));
 
-  // Sympathetic-resonance routing: each string's strGain feeds every OTHER
-  // string's sympInput at the global symp-controlled gain. This creates the
-  // tanpura-like cross-string coupling where plucking one string excites
-  // the others at their own resonant pitches.
+  // Sympathetic-resonance routing (v0.19 safety pass): each string's
+  // strGain feeds its OWN sympSend waveshaper (tanh hard limiter), then
+  // the shaped/clamped signal is fanned out to every OTHER string's
+  // sympInput. The shaper prevents runaway growth under cross-coupling —
+  // even at 100% slider, no single string's output can excite peers
+  // beyond ±1.0. Together with the SYMP cap drop (0.15 → 0.06) this
+  // makes the network firmly stable.
+  state.strings.forEach((src) => {
+    src.audio.strGain.connect(src.audio.sympSend);
+  });
   state.strings.forEach((src, srcI) => {
     state.strings.forEach((dst, dstI) => {
       if (srcI === dstI) return;
-      src.audio.strGain.connect(dst.audio.sympInput);
+      src.audio.sympSend.connect(dst.audio.sympInput);
     });
   });
 
@@ -2457,11 +2492,16 @@ async function startAudio() {
   delayChain = createDelayChain(audioCtx);
   ringChain.output.connect(delayChain.input);
 
-  // Reverb chain at end of FX (default OFF — wet=0)
+  // Reverb chain at end of FX. v0.19: default ON — set wet from slider
+  // immediately since createReverbChain initializes wet=0 for the legacy
+  // "default OFF" path.
   reverbChain = createReverbChain(audioCtx, parseFloat(
     document.getElementById('rv-time').value));
   delayChain.dry.connect(reverbChain.input);
   delayChain.wet.connect(reverbChain.input);
+  if (!reverbBypassed) {
+    reverbChain.wet.gain.value = parseFloat(document.getElementById('rv-wet').value);
+  }
 
   outputGainNode = audioCtx.createGain();
   outputGainNode.gain.value = dbToGain(parseFloat(
