@@ -179,6 +179,34 @@
     background: rgba(220,200,160,0.12);
   }
 
+  /* Standalone mute pill — stacked above the mode toggle */
+  #btn-mute {
+    position: fixed;
+    right: 18px;
+    bottom: 60px;
+    z-index: 11;
+    appearance: none;
+    border: 1px solid rgba(220,200,160,0.18);
+    background: rgba(0,0,0,0.4);
+    color: #8a7c64;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: lowercase;
+    padding: 6px 16px;
+    border-radius: 16px;
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: color 0.3s, background 0.3s;
+  }
+  #btn-mute:hover { color: #c8b894; }
+  #btn-mute.active {
+    color: #f0e0c0;
+    background: rgba(220,200,160,0.18);
+    border-color: rgba(220,200,160,0.32);
+  }
+
   /* Tiny hint shown until first gesture unlocks audio */
   #audio-hint {
     position: fixed;
@@ -261,6 +289,7 @@
 
 <div id="audio-hint">move · tap · to begin</div>
 
+<button id="btn-mute">mute</button>
 <div id="mode-toggle">
   <button id="btn-stereo">stereo</button>
   <button id="btn-binaural" class="active">binaural</button>
@@ -900,6 +929,27 @@ function setMode(mode) {
 }
 btnStereo.addEventListener('click',   () => setMode('equalpower'));
 btnBinaural.addEventListener('click', () => setMode('HRTF'));
+
+// ── Mute toggle ────────────────────────────────────────────────────────
+// Ramps master gain to 0 on mute, back to the original level on unmute.
+// Clicking it doesn't count as the first audio-unlock gesture (we don't
+// want a brand-new visitor accidentally starting muted), so this no-ops
+// silently before audio has been initialised.
+const btnMute = document.getElementById('btn-mute');
+const MASTER_LEVEL = 0.18;
+let muted = false;
+btnMute.addEventListener('click', (e) => {
+  e.stopPropagation();
+  muted = !muted;
+  btnMute.classList.toggle('active', muted);
+  btnMute.textContent = muted ? 'muted' : 'mute';
+  if (actx && master) {
+    const t = actx.currentTime;
+    master.gain.cancelScheduledValues(t);
+    master.gain.setValueAtTime(master.gain.value, t);
+    master.gain.linearRampToValueAtTime(muted ? 0 : MASTER_LEVEL, t + 0.25);
+  }
+});
 
 
 // ── First-gesture audio start ─────────────────────────────────────────
