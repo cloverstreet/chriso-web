@@ -29,36 +29,60 @@
     pointer-events: none;
   }
 
-  /* Title — small, near top */
-  #title {
+  /* Title-area particle canvas — curl-noise flow field with hot palette
+     cycling (lifted from /index2/). Bounded to the upper portion of the
+     viewport so the rest of the page stays calm. */
+  canvas#title-particles {
     position: fixed;
-    top: 6vh;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 38vh;
+    z-index: 1;
+    pointer-events: none;
+    mix-blend-mode: screen;
+  }
+
+  /* Title wrap — keeps title + subtitle stacked + centered without
+     having to recompute subtitle's `top` for every title size change */
+  #title-wrap {
+    position: fixed;
+    top: 5vh;
     left: 50%;
     transform: translateX(-50%);
     z-index: 8;
     pointer-events: none;
-    color: #b09a78;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    width: 92vw;
+  }
+  #title {
+    color: rgba(248, 232, 200, 0.78);
+    font-family: 'Courier New', monospace;
+    font-weight: 700;
     font-style: italic;
-    font-size: clamp(14px, 1.5vw, 18px);
-    letter-spacing: 0.5em;
-    opacity: 0.78;
+    font-size: clamp(36px, 7vw, 92px);
+    letter-spacing: 0.10em;
     text-transform: lowercase;
     white-space: nowrap;
+    /* mix-blend-mode lets the particles below show through the letters
+       (same trick as /index2/'s title) */
+    mix-blend-mode: screen;
+    text-shadow: 0 0 36px rgba(248, 232, 200, 0.22);
+    line-height: 1;
   }
   #subtitle {
-    position: fixed;
-    top: calc(6vh + 2.2em);
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 8;
-    pointer-events: none;
-    color: #6b5a44;
-    font-size: clamp(10px, 0.85vw, 12px);
-    letter-spacing: 0.32em;
-    opacity: 0.55;
+    margin-top: 0.6em;
+    color: #d4c098;
+    font-family: 'Courier New', monospace;
+    font-style: italic;
+    font-size: clamp(11px, 1.05vw, 14px);
+    letter-spacing: 0.36em;
+    opacity: 0.92;
     text-transform: lowercase;
     white-space: nowrap;
-    font-style: italic;
   }
 
   /* Scattered links — same visual language as glitchpage entrance */
@@ -218,15 +242,19 @@
     /* On phone, links don't have viewport-positioned glow centers, so
        collapse the proximity-glow to a softer ambient backdrop */
     canvas#glow { opacity: 0.45; }
-    #title { top: 4vh; }
-    #subtitle { top: calc(4vh + 2em); }
+    #title-wrap { top: 4vh; }
+    /* Particles stay on phone but at reduced density (handled in JS) */
+    canvas#title-particles { height: 32vh; }
   }
 </style>
 </head>
 <body>
 <canvas id="glow"></canvas>
-<div id="title">/sandbox/</div>
-<div id="subtitle">rough play · prototypes in flux</div>
+<canvas id="title-particles"></canvas>
+<div id="title-wrap">
+  <div id="title">/sandbox/</div>
+  <div id="subtitle">rough play · prototypes in flux</div>
+</div>
 <div id="loading">loading…</div>
 <div id="links"></div>
 <div class="room-hum"></div>
@@ -310,10 +338,10 @@ function renderLinks(items) {
       hueBias:  (i * 7) % 22 - 11
     });
 
-    // Hover audio cue — soft sine swell
-    a.addEventListener('pointerenter', () => triggerHoverTone(i));
-    a.addEventListener('pointerleave', () => releaseHoverTone());
-    a.addEventListener('click',        () => triggerClickGrain());
+    // Per-link sound is proximity-driven (handled in the audio modulation
+    // loop reading L.prox) so pointerenter/leave aren't needed for tone.
+    // Click still fires a small grain transient before navigation.
+    a.addEventListener('click', () => triggerClickGrain());
 
     linksContainer.appendChild(a);
   });
@@ -386,6 +414,9 @@ function glowFrame() {
       prox = Math.max(0, 1 - dist / reach);
       prox = prox * prox * (3 - 2 * prox);
     }
+    // Expose proximity to the audio loop so per-link tones ramp in
+    // at the same distance the visual glow does.
+    L.prox = prox;
 
     const slow = 0.5 + 0.5 * Math.sin(glowT * L.freq + L.phase);
     const wob  = glowN2(L.cx, L.cy, glowT + L.phase);
@@ -425,6 +456,108 @@ function glowFrame() {
   requestAnimationFrame(glowFrame);
 }
 glowFrame();
+
+
+// ── Title-area particle field (index2-style curl noise + hot palette) ─
+// A separate canvas bounded to the upper viewport. Curl noise drives the
+// flow, hot palette (magenta/cyan/yellow) cycles, cursor warps the field
+// when it's near the title region. `mix-blend-mode: screen` on the canvas
+// + the title text lets the particles show through the letterforms.
+const tCanvas = document.getElementById('title-particles');
+const tCtx    = tCanvas.getContext('2d');
+let tcW, tcH;
+
+function resizeTitleParticles() {
+  tcW = window.innerWidth;
+  tcH = Math.floor(window.innerHeight * (
+    window.innerWidth < 600 ? 0.32 : 0.38));
+  tCanvas.width  = tcW * glowDpr;
+  tCanvas.height = tcH * glowDpr;
+  tCanvas.style.width  = tcW + 'px';
+  tCanvas.style.height = tcH + 'px';
+  tCtx.setTransform(glowDpr, 0, 0, glowDpr, 0, 0);
+  tCtx.fillStyle = '#000';
+  tCtx.fillRect(0, 0, tcW, tcH);
+}
+resizeTitleParticles();
+window.addEventListener('resize', resizeTitleParticles);
+
+const N_TPART = Math.min(window.innerWidth, window.innerHeight) < 600 ? 350 : 700;
+const tParticles = [];
+for (let i = 0; i < N_TPART; i++) {
+  tParticles.push({
+    x: Math.random() * tcW,
+    y: Math.random() * tcH,
+    vx: 0, vy: 0,
+    hue: Math.random() * 360
+  });
+}
+
+// Pseudo curl-noise — same shape as index2's
+function tcurl(x, y, t) {
+  const eps = 1.6;
+  const n = (xx, yy) =>
+      Math.sin(xx * 0.011 + t * 0.4)        * 0.40
+    + Math.sin(yy * 0.017 + t * 0.3)        * 0.30
+    + Math.sin((xx + yy) * 0.008 + t * 0.5) * 0.20
+    + Math.sin((xx - yy) * 0.014 + t * 0.7) * 0.10;
+  const dndy = n(x, y + eps) - n(x, y - eps);
+  const dndx = n(x + eps, y) - n(x - eps, y);
+  return [dndy, -dndx];
+}
+
+let tcFrame = 0;
+function tickTitleParticles() {
+  requestAnimationFrame(tickTitleParticles);
+  tcFrame++;
+
+  // Trail decay
+  tCtx.globalCompositeOperation = 'source-over';
+  tCtx.fillStyle = 'rgba(0,0,0,0.10)';
+  tCtx.fillRect(0, 0, tcW, tcH);
+  tCtx.globalCompositeOperation = 'lighter';
+
+  const tn = tcFrame * 0.012;
+  // Cursor counts as "active near title" when it's within ~tcH+120 of top
+  const cursorNear = glowMouse.active && glowMouse.y < tcH + 120;
+  const cMy = cursorNear ? Math.min(tcH + 40, glowMouse.y) : 0;
+
+  for (const p of tParticles) {
+    const [cx, cy] = tcurl(p.x, p.y, tn);
+    let ax = cx * 1.4, ay = cy * 1.4;
+    if (cursorNear) {
+      const dx = glowMouse.x - p.x, dy = cMy - p.y;
+      const d  = Math.max(40, Math.sqrt(dx*dx + dy*dy));
+      const k  = (mSpeed > 5 ? 70 : 18) / d;
+      ax += (dx / d) * k;
+      ay += (dy / d) * k;
+    }
+    p.vx = (p.vx + ax) * 0.92;
+    p.vy = (p.vy + ay) * 0.92;
+    p.x += p.vx;
+    p.y += p.vy;
+
+    // Wrap to keep particles in-canvas
+    if (p.x < 0) p.x += tcW;
+    if (p.x > tcW) p.x -= tcW;
+    if (p.y < 0) p.y += tcH;
+    if (p.y > tcH) p.y -= tcH;
+
+    p.hue = (p.hue + 0.6) % 360;
+    const hd = (p.hue * 0.5 + 280) % 360;
+    const speed = Math.sqrt(p.vx*p.vx + p.vy*p.vy);
+    const a = 0.16 + Math.min(0.55, speed * 0.06);
+    tCtx.fillStyle = `hsla(${hd},92%,62%,${a})`;
+    tCtx.fillRect(p.x, p.y, 1.4, 1.4);
+
+    // Speed streak
+    if (speed > 2.5) {
+      tCtx.fillStyle = `hsla(${hd},92%,75%,${a * 0.5})`;
+      tCtx.fillRect(p.x - p.vx * 0.3, p.y - p.vy * 0.3, 1.0, 1.0);
+    }
+  }
+}
+tickTitleParticles();
 
 
 // ── Audio engine — index2 variant + 3D binaural granular ──────────────
@@ -468,7 +601,7 @@ function startAudio() {
 
   // ── Drone with FM ─────────────────────────────────────────────────
   droneGain = actx.createGain();
-  droneGain.gain.value = 0.06;
+  droneGain.gain.value = 0.036;
   droneGain.connect(master);
 
   const fund = 50;
@@ -500,7 +633,7 @@ function startAudio() {
 
   // ── Noise bed × ring mod ──────────────────────────────────────────
   noiseGain = actx.createGain();
-  noiseGain.gain.value = 0.022;
+  noiseGain.gain.value = 0.013;
   noiseGain.connect(master);
 
   const nb = actx.createBuffer(1, actx.sampleRate * 2, actx.sampleRate);
@@ -523,7 +656,7 @@ function startAudio() {
 
   // ── Granular bus ──────────────────────────────────────────────────
   granGain = actx.createGain();
-  granGain.gain.value = 0.18;
+  granGain.gain.value = 0.13;
   granGain.connect(master);
 
   // 5s of textured noise — used as the granular source material
@@ -539,7 +672,7 @@ function startAudio() {
 
   // ── Crackle bus ───────────────────────────────────────────────────
   crackleGain = actx.createGain();
-  crackleGain.gain.value = 0.06;
+  crackleGain.gain.value = 0.035;
   crackleGain.connect(master);
 
   scheduleGrain();
@@ -706,46 +839,49 @@ function modulateLoop() {
     mLastX = mx; mLastY = my;
     const sNorm = Math.min(1, mSpeed / 100);
     crackleGain.gain.linearRampToValueAtTime(
-      0.045 + sNorm * 0.10, actx.currentTime + 0.2);
+      0.025 + sNorm * 0.08, actx.currentTime + 0.2);
     modGain.gain.linearRampToValueAtTime(
       4 + sNorm * 16, actx.currentTime + 0.2);
     noiseRingOsc.frequency.linearRampToValueAtTime(
       180 + sNorm * 700, actx.currentTime + 0.2);
+
+    // ── Per-link proximity tones ──────────────────────────────────────
+    // Each link gets a beating-quartet sine that rises in gain by the
+    // same `prox` value the glow uses, so audio responds at the same
+    // distance the visual glow does — not just on direct hover.
+    for (const L of linkEntries) {
+      if (L.prox > 0.04) {
+        if (!L.audioNodes) createLinkAudio(L);
+        const target = Math.min(1, L.prox * 1.05) * 0.040;
+        L.audioGain.gain.linearRampToValueAtTime(target, actx.currentTime + 0.12);
+      } else if (L.audioNodes) {
+        L.audioGain.gain.linearRampToValueAtTime(0, actx.currentTime + 0.20);
+      }
+    }
   }, 90);
 }
 
-// Hover/click audio cues — soft sine hover swell + grain on click
-let hoverNodes = null;
-function triggerHoverTone(i) {
-  if (!actx) return;
-  releaseHoverTone();
-  const t = actx.currentTime;
-  const oscs = [], gains = [];
+// Lazily build the per-link audio nodes the first time it's audible.
+// Beating quartet — slight detune produces shimmer/chorus.
+function createLinkAudio(L) {
+  const i = parseInt(L.el.dataset.i, 10) || 0;
+  L.audioGain = actx.createGain();
+  L.audioGain.gain.value = 0;
+  L.audioGain.connect(master);
+  L.audioOscs = [];
   const f = 220 + (i * 47) % 220;
   for (const df of [-2.5, 2.5, -4.4, 4.4]) {
     const o = actx.createOscillator();
     o.type = 'sine';
     o.frequency.value = f + df;
-    const g = actx.createGain();
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.025, t + 0.25);
-    o.connect(g); g.connect(master);
+    o.connect(L.audioGain);
     o.start();
-    oscs.push(o); gains.push(g);
+    L.audioOscs.push(o);
   }
-  hoverNodes = { oscs, gains };
+  L.audioNodes = true;
 }
-function releaseHoverTone() {
-  if (!actx || !hoverNodes) return;
-  const t = actx.currentTime;
-  for (let i = 0; i < hoverNodes.oscs.length; i++) {
-    hoverNodes.gains[i].gain.cancelScheduledValues(t);
-    hoverNodes.gains[i].gain.setValueAtTime(hoverNodes.gains[i].gain.value, t);
-    hoverNodes.gains[i].gain.linearRampToValueAtTime(0, t + 0.35);
-    hoverNodes.oscs[i].stop(t + 0.4);
-  }
-  hoverNodes = null;
-}
+
+// Click fires extra grain transients before navigation.
 function triggerClickGrain() {
   if (!actx) return;
   // Fire two extra grains on click for a richer transient
