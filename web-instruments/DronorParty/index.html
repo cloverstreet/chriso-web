@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DronorParty — v0.20.3</title>
+<title>DronorParty — v0.21</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 <style>
 /* ── Canonical gain/meter strip CSS ─────────────────────────────────────
@@ -436,7 +436,7 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
 <!-- v0.20: top-left header — name + version + About button. -->
 <div id="app-header">
   <span class="name">DronorParty</span>
-  <span class="ver">v0.20.3 (SYMP still disabled — diagnostic)</span>
+  <span class="ver">v0.21</span>
   <button class="about-btn" onclick="document.getElementById('about-panel').classList.add('open')">ABOUT</button>
 </div>
 
@@ -482,12 +482,22 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
 
     <h3>Recent changes</h3>
     <ul>
-      <li>v0.20: 8 strings (was 5), FX column consolidated, in-loop SYMP
-          safety limiter, Jawari volume compensation, About panel.</li>
+      <li>v0.21: SYMP re-enabled at moderate cap (0.05 at slider=100%)
+          with the full safety stack: v0.19 send-side tanh limiter +
+          v0.20.3 in-loop soft limiter. Stable at any slider setting.</li>
+      <li>v0.20.3: DECAY slider works again (loop limiter is identity
+          below ±0.7 so loop gain = feedback exactly at normal levels),
+          Jawari DC bias removed (zero-mean curve + DC-block highpass),
+          reverb default wet 18%, IR uses true exponential decay,
+          reverb TIME only rebuilds the IR on slider RELEASE so dragging
+          doesn't cut the tail.</li>
+      <li>v0.20: 8 strings (was 5), FX column consolidated, in-loop
+          SYMP safety limiter (later refined in v0.20.3), Jawari volume
+          compensation, About panel.</li>
       <li>v0.19: SYMP send-side clamp + cap drop, reverb default ON,
           larger non-module text.</li>
-      <li>v0.18.1: decay 0.993 default, ADSR widget → single ATTACK slider,
-          halo audibility fix, SPEC.md committed.</li>
+      <li>v0.18.1: decay 0.993 default, ADSR widget → single ATTACK
+          slider, halo audibility fix, SPEC.md committed.</li>
       <li>v0.18: EXCITE master slider, Attack-only burst, Jawari + Halo
           turned up.</li>
     </ul>
@@ -1942,15 +1952,19 @@ function wireGlobalControls() {
     const v = parseFloat(e.target.value);
     state.symp = v;
     document.getElementById('symp-val').textContent = v + '%';
-    // v0.20.2: SYMP routing TEMPORARILY DISABLED while diagnosing the
-    // slow-building noise floor (Christopher reported: short plucks but
-    // quiet sustained noise building underneath, gain sliders lit
-    // halfway, worse on lower-divisor strings). The slider still moves
-    // but the audio cross-feed gain is forced to 0. If reactivating
-    // restores the buildup → SYMP is confirmed culprit (rework needed).
-    // If buildup persists at 0 → look elsewhere (likely DC drift, FIR
-    // resonance, or burst-pipeline residue).
-    const target = 0;   // was: (v / 100) * 0.03;
+    // v0.21: SYMP RE-ENABLED. The diagnostic confirmed SYMP was ~80% of
+    // the v0.20.1 build-up. The remaining ~20% was the v0.20.1 loop
+    // limiter (slope 0.9 attenuating DECAY) and the Jawari DC bias —
+    // both fixed in v0.20.3. With:
+    //   • v0.19 send-side tanh(8×) limiter on each string's sympSend
+    //   • v0.20.3 IN-LOOP soft limiter (identity below ±0.7, smooth
+    //     saturation above) — this is the load-bearing safety net,
+    //     caps each receiving string's loop amplitude regardless of
+    //     how much SYMP drive it receives
+    //   • Cap 0.05 at slider=100% (real tanpura coupling is ~3-5%)
+    // the network is firmly in stable territory. If you ever hear it
+    // misbehave, that's a bug — flag it.
+    const target = (v / 100) * 0.05;
     if (audioCtx) {
       state.strings.forEach(s => {
         if (s.audio && s.audio.sympInput) {
