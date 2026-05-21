@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Circular Step Sequencer — v0.1</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+html, body {
+  height:100%; background:#0d0d0d; color:#bbb;
+  font-family:'Courier New', monospace;
+  user-select:none; touch-action:none;
+}
+body { padding:14px 18px; overflow:hidden; }
+
+/* ── Header ─────────────────────────────────────────────────────── */
+#header {
+  display:flex; align-items:baseline; gap:14px; margin-bottom:10px;
+}
+#header .name { font-size:1.05rem; letter-spacing:.18em; color:#c8a854; }
+#header .ver  { font-size:.7rem; letter-spacing:.10em; color:#666; }
+#header .about-btn {
+  background:transparent; border:1px solid #555; color:#999;
+  font-family:'Courier New',monospace; font-size:.7rem; letter-spacing:.14em;
+  cursor:pointer; padding:2px 9px; border-radius:2px; transition:all .15s;
+}
+#header .about-btn:hover { color:#c8a854; border-color:#c8a854; }
+
+/* ── About panel ────────────────────────────────────────────────── */
+#about-panel {
+  position:fixed; inset:0; background:rgba(0,0,0,.82);
+  display:none; align-items:flex-start; justify-content:center;
+  z-index:200; padding:60px 20px 20px;
+}
+#about-panel.open { display:flex; }
+#about-panel .panel {
+  max-width:680px; width:100%; max-height:80vh; overflow-y:auto;
+  background:#0d0d0d; border:1px solid #2a2a2a; border-radius:4px;
+  padding:24px 28px; color:#bbb; font-size:.85rem; line-height:1.7;
+  letter-spacing:.04em;
+}
+#about-panel h2 { color:#c8a854; font-size:1.1rem; letter-spacing:.16em; margin:0 0 14px; font-weight:normal; }
+#about-panel h3 { color:#999; font-size:.85rem; letter-spacing:.14em; margin:18px 0 6px; font-weight:normal; text-transform:uppercase; }
+#about-panel p { margin:0 0 10px; }
+#about-panel ul { margin:0 0 10px 18px; }
+#about-panel .close-btn {
+  float:right; margin-top:-4px; background:transparent;
+  border:1px solid #555; color:#999;
+  font-family:'Courier New',monospace; font-size:.85rem;
+  cursor:pointer; padding:2px 10px; border-radius:2px;
+}
+#about-panel .close-btn:hover { color:#c8a854; border-color:#c8a854; }
+.kbd { background:#1a1a1a; border:1px solid #2a2a2a; padding:1px 6px; border-radius:2px; color:#c8a854; font-size:.78rem; }
+
+/* ── Layout ─────────────────────────────────────────────────────── */
+#start-screen {
+  display:flex; flex-direction:column; align-items:center; gap:18px;
+  margin-top:18vh;
+}
+#start-screen h1 { font-size:1.4rem; letter-spacing:.18em; color:#c8a854; font-weight:normal; }
+#start-screen .blurb { font-size:.9rem; color:#999; max-width:540px; text-align:center; line-height:1.7; }
+#start-btn {
+  padding:14px 44px; background:transparent;
+  border:1px solid #c8a854; color:#c8a854;
+  font-family:'Courier New',monospace; font-size:1rem;
+  letter-spacing:.2em; cursor:pointer; transition:all .2s;
+}
+#start-btn:hover { background:#c8a854; color:#000; }
+
+#board {
+  display:none; flex-direction:row; gap:18px; align-items:flex-start;
+  margin-top:6px;
+}
+
+/* ── Top-bar controls ───────────────────────────────────────────── */
+#controls {
+  display:flex; gap:14px; align-items:center; margin-bottom:14px;
+  flex-wrap:wrap;
+}
+#controls .ctrl-group {
+  display:flex; align-items:center; gap:8px;
+  padding:5px 10px; background:#141414; border:1px solid #252525; border-radius:3px;
+}
+#controls label { font-size:.65rem; letter-spacing:.14em; color:#888; text-transform:uppercase; }
+#controls input[type="range"] { width:120px; cursor:pointer; }
+#controls .val { font-size:.7rem; color:#c8a854; min-width:62px; text-align:right; }
+#controls button {
+  padding:5px 18px; background:transparent;
+  border:1px solid #2a6a2a; color:#4c4;
+  font-family:'Courier New',monospace; font-size:.7rem; letter-spacing:.1em;
+  cursor:pointer; border-radius:2px; transition:all .15s;
+}
+#controls button.stopped { border-color:#8a2a2a; color:#d44; }
+#controls button:hover { background:rgba(80,160,80,.15); }
+#controls button.stopped:hover { background:rgba(160,40,40,.15); }
+
+/* ── Canvas + table side-by-side ────────────────────────────────── */
+#canvas-wrap {
+  position:relative;
+  width:540px; height:540px;
+  background:#070707; border:1px solid #1a1a1a; border-radius:4px;
+  flex-shrink:0;
+}
+#seq-canvas { display:block; width:100%; height:100%; cursor:crosshair; }
+
+/* ── Tracks table ───────────────────────────────────────────────── */
+#table-wrap {
+  flex:1; min-width:280px;
+}
+table.tracks {
+  width:100%; border-collapse:collapse; font-size:.7rem;
+}
+table.tracks th {
+  background:#0e0e0e; border-bottom:1px solid #2a2a2a;
+  padding:5px 6px; text-align:left; color:#888; letter-spacing:.1em;
+  text-transform:uppercase; font-weight:normal; font-size:.62rem;
+}
+table.tracks td {
+  border-bottom:1px solid #1a1a1a;
+  padding:3px 4px; vertical-align:middle;
+  color:#bbb;
+}
+table.tracks td.row-label { color:#c8a854; font-weight:bold; width:30px; text-align:center; }
+table.tracks td.steps-input input { width:46px; }
+table.tracks input[type="text"] {
+  background:#0a0a0a; border:1px solid #2a2a2a; color:#c8a854;
+  font-family:'Courier New',monospace; font-size:.7rem;
+  padding:2px 4px; width:60px; text-align:right;
+}
+table.tracks input[type="number"] {
+  background:#0a0a0a; border:1px solid #2a2a2a; color:#c8a854;
+  font-family:'Courier New',monospace; font-size:.7rem;
+  padding:2px 4px; width:54px;
+}
+table.tracks input[type="color"] {
+  width:28px; height:18px; border:none; background:transparent; cursor:pointer; padding:0;
+}
+table.tracks td.cells { padding:0 4px; }
+.cells-row {
+  display:flex; flex-wrap:wrap; gap:2px;
+  padding:3px 0;
+}
+.step-cell {
+  width:20px; height:20px;
+  display:inline-flex; align-items:center; justify-content:center;
+  background:#0a0a0a; border:1px solid #1f1f1f;
+  font-size:.62rem; color:#3a3a3a; cursor:pointer;
+  user-select:none; transition:background .08s, color .08s;
+  border-radius:2px;
+}
+.step-cell:hover { background:#1a1a1a; }
+.step-cell.lit { color:#fff; text-shadow:0 0 4px rgba(200,168,84,.8); }
+.step-cell.playing { box-shadow:0 0 8px rgba(122,187,224,.95); border-color:#7abbe0; }
+
+.track-controls { display:flex; gap:4px; align-items:center; }
+.track-controls button {
+  background:transparent; border:1px solid #2a2a2a; color:#888;
+  font-family:'Courier New',monospace; font-size:.62rem; letter-spacing:.06em;
+  cursor:pointer; padding:1px 6px; border-radius:2px;
+}
+.track-controls button:hover { color:#c8a854; border-color:#c8a854; }
+.track-controls button.mute.muted { color:#d44; border-color:#5a2a2a; }
+
+/* ── Preset row ─────────────────────────────────────────────────── */
+.preset-row {
+  display:flex; gap:4px; margin-top:14px; align-items:center;
+}
+.preset-row button {
+  background:transparent; border:1px solid #2a2a2a; color:#888;
+  font-family:'Courier New',monospace; font-size:.7rem;
+  padding:3px 10px; border-radius:2px; cursor:pointer; min-width:30px;
+}
+.preset-row button.saved { color:#c8a854; border-color:#c8a854; }
+.preset-row button:hover { background:rgba(200,168,84,.1); }
+.preset-row .label {
+  font-size:.62rem; letter-spacing:.14em; color:#666; text-transform:uppercase;
+  margin-right:4px;
+}
+
+/* ── Footer ─────────────────────────────────────────────────────── */
+.foot {
+  position:fixed; bottom:8px; left:18px; right:18px;
+  font-size:.7rem; color:#666; letter-spacing:.06em;
+  max-width:720px; line-height:1.6;
+}
+</style>
+</head>
+<body>
+
+<div id="header">
+  <span class="name">CIRCULAR STEP SEQUENCER</span>
+  <span class="ver">v0.1</span>
+  <button class="about-btn" onclick="document.getElementById('about-panel').classList.add('open')">ABOUT</button>
+</div>
+
+<div id="about-panel" onclick="if(event.target.id==='about-panel') this.classList.remove('open')">
+  <div class="panel">
+    <button class="close-btn" onclick="document.getElementById('about-panel').classList.remove('open')">CLOSE</button>
+    <h2>Circular Step Sequencer</h2>
+    <p>Concentric circular tracks, each with its own step count. A single
+       clock hand sweeps around at the master tempo; whenever it passes a
+       lit cell on any track, that track triggers its synth voice at the
+       cell's intensity (0 = silent, 9 = full).</p>
+    <p>Linear step-sequencers force all tracks to share a common length.
+       Circular tracks with independent step counts can drift in and out
+       of phase forever — same idea as a tanpura's coprime divisors but
+       editable per-step.</p>
+
+    <h3>How to play</h3>
+    <ul>
+      <li>Click <b>START</b>. The hand begins sweeping.</li>
+      <li>Click a cell in any track row to set its strength. Click the
+          same cell again to step 0 → 1 → 2 … 9 → 0.</li>
+      <li>Change a track's <b>STEPS</b> to re-grid it (cells preserved
+          where possible).</li>
+      <li>Each track has its own <b>PITCH</b> (typeable, accepts Hz or
+          a note name like A3, C#5). The MUTE button silences a track
+          without losing its pattern.</li>
+      <li><b>TEMPO</b> controls the master sweep rate (BPM at 4 steps
+          per beat for the shortest track — actual per-track step time
+          scales with each track's step count).</li>
+    </ul>
+
+    <h3>Presets</h3>
+    <ul>
+      <li>6 preset slots — click to recall, shift+click to save.</li>
+      <li>Saves all tracks: step counts, cells, pitches, mutes, tempo.</li>
+      <li>Stored in <code>localStorage</code>.</li>
+    </ul>
+
+    <h3>About this build (v0.1)</h3>
+    <ul>
+      <li>4 tracks (8 / 11 / 13 / 16 steps default). The full 8-track
+          version is the next iteration.</li>
+      <li>Sound is a simple internal sine-osc with short envelope per
+          step trigger. The architecture is ready to swap that synth
+          for WebMIDI out or a richer voice (e.g. DronorParty's KS
+          strings) once the sequencer itself is solid.</li>
+      <li>Per-track step count and pitch are editable; cell strength
+          edits work; presets save/load. Drag-to-paint, swing, accents-
+          per-bar, MIDI out — future versions.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- Start screen -->
+<div id="start-screen">
+  <h1>Circular Step Sequencer</h1>
+  <div class="blurb">Concentric polyrhythmic tracks with a single sweeping clock hand. Each track has its own step count; cells hold strength 0–9.</div>
+  <button id="start-btn">START</button>
+</div>
+
+<!-- Main board (hidden until START) -->
+<div id="board">
+  <div id="canvas-wrap">
+    <canvas id="seq-canvas" width="540" height="540"></canvas>
+  </div>
+  <div id="table-wrap">
+    <div id="controls">
+      <div class="ctrl-group">
+        <label>TEMPO</label>
+        <input type="range" id="tempo" min="20" max="240" step="1" value="80">
+        <span class="val" id="tempo-val">80 BPM</span>
+      </div>
+      <div class="ctrl-group">
+        <button id="play-btn">▶ RUN</button>
+      </div>
+      <div class="ctrl-group">
+        <label>MASTER</label>
+        <input type="range" id="master-gain" min="-60" max="0" step="0.5" value="-12">
+        <span class="val" id="master-gain-val">-12 dB</span>
+      </div>
+    </div>
+    <table class="tracks">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Steps</th>
+          <th>Pitch</th>
+          <th>Cells (click to cycle 0→9)</th>
+          <th>Color</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="tracks-body">
+        <!-- populated by JS -->
+      </tbody>
+    </table>
+
+    <div class="preset-row">
+      <span class="label">Presets</span>
+      <button data-preset="1">1</button>
+      <button data-preset="2">2</button>
+      <button data-preset="3">3</button>
+      <button data-preset="4">4</button>
+      <button data-preset="5">5</button>
+      <button data-preset="6">6</button>
+    </div>
+  </div>
+</div>
+
+<div class="foot">
+  Test case for a future rhythm engine — independent of the dronor strings.
+  Each track sweeps its own step grid at the master clock. <b>Click ABOUT</b> for full instructions.
+</div>
+
+<script>
+'use strict';
+
+/* ════════════════════════════════════════════════════════════════
+   STATE
+   ════════════════════════════════════════════════════════════════ */
+const NUM_TRACKS = 4;
+const DEFAULT_STEPS = [8, 11, 13, 16];
+const DEFAULT_PITCHES = [220, 330, 440, 660];        // root + P5 + 8ve + 12th
+const DEFAULT_COLORS = ['#c8a854','#7abbe0','#9ac084','#d28854'];
+
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const A4_HZ = 440;
+function freqToNote(hz) {
+  if (!isFinite(hz) || hz <= 0) return '—';
+  const semis = Math.round(12 * Math.log2(hz / A4_HZ));
+  const midi = 69 + semis;
+  const oct  = Math.floor(midi / 12) - 1;
+  const name = NOTE_NAMES[((midi % 12) + 12) % 12];
+  return name + oct;
+}
+function noteToFreq(name) {
+  const m = String(name).trim().match(/^([A-Ga-g])([#bB♯♭]?)(-?\d+)?$/);
+  if (!m) return null;
+  let pcLetter = m[1].toUpperCase();
+  let acc = m[2] || '';
+  if (acc === '♯') acc = '#';
+  if (acc === '♭') acc = 'b';
+  const pcMap = { 'C':0,'C#':1,'Db':1,'D':2,'D#':3,'Eb':3,'E':4,'F':5,'F#':6,'Gb':6,'G':7,'G#':8,'Ab':8,'A':9,'A#':10,'Bb':10,'B':11 };
+  const pc = pcMap[pcLetter + acc];
+  if (pc === undefined) return null;
+  const oct = m[3] !== undefined ? parseInt(m[3], 10) : 4;
+  const midi = (oct + 1) * 12 + pc;
+  return A4_HZ * Math.pow(2, (midi - 69) / 12);
+}
+function parsePitch(s) {
+  // Accept Hz number, or note name (e.g. "A3", "C#5", "Bb2"). Return Hz or null.
+  const t = String(s).trim();
+  if (!t) return null;
+  // Pure number?
+  if (/^[0-9.]+$/.test(t)) {
+    const n = parseFloat(t);
+    return isFinite(n) && n > 0 ? n : null;
+  }
+  return noteToFreq(t);
+}
+
+const state = {
+  tempo: 80,          // BPM, where each beat = one revolution / shortest-track step count
+  running: false,
+  startTime: 0,       // performance.now() at last start
+  masterGainDb: -12,
+  tracks: [],
+};
+function initState() {
+  state.tracks = [];
+  for (let i = 0; i < NUM_TRACKS; i++) {
+    state.tracks.push({
+      idx: i,
+      steps: DEFAULT_STEPS[i],
+      pitch: DEFAULT_PITCHES[i],
+      color: DEFAULT_COLORS[i],
+      muted: false,
+      cells: new Array(DEFAULT_STEPS[i]).fill(0),
+      lastTriggeredStep: -1,
+    });
+    // Light a couple of cells per track for a non-silent default pattern.
+    state.tracks[i].cells[0] = 7;
+    state.tracks[i].cells[Math.floor(DEFAULT_STEPS[i] / 2)] = 5;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   AUDIO
+   Per-track: one OscillatorNode + one GainNode (envelope). Triggered
+   with a short ADSR-like ramp on each cell strike. Master gain at the
+   end keeps everything in a sane range. No KS, no FX — this is a test
+   harness for the sequencer; the audio side is intentionally minimal.
+   ════════════════════════════════════════════════════════════════ */
+let audioCtx = null;
+let masterGain = null;
+let trackVoices = [];     // [{osc, gain}, ...]
+
+function dbToGain(db) { return Math.pow(10, db / 20); }
+
+async function initAudio() {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+  if (audioCtx.state === 'suspended') {
+    try { await audioCtx.resume(); } catch(e) { console.warn('resume:', e); }
+  }
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = dbToGain(state.masterGainDb);
+  masterGain.connect(audioCtx.destination);
+
+  trackVoices = [];
+  state.tracks.forEach((t, i) => {
+    const gain = audioCtx.createGain();
+    gain.gain.value = 0;
+    gain.connect(masterGain);
+    trackVoices.push({ gain });
+  });
+}
+
+function trigger(trackIdx, strength) {
+  if (!audioCtx) return;
+  const t = state.tracks[trackIdx];
+  const v = trackVoices[trackIdx];
+  if (!t || !v || t.muted || strength <= 0) return;
+  const now = audioCtx.currentTime;
+  // Per-step OscillatorNode so we get clean enveloping per trigger (re-use
+  // would require restart/reschedule). Cheap.
+  const osc = audioCtx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.value = Math.max(20, Math.min(8000, t.pitch));
+  osc.connect(v.gain);
+  // Envelope: 3 ms attack, ~200 ms exp decay, peak amplitude = strength/9 × 0.6
+  const peak = (strength / 9) * 0.6;
+  v.gain.gain.cancelScheduledValues(now);
+  v.gain.gain.setValueAtTime(0, now);
+  v.gain.gain.linearRampToValueAtTime(peak, now + 0.003);
+  v.gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.20);
+  osc.start(now);
+  osc.stop(now + 0.22);
+}
+
+/* ════════════════════════════════════════════════════════════════
+   SCHEDULER
+   The clock-hand sweep is continuous (RAF). On each frame we compute
+   the hand angle from elapsed time, and for each track check whether
+   the hand has crossed into a new step bin since the last frame. If
+   yes, trigger that step if its cell value > 0.
+   "Per-track step time" = (60 / BPM) × (4 / track.steps) — that is, one
+   full revolution = N quarter-notes where N = max(track.steps) / 4.
+   Simpler model: one full revolution = beatsPerRev quarter-notes at
+   the master tempo. beatsPerRev = 4 (so 4/4 cycle = one revolution).
+   ════════════════════════════════════════════════════════════════ */
+const BEATS_PER_REVOLUTION = 4;   // one full circle = 4 quarter-notes
+let rafId = null;
+let stepIntervalId = null;
+
+function angleAt(timeSec) {
+  // Returns angle in [0, 1) — fraction of a revolution.
+  const beatsPerSec = state.tempo / 60;
+  const revsPerSec  = beatsPerSec / BEATS_PER_REVOLUTION;
+  return (timeSec * revsPerSec) % 1;
+}
+
+// Step-trigger scheduler — uses setInterval so audio keeps playing even
+// when the tab is backgrounded (browsers throttle requestAnimationFrame
+// in background tabs but not setInterval). 8 ms tick is more than fast
+// enough for any reasonable subdivision at any reasonable tempo (at the
+// fastest case — 240 BPM, 33 steps per revolution — a step is ~30 ms long).
+function stepTick() {
+  if (!state.running || !audioCtx) return;
+  const tSec = (performance.now() - state.startTime) / 1000;
+  const ang = angleAt(tSec);
+  state.tracks.forEach((tr, i) => {
+    const stepF = ang * tr.steps;
+    const step  = Math.floor(stepF) % tr.steps;
+    if (step !== tr.lastTriggeredStep) {
+      const strength = tr.cells[step] || 0;
+      if (strength > 0) trigger(i, strength);
+      tr.lastTriggeredStep = step;
+    }
+  });
+}
+
+// Visual loop — RAF for smooth hand-sweep animation when foregrounded.
+function visualTick() {
+  drawCanvas();
+  rafId = requestAnimationFrame(visualTick);
+}
+
+/* ════════════════════════════════════════════════════════════════
+   CANVAS — concentric tracks + sweeping hand
+   ════════════════════════════════════════════════════════════════ */
+const CANVAS_PAD = 20;
+function drawCanvas() {
+  const cv = document.getElementById('seq-canvas');
+  const ctx = cv.getContext('2d');
+  // Logical (CSS-pixel) dimensions — DPR scaling is set as a transform once
+  // at init, so drawing in clientWidth/clientHeight coords works directly.
+  const W = cv.clientWidth, H = cv.clientHeight;
+  ctx.clearRect(0, 0, W, H);
+  const cx = W / 2, cy = H / 2;
+  const rOuter = Math.min(W, H) / 2 - CANVAS_PAD;
+  // Track ring widths (innermost = highest density / shortest period or whatever)
+  // Distribute tracks evenly across radii.
+  const trackCount = state.tracks.length;
+  const ringWidth = (rOuter - 40) / trackCount;
+
+  // Subtle center dot
+  ctx.fillStyle = '#1a1a1a';
+  ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2); ctx.fill();
+
+  const tSec = state.running ? (performance.now() - state.startTime) / 1000 : 0;
+  const ang  = angleAt(tSec);
+  const handAngle = ang * Math.PI * 2 - Math.PI / 2;   // 0 at 12 o'clock
+
+  // Draw each track ring
+  state.tracks.forEach((tr, i) => {
+    const r1 = 40 + i * ringWidth;
+    const r2 = r1 + ringWidth - 4;
+    const rMid = (r1 + r2) / 2;
+
+    // Ring background
+    ctx.strokeStyle = '#1a1a1a';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cx, cy, r1, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, r2, 0, Math.PI * 2); ctx.stroke();
+
+    // Step divisions
+    const N = tr.steps;
+    for (let s = 0; s < N; s++) {
+      const a1 = (s / N)     * Math.PI * 2 - Math.PI / 2;
+      const a2 = ((s + 1)/N) * Math.PI * 2 - Math.PI / 2;
+      const cellVal = tr.cells[s] || 0;
+      if (cellVal > 0) {
+        // Filled arc-segment for lit cells
+        ctx.fillStyle = hexToRgba(tr.color, 0.18 + 0.65 * (cellVal / 9));
+        ctx.beginPath();
+        ctx.arc(cx, cy, r2, a1, a2);
+        ctx.arc(cx, cy, r1, a2, a1, true);
+        ctx.closePath(); ctx.fill();
+      }
+      // Step divider line
+      ctx.strokeStyle = '#2a2a2a';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a1) * r1, cy + Math.sin(a1) * r1);
+      ctx.lineTo(cx + Math.cos(a1) * r2, cy + Math.sin(a1) * r2);
+      ctx.stroke();
+      // Step number for cells with value > 0
+      if (cellVal > 0) {
+        const aMid = (a1 + a2) / 2;
+        const tx = cx + Math.cos(aMid) * rMid;
+        const ty = cy + Math.sin(aMid) * rMid;
+        ctx.fillStyle = '#fff';
+        ctx.font = '10px Courier New';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(String(cellVal), tx, ty);
+      }
+    }
+    // Track index label, at 12 o'clock above the ring
+    ctx.fillStyle = tr.color;
+    ctx.font = 'bold 11px Courier New';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('T' + (i + 1), cx, cy - rMid);
+  });
+
+  // Clock hand — single line from center to outer ring
+  ctx.strokeStyle = 'rgba(122,187,224,0.95)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + Math.cos(handAngle) * rOuter, cy + Math.sin(handAngle) * rOuter);
+  ctx.stroke();
+  // Small dot at hand tip
+  ctx.fillStyle = 'rgba(122,187,224,1)';
+  ctx.beginPath();
+  ctx.arc(cx + Math.cos(handAngle) * rOuter, cy + Math.sin(handAngle) * rOuter, 4, 0, Math.PI * 2);
+  ctx.fill();
+}
+function hexToRgba(hex, alpha) {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.substr(0, 2), 16);
+  const g = parseInt(h.substr(2, 2), 16);
+  const b = parseInt(h.substr(4, 2), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   TABLE BUILDER + EVENT WIRING
+   ════════════════════════════════════════════════════════════════ */
+function buildTable() {
+  const tbody = document.getElementById('tracks-body');
+  tbody.innerHTML = '';
+  state.tracks.forEach((tr, i) => {
+    const row = document.createElement('tr');
+    // # cell
+    const tdNum = document.createElement('td');
+    tdNum.className = 'row-label';
+    tdNum.textContent = 'T' + (i + 1);
+    tdNum.style.color = tr.color;
+    row.appendChild(tdNum);
+    // Steps input
+    const tdSteps = document.createElement('td');
+    tdSteps.className = 'steps-input';
+    const stepsInp = document.createElement('input');
+    stepsInp.type = 'number'; stepsInp.min = 1; stepsInp.max = 64; stepsInp.value = tr.steps;
+    stepsInp.addEventListener('change', () => {
+      const v = Math.max(1, Math.min(64, parseInt(stepsInp.value) || tr.steps));
+      const oldCells = tr.cells.slice();
+      tr.cells = new Array(v).fill(0);
+      for (let k = 0; k < Math.min(v, oldCells.length); k++) tr.cells[k] = oldCells[k];
+      tr.steps = v;
+      tr.lastTriggeredStep = -1;
+      buildTable();
+      drawCanvas();
+    });
+    tdSteps.appendChild(stepsInp);
+    row.appendChild(tdSteps);
+    // Pitch input (Hz or note name)
+    const tdPitch = document.createElement('td');
+    const pitchInp = document.createElement('input');
+    pitchInp.type = 'text'; pitchInp.value = freqToNote(tr.pitch) + ' (' + Math.round(tr.pitch) + ')';
+    pitchInp.title = 'Enter Hz number or note name (e.g. A3, C#5)';
+    pitchInp.style.width = '110px';
+    pitchInp.addEventListener('change', () => {
+      const f = parsePitch(pitchInp.value);
+      if (f != null) {
+        tr.pitch = f;
+        pitchInp.value = freqToNote(f) + ' (' + Math.round(f) + ')';
+      } else {
+        // Reject — restore
+        pitchInp.value = freqToNote(tr.pitch) + ' (' + Math.round(tr.pitch) + ')';
+      }
+    });
+    tdPitch.appendChild(pitchInp);
+    row.appendChild(tdPitch);
+    // Cells
+    const tdCells = document.createElement('td');
+    tdCells.className = 'cells';
+    const cellsRow = document.createElement('div');
+    cellsRow.className = 'cells-row';
+    for (let s = 0; s < tr.steps; s++) {
+      const cell = document.createElement('div');
+      cell.className = 'step-cell';
+      cell.dataset.track = i;
+      cell.dataset.step = s;
+      cell.textContent = tr.cells[s] || '';
+      if (tr.cells[s] > 0) cell.classList.add('lit');
+      // Color tint based on track color
+      if (tr.cells[s] > 0) {
+        cell.style.background = hexToRgba(tr.color, 0.10 + 0.30 * (tr.cells[s] / 9));
+        cell.style.borderColor = hexToRgba(tr.color, 0.6);
+      }
+      cellsRow.appendChild(cell);
+    }
+    tdCells.appendChild(cellsRow);
+    row.appendChild(tdCells);
+    // Color picker
+    const tdColor = document.createElement('td');
+    const colorInp = document.createElement('input');
+    colorInp.type = 'color'; colorInp.value = tr.color;
+    colorInp.addEventListener('input', () => {
+      tr.color = colorInp.value;
+      buildTable();
+      drawCanvas();
+    });
+    tdColor.appendChild(colorInp);
+    row.appendChild(tdColor);
+    // Mute button
+    const tdCtrl = document.createElement('td');
+    tdCtrl.className = 'track-controls';
+    const muteBtn = document.createElement('button');
+    muteBtn.className = 'mute';
+    muteBtn.textContent = tr.muted ? 'MUTE' : 'PLAY';
+    if (tr.muted) muteBtn.classList.add('muted');
+    muteBtn.addEventListener('click', () => {
+      tr.muted = !tr.muted;
+      muteBtn.textContent = tr.muted ? 'MUTE' : 'PLAY';
+      muteBtn.classList.toggle('muted', tr.muted);
+    });
+    tdCtrl.appendChild(muteBtn);
+    row.appendChild(tdCtrl);
+
+    tbody.appendChild(row);
+  });
+}
+
+function wireCellEvents() {
+  // Single delegated listener on the table body for cell clicks.
+  document.getElementById('tracks-body').addEventListener('click', e => {
+    const cell = e.target.closest('.step-cell');
+    if (!cell) return;
+    const i = parseInt(cell.dataset.track);
+    const s = parseInt(cell.dataset.step);
+    const tr = state.tracks[i];
+    if (!tr) return;
+    // Cycle 0 → 1 → 2 ... → 9 → 0
+    tr.cells[s] = ((tr.cells[s] || 0) + 1) % 10;
+    // Update just this cell + ring
+    cell.textContent = tr.cells[s] || '';
+    cell.classList.toggle('lit', tr.cells[s] > 0);
+    if (tr.cells[s] > 0) {
+      cell.style.background = hexToRgba(tr.color, 0.10 + 0.30 * (tr.cells[s] / 9));
+      cell.style.borderColor = hexToRgba(tr.color, 0.6);
+    } else {
+      cell.style.background = '';
+      cell.style.borderColor = '';
+    }
+    drawCanvas();
+  });
+}
+
+function wireTopBar() {
+  const tempo = document.getElementById('tempo');
+  const tempoVal = document.getElementById('tempo-val');
+  tempo.addEventListener('input', () => {
+    state.tempo = parseFloat(tempo.value);
+    tempoVal.textContent = state.tempo + ' BPM';
+  });
+  const gain = document.getElementById('master-gain');
+  const gainVal = document.getElementById('master-gain-val');
+  gain.addEventListener('input', () => {
+    state.masterGainDb = parseFloat(gain.value);
+    gainVal.textContent = state.masterGainDb.toFixed(1) + ' dB';
+    if (masterGain) masterGain.gain.setTargetAtTime(dbToGain(state.masterGainDb), audioCtx.currentTime, 0.02);
+  });
+  const play = document.getElementById('play-btn');
+  play.addEventListener('click', () => {
+    state.running = !state.running;
+    if (state.running) {
+      state.startTime = performance.now();
+      state.tracks.forEach(t => t.lastTriggeredStep = -1);
+      play.textContent = '■ STOP';
+      play.classList.remove('stopped');
+    } else {
+      play.textContent = '▶ RUN';
+      play.classList.add('stopped');
+    }
+  });
+}
+
+/* ════════════════════════════════════════════════════════════════
+   PRESETS — localStorage. Captures full state (tracks + tempo).
+   Click slot to recall; shift+click to save.
+   ════════════════════════════════════════════════════════════════ */
+const PRESET_KEY_PREFIX = 'css_v01_preset_';
+function savePreset(slot) {
+  const payload = {
+    tempo: state.tempo,
+    masterGainDb: state.masterGainDb,
+    tracks: state.tracks.map(t => ({
+      steps: t.steps, pitch: t.pitch, color: t.color, muted: t.muted, cells: t.cells.slice(),
+    })),
+  };
+  localStorage.setItem(PRESET_KEY_PREFIX + slot, JSON.stringify(payload));
+  refreshPresetUi();
+}
+function loadPreset(slot) {
+  const raw = localStorage.getItem(PRESET_KEY_PREFIX + slot);
+  if (!raw) return;
+  try {
+    const p = JSON.parse(raw);
+    if (p.tempo != null) { state.tempo = p.tempo; document.getElementById('tempo').value = p.tempo; document.getElementById('tempo-val').textContent = p.tempo + ' BPM'; }
+    if (p.masterGainDb != null) {
+      state.masterGainDb = p.masterGainDb;
+      document.getElementById('master-gain').value = p.masterGainDb;
+      document.getElementById('master-gain-val').textContent = p.masterGainDb.toFixed(1) + ' dB';
+      if (masterGain) masterGain.gain.value = dbToGain(p.masterGainDb);
+    }
+    if (Array.isArray(p.tracks)) {
+      p.tracks.forEach((pt, i) => {
+        if (!state.tracks[i]) return;
+        const t = state.tracks[i];
+        if (pt.steps != null) t.steps = pt.steps;
+        if (pt.pitch != null) t.pitch = pt.pitch;
+        if (pt.color)         t.color = pt.color;
+        if (pt.muted != null) t.muted = pt.muted;
+        if (Array.isArray(pt.cells)) t.cells = pt.cells.slice();
+        t.lastTriggeredStep = -1;
+      });
+    }
+    buildTable();
+    drawCanvas();
+  } catch(e) { console.warn('preset load failed:', e); }
+}
+function refreshPresetUi() {
+  for (let s = 1; s <= 6; s++) {
+    const btn = document.querySelector(`.preset-row button[data-preset="${s}"]`);
+    if (!btn) continue;
+    const has = !!localStorage.getItem(PRESET_KEY_PREFIX + s);
+    btn.classList.toggle('saved', has);
+  }
+}
+function wirePresets() {
+  document.querySelectorAll('.preset-row button').forEach(btn => {
+    btn.addEventListener('click', e => {
+      const slot = parseInt(btn.dataset.preset);
+      if (e.shiftKey) savePreset(slot);
+      else            loadPreset(slot);
+    });
+  });
+  refreshPresetUi();
+}
+
+/* ════════════════════════════════════════════════════════════════
+   BOOT
+   ════════════════════════════════════════════════════════════════ */
+document.getElementById('start-btn').addEventListener('click', async () => {
+  document.getElementById('start-screen').style.display = 'none';
+  document.getElementById('board').style.display = 'flex';
+
+  initState();
+  await initAudio();
+  // Size canvas to its CSS dimensions × devicePixelRatio for crisp rendering.
+  // drawCanvas() uses cv.clientWidth/clientHeight as the logical surface,
+  // so the setTransform makes drawing-coords match CSS-pixel coords.
+  const cv = document.getElementById('seq-canvas');
+  const dpr = window.devicePixelRatio || 1;
+  cv.width  = cv.clientWidth  * dpr;
+  cv.height = cv.clientHeight * dpr;
+  cv.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  buildTable();
+  wireCellEvents();
+  wireTopBar();
+  wirePresets();
+  drawCanvas();
+  // Split scheduling: setInterval for step triggers (immune to background-
+  // tab throttling), RAF for the visual hand sweep.
+  stepIntervalId = setInterval(stepTick, 8);
+  rafId = requestAnimationFrame(visualTick);
+
+  console.log('Circular Step Sequencer v0.1 — sr=', audioCtx.sampleRate);
+});
+
+</script>
+</body>
+</html>

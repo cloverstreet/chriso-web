@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DronorParty — v0.20.1</title>
+<title>DronorParty — v0.20.2</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 <style>
 /* ── Canonical gain/meter strip CSS ─────────────────────────────────────
@@ -436,7 +436,7 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
 <!-- v0.20: top-left header — name + version + About button. -->
 <div id="app-header">
   <span class="name">DronorParty</span>
-  <span class="ver">v0.20.1</span>
+  <span class="ver">v0.20.2 (SYMP disabled — diagnostic)</span>
   <button class="about-btn" onclick="document.getElementById('about-panel').classList.add('open')">ABOUT</button>
 </div>
 
@@ -1896,15 +1896,15 @@ function wireGlobalControls() {
     const v = parseFloat(e.target.value);
     state.symp = v;
     document.getElementById('symp-val').textContent = v + '%';
-    // v0.20: cap lowered 0.06 → 0.03. Even with the v0.19 send-side tanh
-    // clamp, the receiving KS loop integrates over time (feedback=0.993
-    // → steady-state gain ~143×), so persistent matched-frequency input
-    // still pumps the loop into clipping. The v0.20 IN-LOOP limiter caps
-    // loop amplitude, AND this lower cap keeps the input drive itself
-    // below the threshold where the limiter has to constantly engage
-    // (engagement audibly compresses character). Real tanpura cross-
-    // coupling is ~3-5% so 3% still gives the halo effect.
-    const target = (v / 100) * 0.03;
+    // v0.20.2: SYMP routing TEMPORARILY DISABLED while diagnosing the
+    // slow-building noise floor (Christopher reported: short plucks but
+    // quiet sustained noise building underneath, gain sliders lit
+    // halfway, worse on lower-divisor strings). The slider still moves
+    // but the audio cross-feed gain is forced to 0. If reactivating
+    // restores the buildup → SYMP is confirmed culprit (rework needed).
+    // If buildup persists at 0 → look elsewhere (likely DC drift, FIR
+    // resonance, or burst-pipeline residue).
+    const target = 0;   // was: (v / 100) * 0.03;
     if (audioCtx) {
       state.strings.forEach(s => {
         if (s.audio && s.audio.sympInput) {
