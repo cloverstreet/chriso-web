@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DronorParty — v0.21</title>
+<title>DronorParty — v0.22</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 <style>
 /* ── Canonical gain/meter strip CSS ─────────────────────────────────────
@@ -436,7 +436,7 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
 <!-- v0.20: top-left header — name + version + About button. -->
 <div id="app-header">
   <span class="name">DronorParty</span>
-  <span class="ver">v0.21</span>
+  <span class="ver">v0.22</span>
   <button class="about-btn" onclick="document.getElementById('about-panel').classList.add('open')">ABOUT</button>
 </div>
 
@@ -561,7 +561,8 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
         </div>
         <div class="gline" title="Tempo in BPM. Slider goes left = slow, right = fast. Range 20-480 BPM with a slight power curve (more precision at slow tempos). Default 120 BPM = 0.250 s per 8th note. Strings fire every divisor steps (e.g., div 7 = every 7 eighths).">
           <label>TEMPO</label>
-          <input type="range" id="tempo-bpm" min="0" max="1" step="0.0001" value="0.466" style="flex:1;">
+          <!-- v0.22: default value = log(120/1)/log(1000/1) = 0.6928 → 120 BPM -->
+          <input type="range" id="tempo-bpm" min="0" max="1" step="0.0001" value="0.6928" style="flex:1;">
           <span class="ctrl-val" id="clock-val" style="min-width:140px; text-align:right;">120 BPM (0.250 s/8th)</span>
         </div>
         <div class="gline" title="Sympathetic resonance — when one string plucks, the others receive a tiny excitation at the same time (low gain). Each string's KS loop amplifies it at its own pitch, producing the polyphonic resonance halo of a real tanpura. Keep this low (~5-15%); higher values risk feedback runaway.">
@@ -745,11 +746,14 @@ const DEFAULT_PATTERN  = '4321';
 // it to BPM through a power curve (exponent 1.5) so the LOW end gets more
 // physical slider distance — easier to dial musical tempos in the 60-180
 // range, less precision at 300+ where you don't usually need it.
-const TEMPO_MIN_BPM = 20;
-const TEMPO_MAX_BPM = 480;
-const TEMPO_CURVE = 1.5;
-const tempoSliderToBpm = v => TEMPO_MIN_BPM + (TEMPO_MAX_BPM - TEMPO_MIN_BPM) * Math.pow(v, TEMPO_CURVE);
-const tempoBpmToSlider = bpm => Math.pow((bpm - TEMPO_MIN_BPM) / (TEMPO_MAX_BPM - TEMPO_MIN_BPM), 1 / TEMPO_CURVE);
+// v0.22: tempo range widened to 1..1000 BPM. Linear mapping was already
+// awkward at the slider's low end; with 3 orders of magnitude now, LOG
+// mapping makes the slider feel right (60-120 BPM, the musically common
+// range, gets ~25% of the slider travel).
+const TEMPO_MIN_BPM = 1;
+const TEMPO_MAX_BPM = 1000;
+const tempoSliderToBpm = v => TEMPO_MIN_BPM * Math.pow(TEMPO_MAX_BPM / TEMPO_MIN_BPM, v);
+const tempoBpmToSlider = bpm => Math.log(bpm / TEMPO_MIN_BPM) / Math.log(TEMPO_MAX_BPM / TEMPO_MIN_BPM);
 
 // Keyboard pluck mapping (a=str0, s=str1, ..., g=str4). User asked to
 // reserve number keys for presets, so plucking uses the home row.
@@ -940,7 +944,7 @@ function loadTuningPreset(idx) {
       const inpJaw = $(`[data-jawari="${i}"]`);      if (inpJaw)  inpJaw.value  = s.jawari;
       const inpDet = $(`[data-detune="${i}"]`);      if (inpDet)  inpDet.value  = s.detune;
       const inpHal = $(`[data-halo="${i}"]`);        if (inpHal)  inpHal.value  = s.halo;
-      const inpAtk = $(`[data-attack="${i}"]`);      if (inpAtk)  inpAtk.value  = s.adsr.aMs;
+      const inpAtk = $(`[data-attack="${i}"]`);      if (inpAtk)  inpAtk.value  = attackMsToPos(s.adsr.aMs);   // v0.22: log mapping
       // Update the readouts
       const v = sel => document.querySelector(sel);
       const vOff = v(`[data-offset-val="${i}"]`);    if (vOff) vOff.textContent = (s.offset > 0 ? '+' : '') + s.offset + '%';
@@ -1200,7 +1204,7 @@ function buildStringStrips() {
           <span class="slider-label">DETUNE</span>
           <span class="ctrl-val" data-detune-val="${idx}">±${s.detune}¢</span>
         </div>
-        <input type="range" data-detune="${idx}" min="0" max="50" step="1" value="${s.detune}">
+        <input type="range" data-detune="${idx}" min="0" max="25" step="1" value="${s.detune}">
       </div>
       <!-- v0.18.1: ADSR widget replaced with a single ATTACK slider.
            The burst is now "Attack ramp then fixed 30 ms tail to 0", so the
@@ -1210,7 +1214,7 @@ function buildStringStrips() {
           <span class="slider-label">ATTACK</span>
           <span class="ctrl-val" data-attack-val="${idx}">${s.adsr.aMs} ms</span>
         </div>
-        <input type="range" data-attack="${idx}" min="1" max="2000" step="1" value="${s.adsr.aMs}">
+        <input type="range" data-attack="${idx}" min="0" max="1000" step="any" value="${attackMsToPos(s.adsr.aMs)}">
       </div>
       <!-- 2D Gain/Pan/Meter pad -->
       <div title="Gain (left↔right) + pan (top↔bottom) + stereo level meters in one pad. Drag to set both, double-click to reset to 0 dB / center. Crosshairs show set position; bars show real-time level.">
@@ -1460,6 +1464,22 @@ function makeLoopLimiterCurve() {
 // 0.35 brings 100%-jawari output back close to dry RMS while preserving
 // the timbral shift. Applied wherever jwWet.gain is set.
 const JAWARI_WET_COMP = 0.35;
+
+// v0.22: ATTACK log mapping. Linear 1..2000 ms gave essentially no
+// resolution in the 1..10 ms range — each pixel of slider travel was
+// 2 ms. Log scale maps slider position 0..1000 to attack ms 1..2000
+// such that the first half of the slider covers 1..~45 ms (the
+// musically-useful range), and the upper half spans 45..2000 ms.
+const ATTACK_MIN_MS = 1;
+const ATTACK_MAX_MS = 2000;
+function attackPosToMs(pos) {
+  const p = Math.max(0, Math.min(1000, parseFloat(pos))) / 1000;
+  return ATTACK_MIN_MS * Math.pow(ATTACK_MAX_MS / ATTACK_MIN_MS, p);
+}
+function attackMsToPos(ms) {
+  const m = Math.max(ATTACK_MIN_MS, Math.min(ATTACK_MAX_MS, parseFloat(ms)));
+  return (Math.log(m / ATTACK_MIN_MS) / Math.log(ATTACK_MAX_MS / ATTACK_MIN_MS)) * 1000;
+}
 
 function makeJawariCurve() {
   // v0.20.3: zero-mean the curve so the 0.18 DC-bias term doesn't show up
@@ -1985,6 +2005,38 @@ function wireGlobalControls() {
 function wireStringControls() {
   const stringsRow = document.getElementById('strings-row');
 
+  // v0.22: column-aware keyboard nav. Tab/Enter/↓/↑ move to the SAME
+  // field on the next/prev string (matrix-style navigation): div on
+  // string 0 → Tab → div on string 1 → Tab → div on string 2... So
+  // you can fill a whole column quickly without grabbing the mouse.
+  //
+  // The field-identifier comes from any data-* attribute matching one
+  // of the known kinds. We map kind → CSS selector "[data-kind=N]".
+  stringsRow.addEventListener('keydown', e => {
+    const inp = e.target;
+    if (!(inp instanceof HTMLInputElement) && !(inp instanceof HTMLSelectElement)) return;
+    // Find which kind this input is + the string index it belongs to.
+    const kinds = ['ratio','divisor','offset','hum','bright','decay','jawari','halo','detune','attack','intensity','pattern'];
+    let kind = null, i = -1;
+    for (const k of kinds) {
+      if (inp.dataset[k] != null) { kind = k; i = +inp.dataset[k]; break; }
+    }
+    if (kind == null) return;
+    const total = state.strings.length;
+    let next = i;
+    if (e.key === 'Tab' && !e.shiftKey)        next = (i + 1) % total;
+    else if (e.key === 'Tab' && e.shiftKey)    next = (i - 1 + total) % total;
+    else if (e.key === 'Enter' || e.key === 'ArrowDown') next = (i + 1) % total;
+    else if (e.key === 'ArrowUp')              next = (i - 1 + total) % total;
+    else return;   // not a nav key
+    const target = document.querySelector(`[data-${kind}="${next}"]`);
+    if (target) {
+      e.preventDefault();
+      target.focus();
+      if (target.select) target.select();
+    }
+  });
+
   stringsRow.addEventListener('input', e => {
     ensureRunning();
     const t = e.target;
@@ -2043,22 +2095,27 @@ function wireStringControls() {
         // Halo level is set per-pluck via envelope; nothing to push here.
         break;
       case 'detune':
-        s.detune = v;
-        document.querySelector(`[data-detune-val="${i}"]`).textContent = '±' + v + '¢';
+        // v0.22: range now ±25 cents (was ±50). Clamp preset-loaded values
+        // that were stored at >25 to keep them in the new range.
+        s.detune = Math.min(25, v);
+        document.querySelector(`[data-detune-val="${i}"]`).textContent = '±' + s.detune + '¢';
         // Detune is applied per-pluck in pluckKS; nothing to push here.
         break;
-      case 'attack':
+      case 'attack': {
         // v0.18.1: single ATTACK slider replaces the full ADSR widget.
         // Only s.adsr.aMs / aLevel matter for the burst; force the rest
         // to inert defaults so the pluck pipeline stays clean.
-        s.adsr.aMs    = v;
+        // v0.22: slider position 0..1000 → ms 1..2000 via log curve.
+        const ms = attackPosToMs(v);
+        s.adsr.aMs    = ms;
         s.adsr.aLevel = 1.0;
         s.adsr.dMs    = 1;
         s.adsr.dLevel = 1.0;
         s.adsr.sMs    = 0;
         s.adsr.rMs    = 1;
-        document.querySelector(`[data-attack-val="${i}"]`).textContent = Math.round(v) + ' ms';
+        document.querySelector(`[data-attack-val="${i}"]`).textContent = Math.round(ms) + ' ms';
         break;
+      }
     }
   });
 
