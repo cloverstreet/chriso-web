@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>testcases · chriso.org</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    touch-action: none;
+    overscroll-behavior: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  body {
+    background: #050608;
+    color: #c8b894;
+    font-family: 'Courier New', monospace;
+  }
+
+  /* Full-screen particle storm canvas (index3 storm-phase derived) */
+  canvas#storm {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    mix-blend-mode: screen;
+  }
+
+  /* Proximity-glow canvas for the links — same visual language as
+     glitchpage / Sandbox, sits BEHIND the storm so the link halos are
+     warm amber and the storm reads as cool hot colors on top */
+  canvas#glow {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  /* Title wrapper, same flex-column pattern as /Sandbox/ */
+  #title-wrap {
+    position: fixed;
+    top: 5vh;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 8;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    width: 92vw;
+  }
+  #title {
+    color: rgba(174, 188, 208, 0.78);
+    font-family: 'Courier New', monospace;
+    font-weight: 700;
+    font-style: italic;
+    font-size: clamp(32px, 6.5vw, 84px);
+    letter-spacing: 0.10em;
+    text-transform: lowercase;
+    white-space: nowrap;
+    mix-blend-mode: screen;
+    text-shadow: 0 0 32px rgba(174, 188, 208, 0.22);
+    line-height: 1;
+  }
+  #subtitle {
+    margin-top: 0.6em;
+    color: #b0c0d4;
+    font-family: 'Courier New', monospace;
+    font-style: italic;
+    font-size: clamp(11px, 1.05vw, 14px);
+    letter-spacing: 0.36em;
+    opacity: 0.85;
+    text-transform: lowercase;
+    white-space: nowrap;
+  }
+
+  /* Scattered link tiles — same hover + glow contract as Sandbox/glitchpage */
+  .scattered-link {
+    position: fixed;
+    transform: translate(-50%, -50%);
+    color: #8a9ab2;
+    text-decoration: none;
+    cursor: pointer;
+    z-index: 10;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1.2;
+    transition: color 0.3s ease, text-shadow 0.3s ease, letter-spacing 0.3s ease;
+    white-space: nowrap;
+    text-align: center;
+    font-size: clamp(13px, 1.5vw, 17px);
+    font-weight: 400;
+    letter-spacing: 0.13em;
+    padding: 10px 14px;
+    text-transform: lowercase;
+    mix-blend-mode: screen;
+  }
+  .scattered-link:hover {
+    color: #ffffff;
+    letter-spacing: 0.22em;
+    text-shadow: 0 0 14px rgba(220,220,240,0.6);
+  }
+
+  /* Film grain — same texture as siblings */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 6;
+    opacity: 0.03;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  }
+
+  /* Quiet drift line at the bottom */
+  .room-hum {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(174,188,208,0.18), transparent);
+    z-index: 4;
+    pointer-events: none;
+    animation: drift 28s ease-in-out infinite;
+  }
+  @keyframes drift {
+    0%, 100% { transform: translateX(-30%); opacity: 0.4; }
+    50%      { transform: translateX(30%);  opacity: 0.85; }
+  }
+
+  /* Mute pill */
+  #btn-mute {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    z-index: 11;
+    appearance: none;
+    border: 1px solid rgba(174,188,208,0.22);
+    background: rgba(0,0,0,0.4);
+    color: #8a9ab2;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: lowercase;
+    padding: 6px 16px;
+    border-radius: 16px;
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: color 0.3s, background 0.3s;
+  }
+  #btn-mute:hover { color: #d4dce8; }
+  #btn-mute.active {
+    color: #ffffff;
+    background: rgba(174,188,208,0.18);
+    border-color: rgba(174,188,208,0.36);
+  }
+
+  #audio-hint {
+    position: fixed;
+    left: 50%;
+    bottom: 22vh;
+    transform: translateX(-50%);
+    z-index: 9;
+    color: #6b7a90;
+    font-style: italic;
+    font-size: 12px;
+    letter-spacing: 0.3em;
+    opacity: 0.55;
+    pointer-events: none;
+    text-transform: lowercase;
+    transition: opacity 1s;
+  }
+  #audio-hint.faded { opacity: 0; }
+
+  #loading {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    color: #6b7a90;
+    font-style: italic;
+    font-size: 13px;
+    letter-spacing: 0.3em;
+    opacity: 0.6;
+    z-index: 5;
+  }
+
+  /* Mobile fallback — same column behaviour as Sandbox */
+  @media (max-width: 599px) {
+    .scattered-link {
+      position: relative !important;
+      left: auto !important;
+      top: auto !important;
+      transform: none !important;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 18px 12px;
+      font-size: 16px;
+    }
+    #links {
+      position: fixed;
+      top: 22vh;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 88%;
+      max-height: 58vh;
+      overflow-y: auto;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    canvas#glow { opacity: 0.45; }
+    #title-wrap { top: 4vh; }
+  }
+</style>
+</head>
+<body>
+<canvas id="glow"></canvas>
+<canvas id="storm"></canvas>
+<div id="title-wrap">
+  <div id="title">/testcases/</div>
+  <div id="subtitle">isolated feature experiments</div>
+</div>
+<div id="loading">loading…</div>
+<div id="links"></div>
+<div class="room-hum"></div>
+<div id="audio-hint">move · tap · to begin</div>
+<button id="btn-mute">mute</button>
+
+<script>
+// ════════════════════════════════════════════════════════════════════════
+// /TestCases/ landing page
+// ════════════════════════════════════════════════════════════════════════
+// Auto-populates links from /TestCases/list.php.  Per-link proximity-glow
+// halos on a warm-amber canvas (same hover contract as /Sandbox/ and the
+// glitchpage entrance).  Full-screen particle storm (curl-noise flow with
+// hot palette cycling, lifted from /index3/'s storm phase) sits over the
+// glow with mix-blend-mode: screen.  Every ~12 seconds the storm collapses
+// into a letterform — particles assemble into a piece of text (the page's
+// title, then the names of the actual test cases in rotation), hold for
+// ~2 s, then scatter.  Same auto-mute-on-hide standard as Sandbox.
+// ════════════════════════════════════════════════════════════════════════
+
+
+// ── Auto-populate links ────────────────────────────────────────────────
+const linksContainer = document.getElementById('links');
+const loadingEl      = document.getElementById('loading');
+let linkEntries = [];
+let testNames   = ['TESTCASES'];   // text used for the letterform pulses
+
+async function loadLinks() {
+  let items = [];
+  try {
+    const res = await fetch('/TestCases/list.php', { cache: 'no-store' });
+    items = await res.json();
+  } catch (e) {
+    items = [
+      { name: 'external-audio-interface-test-01', label: 'external audio interface test 01', href: '/TestCases/external-audio-interface-test-01/' },
+      { name: 'lfo-adsr-test', label: 'lfo adsr test', href: '/TestCases/lfo-adsr-test/' },
+      { name: 'something-salon-test', label: 'something salon test', href: '/TestCases/something-salon-test/' },
+      { name: 'spatialAudio', label: 'spatialAudio', href: '/TestCases/spatialAudio/' },
+      { name: 'web-audio-capture-test-01', label: 'web audio capture test 01', href: '/TestCases/web-audio-capture-test-01/' }
+    ];
+  }
+  loadingEl.remove();
+  renderLinks(items);
+  recomputeLinkCenters();
+  // Build the rotation of texts that the particles will spell out:
+  // the page label plus each test case name uppercased and trimmed.
+  testNames = ['TESTCASES'].concat(
+    items.map(it => it.name.toUpperCase().replace(/[-_]/g, ' '))
+  );
+  buildAttractorSets();
+}
+
+function renderLinks(items) {
+  const total = Math.max(items.length, 1);
+  items.forEach((cfg, i) => {
+    const a = document.createElement('a');
+    a.className = 'scattered-link';
+    a.href = cfg.href;
+    a.dataset.i = i;
+
+    // Scattered ring around the centre, with per-index radius wobble.
+    const angle = (i / total) * Math.PI * 2 - Math.PI / 2
+                + Math.sin(i * 5.7) * 0.18;
+    const rWobble = Math.sin(i * 3.7) * 5 + Math.cos(i * 2.3) * 3;
+    const rx = 36 + rWobble * 0.5;
+    const ry = 30 + rWobble * 0.4;
+    const xPct = 50 + Math.cos(angle) * rx;
+    const yPct = 54 + Math.sin(angle) * ry;
+    a.style.left = xPct + 'vw';
+    a.style.top  = yPct + 'vh';
+
+    const main = document.createElement('span');
+    main.textContent = cfg.label;
+    a.appendChild(main);
+
+    linkEntries.push({
+      el: a, cx: 0, cy: 0, prox: 0,
+      phase:    i * 1.7 + Math.sin(i * 1.3) * 3,
+      freq:     0.55 + (i % 3) * 0.18,
+      hueBias:  (i * 7) % 22 - 11
+    });
+
+    a.addEventListener('click', () => triggerClickGrain());
+    linksContainer.appendChild(a);
+  });
+}
+
+function recomputeLinkCenters() {
+  linkEntries.forEach(entry => {
+    const r = entry.el.getBoundingClientRect();
+    entry.cx = r.left + r.width  / 2;
+    entry.cy = r.top  + r.height / 2;
+  });
+}
+window.addEventListener('resize', recomputeLinkCenters);
+
+
+// ── Proximity glow canvas (warm amber, behind storm) ──────────────────
+const glowCanvas = document.getElementById('glow');
+const glowCtx    = glowCanvas.getContext('2d');
+const glowDpr    = Math.min(window.devicePixelRatio || 1, 2);
+let   glowW, glowH;
+const glowMouse  = { x: -9999, y: -9999, active: false };
+let   glowT      = 0;
+
+function resizeGlow() {
+  glowW = window.innerWidth;
+  glowH = window.innerHeight;
+  glowCanvas.width  = glowW * glowDpr;
+  glowCanvas.height = glowH * glowDpr;
+  glowCanvas.style.width  = glowW + 'px';
+  glowCanvas.style.height = glowH + 'px';
+  glowCtx.setTransform(glowDpr, 0, 0, glowDpr, 0, 0);
+  recomputeLinkCenters();
+  resizeStorm();
+}
+resizeGlow();
+window.addEventListener('resize', resizeGlow);
+
+document.addEventListener('pointermove', e => {
+  glowMouse.x = e.clientX;
+  glowMouse.y = e.clientY;
+  glowMouse.active = true;
+});
+window.addEventListener('mouseleave', () => { glowMouse.active = false; });
+
+function glowN2(x, y, time) {
+  return Math.sin(x * 0.011 + time * 0.7)       * 0.42
+       + Math.sin(y * 0.017 + time * 1.05)      * 0.30
+       + Math.sin((x + y) * 0.009 + time * 0.45) * 0.18
+       + Math.sin((x - y) * 0.014 + time * 1.6)  * 0.10;
+}
+
+function glowFrame() {
+  glowT += 0.014;
+
+  glowCtx.globalCompositeOperation = 'source-over';
+  glowCtx.fillStyle = '#080a10';
+  glowCtx.fillRect(0, 0, glowW, glowH);
+  glowCtx.globalCompositeOperation = 'lighter';
+
+  for (const L of linkEntries) {
+    const dx = glowMouse.x - L.cx;
+    const dy = glowMouse.y - L.cy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    const reach = 460;
+    let prox = 0;
+    if (glowMouse.active) {
+      prox = Math.max(0, 1 - dist / reach);
+      prox = prox * prox * (3 - 2 * prox);
+    }
+    L.prox = prox;
+
+    const slow = 0.5 + 0.5 * Math.sin(glowT * L.freq + L.phase);
+    const wob  = glowN2(L.cx, L.cy, glowT + L.phase);
+    const fast = 0.5 + 0.5 * Math.sin(glowT * 4.3 + L.phase * 2);
+
+    const baseRadius = 100 + 30 * slow + 18 * wob;
+    const radius = baseRadius + prox * 240;
+
+    const cx = L.cx + Math.sin(glowT * 0.6 + L.phase) * 6 + wob * 4;
+    const cy = L.cy + Math.cos(glowT * 0.8 + L.phase * 1.3) * 6;
+
+    // Cooler bias — periwinkle/blue-grey rather than amber
+    const hue = 210 + L.hueBias + wob * 12 + prox * -10;
+    const sat = 38 + prox * 16;
+    const lit = 42 + slow * 8 + prox * 14;
+
+    const ambientA = 0.09 + 0.04 * slow + 0.025 * fast * (0.5 + 0.5 * wob);
+    const alpha = ambientA + prox * 0.5;
+
+    const grad = glowCtx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+    grad.addColorStop(0,    `hsla(${hue}, ${sat}%, ${lit + 14}%, ${alpha})`);
+    grad.addColorStop(0.18, `hsla(${hue + 4}, ${sat}%, ${lit + 4}%, ${alpha * 0.55})`);
+    grad.addColorStop(0.5,  `hsla(${hue + 10}, ${sat - 10}%, ${lit - 10}%, ${alpha * 0.18})`);
+    grad.addColorStop(1,    `hsla(${hue + 14}, ${sat}%, ${lit - 20}%, 0)`);
+    glowCtx.fillStyle = grad;
+    glowCtx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+
+    if (prox > 0.05) {
+      const coreR = 28 + prox * 60;
+      const coreG = glowCtx.createRadialGradient(cx, cy, 0, cx, cy, coreR);
+      coreG.addColorStop(0, `hsla(${hue + 4}, 78%, 70%, ${prox * 0.55})`);
+      coreG.addColorStop(1, `hsla(${hue + 4}, 78%, 50%, 0)`);
+      glowCtx.fillStyle = coreG;
+      glowCtx.fillRect(cx - coreR, cy - coreR, coreR * 2, coreR * 2);
+    }
+  }
+
+  requestAnimationFrame(glowFrame);
+}
+glowFrame();
+
+
+// ── Storm particle field with letterform attractor pulses (index3) ────
+const stormCanvas = document.getElementById('storm');
+const sCtx = stormCanvas.getContext('2d');
+let sW, sH;
+
+function resizeStorm() {
+  sW = window.innerWidth;
+  sH = window.innerHeight;
+  stormCanvas.width  = sW * glowDpr;
+  stormCanvas.height = sH * glowDpr;
+  stormCanvas.style.width  = sW + 'px';
+  stormCanvas.style.height = sH + 'px';
+  sCtx.setTransform(glowDpr, 0, 0, glowDpr, 0, 0);
+  sCtx.fillStyle = '#000';
+  sCtx.fillRect(0, 0, sW, sH);
+  // Attractors are pixel-anchored, so they need to be rebuilt on resize
+  buildAttractorSets();
+}
+
+const isPhone = Math.min(window.innerWidth, window.innerHeight) < 600;
+const N_STORM = isPhone ? 900 : 1700;
+const stormParticles = [];
+for (let i = 0; i < N_STORM; i++) {
+  stormParticles.push({
+    x: Math.random() * sW,
+    y: Math.random() * sH,
+    vx: 0, vy: 0,
+    hue: Math.random() * 360,
+    target: 0
+  });
+}
+
+// Attractor sets — one array of (x,y) pixel points per text label.
+let attractorSets = [];   // [[ [x,y], [x,y], ... ], ...]
+function buildAttractorSet(text) {
+  const off = document.createElement('canvas');
+  off.width = sW; off.height = sH;
+  const o = off.getContext('2d');
+  o.fillStyle = '#fff';
+  const fs = Math.min(sW * 0.075, 96);
+  o.font = `900 ${fs}px "Helvetica Neue", system-ui, sans-serif`;
+  o.textAlign = 'center';
+  o.textBaseline = 'middle';
+  o.fillText(text, sW / 2, sH / 2);
+  const data = o.getImageData(0, 0, sW, sH).data;
+  const points = [];
+  const step = Math.max(3, Math.floor(sW / 380));
+  for (let y = 0; y < sH; y += step) {
+    for (let x = 0; x < sW; x += step) {
+      if (data[(y * sW + x) * 4] > 100) points.push([x, y]);
+    }
+  }
+  return points;
+}
+function buildAttractorSets() {
+  if (!sW || !sH) return;
+  attractorSets = testNames.map(buildAttractorSet);
+}
+
+// Cycle: free-flow → assemble → hold → scatter → free-flow, ~12 s per set.
+const CYCLE_DUR  = 12;
+let stormT = 0;
+let lastStormTick = performance.now();
+let mxSm = 0, mySm = 0, mSpeed = 0, mLastX = -1, mLastY = -1;
+
+function tickStorm() {
+  requestAnimationFrame(tickStorm);
+  if (!pageVisible) return;
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - lastStormTick) / 1000);
+  lastStormTick = now;
+  stormT += dt;
+
+  // Cursor speed accumulator
+  if (mLastX >= 0) {
+    const dx = glowMouse.x - mLastX, dy = glowMouse.y - mLastY;
+    mSpeed = mSpeed * 0.86 + Math.min(160, Math.sqrt(dx*dx + dy*dy)) * 0.14;
+  }
+  mLastX = glowMouse.x; mLastY = glowMouse.y;
+
+  // Cycle phase
+  const phase = (stormT % CYCLE_DUR) / CYCLE_DUR;
+  let attractWeight = 0;
+  if (phase < 0.42) attractWeight = 0;
+  else if (phase < 0.52) attractWeight = (phase - 0.42) / 0.10;
+  else if (phase < 0.72) attractWeight = 1;
+  else if (phase < 0.84) attractWeight = 1 - (phase - 0.72) / 0.12;
+  else attractWeight = 0;
+
+  const setIdx = attractorSets.length
+    ? Math.floor(stormT / CYCLE_DUR) % attractorSets.length
+    : 0;
+  const currentSet = attractorSets[setIdx];
+
+  // Trail decay (lighter than index3 so letters read clearly)
+  sCtx.globalCompositeOperation = 'source-over';
+  sCtx.fillStyle = 'rgba(0,0,0,0.10)';
+  sCtx.fillRect(0, 0, sW, sH);
+  sCtx.globalCompositeOperation = 'lighter';
+
+  const tn = stormT * 0.6;
+  const cursorActive = glowMouse.active;
+
+  for (let i = 0; i < stormParticles.length; i++) {
+    const p = stormParticles[i];
+
+    // Cheap curl-noise
+    const a = Math.sin(p.x * 0.011 + tn * 0.4) * 0.4
+            + Math.sin(p.y * 0.017 + tn * 0.3) * 0.3;
+    const b = Math.sin(p.x * 0.014 + tn * 0.7) * 0.3
+            + Math.sin(p.y * 0.009 + tn * 0.5) * 0.4;
+    let ax = b * 1.5, ay = -a * 1.5;
+
+    // Cursor warps the field
+    if (cursorActive) {
+      const dx = glowMouse.x - p.x, dy = glowMouse.y - p.y;
+      const d = Math.max(40, Math.sqrt(dx*dx + dy*dy));
+      const k = (mSpeed > 5 ? 70 : 22) / d;
+      ax += (dx / d) * k;
+      ay += (dy / d) * k;
+    }
+
+    // Letterform attractor pull
+    if (attractWeight > 0 && currentSet && currentSet.length) {
+      const at = currentSet[i % currentSet.length];
+      const tx = at[0] - p.x, ty = at[1] - p.y;
+      const adst = Math.max(2, Math.sqrt(tx*tx + ty*ty));
+      const aw = attractWeight * 0.20;
+      ax += (tx / adst) * aw * Math.min(50, adst);
+      ay += (ty / adst) * aw * Math.min(50, adst);
+    }
+
+    p.vx = (p.vx + ax) * 0.92;
+    p.vy = (p.vy + ay) * 0.92;
+    p.x += p.vx * dt * 60;
+    p.y += p.vy * dt * 60;
+
+    if (p.x < 0) p.x += sW;
+    if (p.x > sW) p.x -= sW;
+    if (p.y < 0) p.y += sH;
+    if (p.y > sH) p.y -= sH;
+
+    p.hue = (p.hue + 0.6) % 360;
+    const hd = (p.hue * 0.5 + 280) % 360;
+    const speed = Math.sqrt(p.vx*p.vx + p.vy*p.vy);
+    const al = 0.18 + Math.min(0.55, speed * 0.06);
+    sCtx.fillStyle = `hsla(${hd},92%,62%,${al})`;
+    sCtx.fillRect(p.x, p.y, 1.4, 1.4);
+    if (speed > 2.5) {
+      sCtx.fillStyle = `hsla(${hd},92%,75%,${al * 0.5})`;
+      sCtx.fillRect(p.x - p.vx * 0.3, p.y - p.vy * 0.3, 1.0, 1.0);
+    }
+  }
+
+  // Occasional strobe band during the assemble + hold phases for emphasis
+  if (attractWeight > 0.3 && Math.random() < 0.03) {
+    const y = Math.random() * sH;
+    const h = 2 + Math.random() * 18;
+    sCtx.globalAlpha = 0.4 * attractWeight;
+    sCtx.fillStyle = ['#ffffff', '#ff00aa', '#00ffe7', '#ffe700'][Math.floor(Math.random()*4)];
+    sCtx.fillRect(0, y, sW, h);
+    sCtx.globalAlpha = 1;
+  }
+}
+tickStorm();
+
+
+// ── Audio engine — index3 storm bus shape, stereo only ────────────────
+//
+// Standard for non-instrument pages: page-visibility hide → suspend audio,
+// halt processing. See CLAUDE.md "Auto-mute non-instrument pages when not
+// in front."
+let actx, master;
+let droneGain, modOsc, modGain;
+let noiseGain, noiseRingOsc;
+let granGain, crackleGain;
+let grainBuf;
+let started = false;
+let muted = false;
+const MASTER_LEVEL = 0.17;
+
+let pageVisible = (document.visibilityState !== 'hidden');
+document.addEventListener('visibilitychange', () => {
+  pageVisible = (document.visibilityState !== 'hidden');
+  if (!actx || !master) return;
+  if (pageVisible) {
+    actx.resume();
+    const t = actx.currentTime;
+    master.gain.cancelScheduledValues(t);
+    master.gain.setValueAtTime(master.gain.value, t);
+    master.gain.linearRampToValueAtTime(muted ? 0 : MASTER_LEVEL, t + 0.4);
+  } else {
+    const t = actx.currentTime;
+    master.gain.cancelScheduledValues(t);
+    master.gain.setValueAtTime(master.gain.value, t);
+    master.gain.linearRampToValueAtTime(0, t + 0.15);
+    setTimeout(() => { if (!pageVisible && actx) actx.suspend(); }, 200);
+  }
+});
+
+function startAudio() {
+  if (started) return;
+  started = true;
+  actx = new (window.AudioContext || window.webkitAudioContext)();
+
+  master = actx.createGain();
+  master.gain.value = muted ? 0 : MASTER_LEVEL;
+  master.connect(actx.destination);
+
+  // FM-modulated saw drone (index3 storm-bus shape, slightly lower fund)
+  droneGain = actx.createGain();
+  droneGain.gain.value = 0.038;
+  droneGain.connect(master);
+  const fund = 48;
+  modOsc = actx.createOscillator();
+  modOsc.type = 'sine';
+  modOsc.frequency.value = 1.1;
+  modGain = actx.createGain();
+  modGain.gain.value = 9;
+  modOsc.connect(modGain);
+  modOsc.start();
+  for (const r of [1, 1.5, 2.04]) {
+    const o = actx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.value = fund * r;
+    o.detune.value = (Math.random() - 0.5) * 16;
+    modGain.connect(o.frequency);
+    const lpf = actx.createBiquadFilter();
+    lpf.type = 'lowpass';
+    lpf.frequency.value = 1400;
+    const g = actx.createGain();
+    g.gain.value = 0.55 / (r * r);
+    o.connect(lpf); lpf.connect(g); g.connect(droneGain);
+    o.start();
+  }
+
+  // Noise bed with ring mod
+  noiseGain = actx.createGain();
+  noiseGain.gain.value = 0.012;
+  noiseGain.connect(master);
+  const nb = actx.createBuffer(1, actx.sampleRate * 2, actx.sampleRate);
+  const nd = nb.getChannelData(0);
+  for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  const ns = actx.createBufferSource();
+  ns.buffer = nb;
+  ns.loop = true;
+  const ringG = actx.createGain();
+  ringG.gain.value = 0;
+  noiseRingOsc = actx.createOscillator();
+  noiseRingOsc.type = 'sine';
+  noiseRingOsc.frequency.value = 220;
+  noiseRingOsc.connect(ringG.gain);
+  noiseRingOsc.start();
+  ns.connect(ringG); ringG.connect(noiseGain);
+  ns.start();
+
+  // Granular bus (stereo, no spatial panners — keep it simple)
+  granGain = actx.createGain();
+  granGain.gain.value = 0.13;
+  granGain.connect(master);
+  grainBuf = actx.createBuffer(2, actx.sampleRate * 5, actx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = grainBuf.getChannelData(ch);
+    for (let i = 0; i < d.length; i++) {
+      d[i] = (Math.random() * 2 - 1) * 0.7;
+      if (Math.random() < 0.005) d[i] = (Math.random() < 0.5 ? 1 : -1);
+    }
+  }
+
+  // Crackle bus
+  crackleGain = actx.createGain();
+  crackleGain.gain.value = 0.030;
+  crackleGain.connect(master);
+
+  scheduleGrain();
+  scheduleCrackle();
+  modulateLoop();
+}
+
+function scheduleGrain() {
+  if (!actx) return;
+  const wait = 70 + Math.random() * 130;
+  setTimeout(() => {
+    if (!actx) return;
+    spawnGrain();
+    scheduleGrain();
+  }, wait);
+}
+function spawnGrain() {
+  if (!pageVisible) return;
+  const dur = 0.06 + Math.random() * 0.22;
+  const t0 = actx.currentTime + 0.01;
+  const src = actx.createBufferSource();
+  src.buffer = grainBuf;
+  src.playbackRate.value = 0.45 + Math.random() * 1.6;
+  src.detune.value = (Math.random() - 0.5) * 200;
+  const sampleStart = Math.random() * (grainBuf.duration - dur - 0.01);
+
+  const lpf = actx.createBiquadFilter();
+  lpf.type = Math.random() < 0.5 ? 'bandpass' : 'highpass';
+  lpf.frequency.value = 600 + Math.random() * 4000;
+  lpf.Q.value = 0.8 + Math.random() * 4;
+
+  const env = actx.createGain();
+  env.gain.setValueAtTime(0, t0);
+  env.gain.linearRampToValueAtTime(0.55, t0 + dur * 0.25);
+  env.gain.linearRampToValueAtTime(0, t0 + dur);
+
+  const pan = actx.createStereoPanner();
+  pan.pan.value = Math.max(-1, Math.min(1, (Math.random() - 0.5) * 1.6));
+
+  src.connect(lpf); lpf.connect(env); env.connect(pan); pan.connect(granGain);
+  src.start(t0, sampleStart, dur);
+  src.stop(t0 + dur + 0.05);
+}
+
+function scheduleCrackle() {
+  if (!actx) return;
+  setTimeout(() => {
+    if (!actx) return;
+    spawnCrackle();
+    scheduleCrackle();
+  }, 40 + Math.random() * 100);
+}
+function spawnCrackle() {
+  if (!pageVisible) return;
+  const t0 = actx.currentTime + 0.01;
+  const dur = 0.005 + Math.random() * 0.020;
+  const src = actx.createBufferSource();
+  src.buffer = grainBuf;
+  src.playbackRate.value = 1 + Math.random() * 0.5;
+  const env = actx.createGain();
+  env.gain.setValueAtTime(0, t0);
+  env.gain.linearRampToValueAtTime(0.55, t0 + dur * 0.2);
+  env.gain.linearRampToValueAtTime(0, t0 + dur);
+  const hpf = actx.createBiquadFilter();
+  hpf.type = 'highpass';
+  hpf.frequency.value = 2200;
+  const pan = actx.createStereoPanner();
+  pan.pan.value = Math.max(-1, Math.min(1, (Math.random() - 0.5) * 1.4));
+  src.connect(hpf); hpf.connect(env); env.connect(pan); pan.connect(crackleGain);
+  src.start(t0, Math.random() * grainBuf.duration * 0.9, dur);
+  src.stop(t0 + dur + 0.05);
+}
+
+function modulateLoop() {
+  if (!actx) return;
+  setInterval(() => {
+    if (!actx || !pageVisible) return;
+    const sNorm = Math.min(1, mSpeed / 100);
+    crackleGain.gain.linearRampToValueAtTime(
+      0.022 + sNorm * 0.08, actx.currentTime + 0.2);
+    modGain.gain.linearRampToValueAtTime(
+      5 + sNorm * 18, actx.currentTime + 0.2);
+    noiseRingOsc.frequency.linearRampToValueAtTime(
+      180 + sNorm * 700, actx.currentTime + 0.2);
+
+    // Per-link proximity tones — same contract as Sandbox
+    for (const L of linkEntries) {
+      if (L.prox > 0.04) {
+        if (!L.audioNodes) createLinkAudio(L);
+        const target = Math.min(1, L.prox * 1.05) * 0.040;
+        L.audioGain.gain.linearRampToValueAtTime(target, actx.currentTime + 0.12);
+      } else if (L.audioNodes) {
+        L.audioGain.gain.linearRampToValueAtTime(0, actx.currentTime + 0.20);
+      }
+    }
+  }, 90);
+}
+
+function createLinkAudio(L) {
+  const i = parseInt(L.el.dataset.i, 10) || 0;
+  L.audioGain = actx.createGain();
+  L.audioGain.gain.value = 0;
+  L.audioGain.connect(master);
+  L.audioOscs = [];
+  const f = 240 + (i * 53) % 220;
+  for (const df of [-2.5, 2.5, -4.4, 4.4]) {
+    const o = actx.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = f + df;
+    o.connect(L.audioGain);
+    o.start();
+    L.audioOscs.push(o);
+  }
+  L.audioNodes = true;
+}
+
+function triggerClickGrain() {
+  if (!actx) return;
+  spawnGrain();
+  spawnGrain();
+}
+
+
+// ── Mute toggle ────────────────────────────────────────────────────────
+const btnMute = document.getElementById('btn-mute');
+btnMute.addEventListener('click', (e) => {
+  e.stopPropagation();
+  muted = !muted;
+  btnMute.classList.toggle('active', muted);
+  btnMute.textContent = muted ? 'muted' : 'mute';
+  if (actx && master) {
+    const t = actx.currentTime;
+    master.gain.cancelScheduledValues(t);
+    master.gain.setValueAtTime(master.gain.value, t);
+    master.gain.linearRampToValueAtTime(muted ? 0 : MASTER_LEVEL, t + 0.25);
+  }
+});
+
+
+// ── First-gesture audio start ─────────────────────────────────────────
+const audioHint = document.getElementById('audio-hint');
+function tryStart() {
+  startAudio();
+  if (audioHint) audioHint.classList.add('faded');
+  document.removeEventListener('pointerdown', tryStart);
+  document.removeEventListener('pointermove', tryStart);
+  document.removeEventListener('touchstart', tryStart);
+}
+document.addEventListener('pointerdown', tryStart);
+document.addEventListener('pointermove', tryStart);
+document.addEventListener('touchstart', tryStart, { passive: true });
+
+
+// ── Bootstrap ─────────────────────────────────────────────────────────
+loadLinks();
+</script>
+</body>
+</html>

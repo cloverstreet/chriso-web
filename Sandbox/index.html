@@ -207,6 +207,143 @@
     border-color: rgba(220,200,160,0.32);
   }
 
+  /* Spatial diagnostic — pill that opens a tweakable panel */
+  #btn-spatial {
+    position: fixed;
+    right: 18px;
+    bottom: 102px;
+    z-index: 11;
+    appearance: none;
+    border: 1px solid rgba(220,200,160,0.18);
+    background: rgba(0,0,0,0.4);
+    color: #8a7c64;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: lowercase;
+    padding: 6px 16px;
+    border-radius: 16px;
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: color 0.3s, background 0.3s;
+  }
+  #btn-spatial:hover { color: #c8b894; }
+  #btn-spatial.active {
+    color: #f0e0c0;
+    background: rgba(220,200,160,0.18);
+    border-color: rgba(220,200,160,0.32);
+  }
+
+  #spatial-panel {
+    position: fixed;
+    right: 18px;
+    bottom: 144px;
+    z-index: 12;
+    width: 280px;
+    background: rgba(0,0,0,0.75);
+    border: 1px solid rgba(220,200,160,0.22);
+    border-radius: 14px;
+    padding: 14px 16px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: #c8b894;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    display: none;
+  }
+  #spatial-panel.open { display: block; }
+  #spatial-panel h4 {
+    margin: 0 0 10px 0;
+    font-size: 10px;
+    letter-spacing: 0.24em;
+    text-transform: lowercase;
+    font-weight: 700;
+    color: #f0e0c0;
+  }
+  #spatial-panel .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 6px 0;
+  }
+  #spatial-panel .row label {
+    flex: 0 0 auto;
+    text-transform: lowercase;
+    color: #a89878;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+  }
+  #spatial-panel .row input[type=range] {
+    flex: 1 1 auto;
+    height: 4px;
+    appearance: none;
+    background: rgba(220,200,160,0.18);
+    border-radius: 2px;
+    outline: none;
+  }
+  #spatial-panel .row input[type=range]::-webkit-slider-thumb {
+    appearance: none;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: #d4c098;
+    cursor: pointer;
+  }
+  #spatial-panel .row .val {
+    flex: 0 0 38px;
+    text-align: right;
+    color: #d4c098;
+    font-size: 10px;
+  }
+  #spatial-panel .actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  #spatial-panel .actions button {
+    flex: 1;
+    appearance: none;
+    border: 1px solid rgba(220,200,160,0.24);
+    background: rgba(220,200,160,0.06);
+    color: #d4c098;
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: lowercase;
+    padding: 6px 8px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+  }
+  #spatial-panel .actions button:hover {
+    background: rgba(220,200,160,0.18);
+    color: #f0e0c0;
+  }
+  #spatial-status {
+    margin-top: 8px;
+    font-size: 10px;
+    color: #8a7c64;
+    letter-spacing: 0.10em;
+  }
+  #spatial-viz {
+    display: block;
+    margin: 8px auto 0;
+    background: rgba(10,6,8,0.6);
+    border: 1px solid rgba(220,200,160,0.18);
+    border-radius: 6px;
+  }
+  /* On phone collapse the panel width */
+  @media (max-width: 599px) {
+    #spatial-panel {
+      width: calc(100vw - 36px);
+      right: 18px;
+      max-height: 75vh;
+      overflow-y: auto;
+    }
+  }
+
   /* Tiny hint shown until first gesture unlocks audio */
   #audio-hint {
     position: fixed;
@@ -289,10 +426,41 @@
 
 <div id="audio-hint">move · tap · to begin</div>
 
+<button id="btn-spatial">spatial</button>
 <button id="btn-mute">mute</button>
 <div id="mode-toggle">
   <button id="btn-stereo">stereo</button>
   <button id="btn-binaural" class="active">binaural</button>
+</div>
+
+<div id="spatial-panel">
+  <h4>spatial · tweak to taste</h4>
+  <div class="row">
+    <label>vol</label>
+    <input type="range" id="sl-vol"   min="0" max="3"    step="0.05" value="1">
+    <span class="val" id="v-vol">1.0×</span>
+  </div>
+  <div class="row">
+    <label>rate</label>
+    <input type="range" id="sl-rate"  min="0.3" max="3"  step="0.05" value="1">
+    <span class="val" id="v-rate">1.0×</span>
+  </div>
+  <div class="row">
+    <label>speed</label>
+    <input type="range" id="sl-speed" min="0.3" max="3"  step="0.05" value="1">
+    <span class="val" id="v-speed">1.0×</span>
+  </div>
+  <div class="row">
+    <label>dist</label>
+    <input type="range" id="sl-dist"  min="0.2" max="3"  step="0.05" value="1">
+    <span class="val" id="v-dist">1.0×</span>
+  </div>
+  <canvas id="spatial-viz" width="240" height="120"></canvas>
+  <div class="actions">
+    <button id="btn-test-orbit">test orbit</button>
+    <button id="btn-reset-spatial">reset</button>
+  </div>
+  <div id="spatial-status">binaural · panners 0</div>
 </div>
 
 <script>
@@ -611,6 +779,36 @@ let started = false;
 let currentMode = 'HRTF';
 const activePanners = new Set();
 
+// ── Page visibility (site-wide standard for non-instrument pages) ─────
+// When the tab isn't in front, ramp master to 0 and suspend the audio
+// context; halt grain/crackle spawn loops. Resume on visible. See
+// CLAUDE.md "Auto-mute non-instrument pages when not in front."
+let pageVisible = (document.visibilityState !== 'hidden');
+document.addEventListener('visibilitychange', () => {
+  pageVisible = (document.visibilityState !== 'hidden');
+  if (!actx || !master) return;
+  if (pageVisible) {
+    actx.resume();
+    const t = actx.currentTime;
+    master.gain.cancelScheduledValues(t);
+    master.gain.setValueAtTime(master.gain.value, t);
+    master.gain.linearRampToValueAtTime(muted ? 0 : MASTER_LEVEL, t + 0.4);
+  } else {
+    const t = actx.currentTime;
+    master.gain.cancelScheduledValues(t);
+    master.gain.setValueAtTime(master.gain.value, t);
+    master.gain.linearRampToValueAtTime(0, t + 0.15);
+    setTimeout(() => { if (!pageVisible && actx) actx.suspend(); }, 200);
+  }
+});
+
+// ── Spatialization debug controls (live-tweakable multipliers) ────────
+let grainVolMult   = 1;   // multiplier on granGain target
+let grainRateMult  = 1;   // multiplier on grain spawn rate (>1 = faster)
+let grainSpeedMult = 1;   // multiplier on grain travel speed (>1 = faster)
+let grainDistMult  = 1;   // multiplier on trajectory radii (>1 = farther)
+const GRAN_BASE = 0.13;   // baseline granular bus gain
+
 // Cursor → audio modulation (cursor speed drives crackle + FM depth)
 let mx = -1, my = -1, mLastX = -1, mLastY = -1, mSpeed = 0;
 document.addEventListener('pointermove', e => {
@@ -685,7 +883,7 @@ function startAudio() {
 
   // ── Granular bus ──────────────────────────────────────────────────
   granGain = actx.createGain();
-  granGain.gain.value = 0.13;
+  granGain.gain.value = GRAN_BASE;
   granGain.connect(master);
 
   // 5s of textured noise — used as the granular source material
@@ -716,7 +914,7 @@ function startAudio() {
 // Y and Z so some pass overhead, behind, in front.
 function scheduleGrain() {
   if (!actx) return;
-  const wait = 55 + Math.random() * 130;
+  const wait = (55 + Math.random() * 130) / Math.max(0.1, grainRateMult);
   setTimeout(() => {
     if (!actx) return;
     spawnGrain();
@@ -725,7 +923,8 @@ function scheduleGrain() {
 }
 
 function spawnGrain() {
-  const dur = 0.20 + Math.random() * 0.55;   // longer than index2 so motion reads
+  if (!pageVisible) return;                              // halt processing while hidden
+  const dur = (0.20 + Math.random() * 0.55) / Math.max(0.2, grainSpeedMult);
   const t0 = actx.currentTime + 0.01;
 
   const src = actx.createBufferSource();
@@ -791,12 +990,20 @@ function spawnGrain() {
     ey = sy * 1.4;
   }
 
+  // Apply live-tweakable distance scaling (debug panel slider).
+  sx *= grainDistMult; sz *= grainDistMult;
+  ex *= grainDistMult; ez *= grainDistMult;
+
   panner.positionX.setValueAtTime(sx, t0);
   panner.positionY.setValueAtTime(sy, t0);
   panner.positionZ.setValueAtTime(sz, t0);
   panner.positionX.linearRampToValueAtTime(ex, t0 + dur);
   panner.positionY.linearRampToValueAtTime(ey, t0 + dur);
   panner.positionZ.linearRampToValueAtTime(ez, t0 + dur);
+
+  // Stash trajectory on the panner so the visualizer can read positions
+  // without polling AudioParam.value (which is unreliable mid-ramp).
+  panner._gMeta = { startTime: t0, endTime: t0 + dur, sx, sy, sz, ex, ey, ez };
 
   activePanners.add(panner);
   setTimeout(() => activePanners.delete(panner), (dur + 0.2) * 1000);
@@ -819,6 +1026,7 @@ function scheduleCrackle() {
 }
 
 function spawnCrackle() {
+  if (!pageVisible) return;
   const t0 = actx.currentTime + 0.01;
   const dur = 0.005 + Math.random() * 0.025;
 
@@ -873,6 +1081,8 @@ function modulateLoop() {
       4 + sNorm * 16, actx.currentTime + 0.2);
     noiseRingOsc.frequency.linearRampToValueAtTime(
       180 + sNorm * 700, actx.currentTime + 0.2);
+    granGain.gain.linearRampToValueAtTime(
+      GRAN_BASE * grainVolMult, actx.currentTime + 0.2);
 
     // ── Per-link proximity tones ──────────────────────────────────────
     // Each link gets a beating-quartet sine that rises in gain by the
@@ -929,6 +1139,175 @@ function setMode(mode) {
 }
 btnStereo.addEventListener('click',   () => setMode('equalpower'));
 btnBinaural.addEventListener('click', () => setMode('HRTF'));
+
+// ── Spatial debug panel ────────────────────────────────────────────────
+// Lets you live-tweak grain volume, spawn rate, travel speed, and
+// trajectory distance to find a sweet spot — and fire a clean test orbit
+// (steady sine circling the listener) to verify the HRTF/equalpower
+// chain is actually doing what the toggle says.  The tiny visualizer
+// plots active grain panners as dots on a top-down (X / Z) view of the
+// listener's plane, listener at center facing down (-Z).
+const btnSpatial   = document.getElementById('btn-spatial');
+const spatialPanel = document.getElementById('spatial-panel');
+const slVol   = document.getElementById('sl-vol');
+const slRate  = document.getElementById('sl-rate');
+const slSpeed = document.getElementById('sl-speed');
+const slDist  = document.getElementById('sl-dist');
+const vVol   = document.getElementById('v-vol');
+const vRate  = document.getElementById('v-rate');
+const vSpeed = document.getElementById('v-speed');
+const vDist  = document.getElementById('v-dist');
+const btnTestOrbit = document.getElementById('btn-test-orbit');
+const btnResetSpatial = document.getElementById('btn-reset-spatial');
+const spatialStatus = document.getElementById('spatial-status');
+const vizCanvas = document.getElementById('spatial-viz');
+const vizCtx = vizCanvas.getContext('2d');
+
+btnSpatial.addEventListener('click', () => {
+  const open = !spatialPanel.classList.contains('open');
+  spatialPanel.classList.toggle('open', open);
+  btnSpatial.classList.toggle('active', open);
+});
+
+function bindSlider(slider, valEl, setter) {
+  slider.addEventListener('input', () => {
+    const v = parseFloat(slider.value);
+    setter(v);
+    valEl.textContent = v.toFixed(2) + '×';
+  });
+}
+bindSlider(slVol,   vVol,   v => grainVolMult   = v);
+bindSlider(slRate,  vRate,  v => grainRateMult  = v);
+bindSlider(slSpeed, vSpeed, v => grainSpeedMult = v);
+bindSlider(slDist,  vDist,  v => grainDistMult  = v);
+
+btnResetSpatial.addEventListener('click', () => {
+  for (const [sl, val, setter] of [
+    [slVol, vVol, v => grainVolMult = v],
+    [slRate, vRate, v => grainRateMult = v],
+    [slSpeed, vSpeed, v => grainSpeedMult = v],
+    [slDist, vDist, v => grainDistMult = v]
+  ]) {
+    sl.value = 1; setter(1); val.textContent = '1.00×';
+  }
+});
+
+// Test orbit: a clean sine that does ~1.5 revolutions around the head
+// in 6 seconds.  Useful for verifying HRTF vs equalpower side-by-side
+// without granular variation in the way.
+btnTestOrbit.addEventListener('click', () => {
+  if (!actx) {
+    // First gesture — let the unlock handler kick in via a synthetic event
+    return;
+  }
+  const dur = 6, t0 = actx.currentTime + 0.05;
+  const osc = actx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.value = 480;
+  const env = actx.createGain();
+  env.gain.setValueAtTime(0, t0);
+  env.gain.linearRampToValueAtTime(0.16, t0 + 0.4);
+  env.gain.setValueAtTime(0.16, t0 + dur - 0.4);
+  env.gain.linearRampToValueAtTime(0, t0 + dur);
+
+  const panner = actx.createPanner();
+  panner.panningModel  = currentMode;
+  panner.distanceModel = 'inverse';
+  panner.refDistance   = 0.6;
+  panner.maxDistance   = 18;
+  panner.rolloffFactor = 1.2;
+  const STEPS = 96, REVS = 1.5, R = 1.8;
+  for (let i = 0; i <= STEPS; i++) {
+    const phase = (i / STEPS) * Math.PI * 2 * REVS;
+    const t = t0 + (i / STEPS) * dur;
+    panner.positionX.setValueAtTime(Math.cos(phase) * R, t);
+    panner.positionY.setValueAtTime(0, t);
+    panner.positionZ.setValueAtTime(Math.sin(phase) * R, t);
+  }
+  panner._gMeta = { startTime: t0, endTime: t0 + dur,
+                    sx: R, sy: 0, sz: 0, ex: R, ey: 0, ez: 0,
+                    orbit: { revs: REVS, r: R } };
+
+  activePanners.add(panner);
+  setTimeout(() => activePanners.delete(panner), (dur + 0.3) * 1000);
+
+  osc.connect(env);
+  env.connect(panner);
+  panner.connect(master);
+  osc.start(t0);
+  osc.stop(t0 + dur + 0.1);
+});
+
+// Visualizer + status — runs every frame, reads each active panner's
+// interpolated trajectory position (so even mid-ramp positions read
+// reliably), plots a dot on the XZ plane with the listener at center.
+function tickViz() {
+  requestAnimationFrame(tickViz);
+  if (!actx) {
+    spatialStatus.textContent = (currentMode === 'HRTF' ? 'binaural' : 'stereo')
+      + ' · audio not started';
+    return;
+  }
+  const w = vizCanvas.width, h = vizCanvas.height;
+  // Trail decay
+  vizCtx.globalCompositeOperation = 'source-over';
+  vizCtx.fillStyle = 'rgba(10,6,8,0.18)';
+  vizCtx.fillRect(0, 0, w, h);
+
+  // Crosshair + listener dot
+  vizCtx.strokeStyle = 'rgba(220,200,160,0.15)';
+  vizCtx.lineWidth = 1;
+  vizCtx.beginPath();
+  vizCtx.moveTo(w/2, 0); vizCtx.lineTo(w/2, h);
+  vizCtx.moveTo(0, h/2); vizCtx.lineTo(w, h/2);
+  vizCtx.stroke();
+  vizCtx.fillStyle = '#f0e0c0';
+  vizCtx.beginPath();
+  vizCtx.arc(w/2, h/2, 2.5, 0, Math.PI * 2);
+  vizCtx.fill();
+
+  // Scale: ±10m maps to ±w/2 / ±h/2 (Z grows downward so listener
+  // "faces" toward the top of the canvas — closer to natural feel)
+  const SCALE = (w / 2) / 10;
+  const now = actx.currentTime;
+  vizCtx.globalCompositeOperation = 'lighter';
+
+  let visible = 0;
+  for (const p of activePanners) {
+    const m = p._gMeta;
+    if (!m) continue;
+    if (now < m.startTime || now > m.endTime) continue;
+    let cx, cz;
+    if (m.orbit) {
+      const t = (now - m.startTime) / (m.endTime - m.startTime);
+      const phase = t * Math.PI * 2 * m.orbit.revs;
+      cx = Math.cos(phase) * m.orbit.r;
+      cz = Math.sin(phase) * m.orbit.r;
+    } else {
+      const t = (now - m.startTime) / (m.endTime - m.startTime);
+      cx = m.sx + (m.ex - m.sx) * t;
+      cz = m.sz + (m.ez - m.sz) * t;
+    }
+    const px = w/2 + cx * SCALE;
+    const py = h/2 - cz * SCALE;   // -Z is forward = up on screen
+    if (px < -8 || px > w + 8 || py < -8 || py > h + 8) continue;
+    visible++;
+    const dist = Math.sqrt(cx*cx + cz*cz);
+    const a = Math.max(0.2, Math.min(0.95, 1 - dist / 12));
+    vizCtx.fillStyle = m.orbit
+      ? `rgba(255,220,160,${a})`
+      : `rgba(255,180,120,${a * 0.85})`;
+    vizCtx.beginPath();
+    vizCtx.arc(px, py, m.orbit ? 3 : 2.2, 0, Math.PI * 2);
+    vizCtx.fill();
+  }
+
+  spatialStatus.textContent =
+    (currentMode === 'HRTF' ? 'binaural' : 'stereo')
+    + ' · panners ' + visible;
+}
+tickViz();
+
 
 // ── Mute toggle ────────────────────────────────────────────────────────
 // Ramps master gain to 0 on mute, back to the original level on unmute.
