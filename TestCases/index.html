@@ -370,10 +370,13 @@ function resizeGlow() {
   glowCanvas.style.height = glowH + 'px';
   glowCtx.setTransform(glowDpr, 0, 0, glowDpr, 0, 0);
   recomputeLinkCenters();
-  resizeStorm();
+  // resizeStorm() is NOT called from here — its `let sW, sH;` and
+  // `let attractorSets = [];` live further down the script, so calling
+  // it during the synchronous setup pass at module load would hit the
+  // let-TDZ. The window-resize listener below fires both functions.
 }
 resizeGlow();
-window.addEventListener('resize', resizeGlow);
+window.addEventListener('resize', () => { resizeGlow(); resizeStorm(); });
 
 document.addEventListener('pointermove', e => {
   glowMouse.x = e.clientX;
@@ -615,6 +618,9 @@ function tickStorm() {
     sCtx.globalAlpha = 1;
   }
 }
+// All storm-related `let` declarations have executed by this point, so
+// it's now safe to do the first resizeStorm + start the tick loop.
+resizeStorm();
 tickStorm();
 
 
