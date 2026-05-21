@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DronorParty — v0.20.2</title>
+<title>DronorParty — v0.20.3</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 <style>
 /* ── Canonical gain/meter strip CSS ─────────────────────────────────────
@@ -436,7 +436,7 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
 <!-- v0.20: top-left header — name + version + About button. -->
 <div id="app-header">
   <span class="name">DronorParty</span>
-  <span class="ver">v0.20.2 (SYMP disabled — diagnostic)</span>
+  <span class="ver">v0.20.3 (SYMP still disabled — diagnostic)</span>
   <button class="about-btn" onclick="document.getElementById('about-panel').classList.add('open')">ABOUT</button>
 </div>
 
@@ -664,9 +664,9 @@ input[type="text"]:focus, input[type="number"]:focus { border-color:#c8a854; }
       <div class="slider-row" title="Reverb wet send level out to master. Dry signal always passes through unchanged.">
         <div class="slider-label-row">
           <span class="slider-label">WET</span>
-          <span class="ctrl-val" id="rv-wet-val">30%</span>
+          <span class="ctrl-val" id="rv-wet-val">18%</span>
         </div>
-        <input type="range" id="rv-wet" min="0" max="1" step="0.01" value="0.30">
+        <input type="range" id="rv-wet" min="0" max="1" step="0.01" value="0.18">
       </div>
     </div>
   </div>
@@ -1392,33 +1392,44 @@ function makeSympSendCurve() {
   return curve;
 }
 
-// v0.20 IN-LOOP soft limiter. The v0.19 send-side clamp was insufficient:
-// even tanh-clamped sympInput, the receiving KS loop integrates over time
-// (loop pole at feedback=0.993 → steady-state gain ≈ 143×), so persistent
-// small excitation at the string's resonant frequency still pumps the loop
-// up to clipping. Putting a soft tanh into the loop itself caps the LOOP
-// SIGNAL amplitude regardless of how aggressively it's being driven.
+// v0.20 IN-LOOP soft limiter — sits between loopFIR and feedback, caps the
+// loop signal amplitude regardless of how aggressively it's being driven.
 //
-// v0.20.1 CRITICAL FIX — the v0.20 curve `tanh(1.3 * x)` has slope 1.3 at
-// the origin. The loop gain at zero amplitude is feedback × slope, so with
-// feedback = 0.993 the small-signal loop gain was 0.993 × 1.3 ≈ 1.29 > 1.0.
-// **Loop is unconditionally unstable** — any noise-floor signal self-
-// amplifies into a saturated limit cycle at ±1.0 → constant loud tone.
-// Even at default feedback 0.96 the gain was 1.25, still unstable.
-//
-// New curve `tanh(0.9 * x)`:
-//   • slope at origin = 0.9, so loop gain at zero = 0.999 × 0.9 ≈ 0.9 < 1
-//     even at the most aggressive feedback setting → STABLE.
-//   • mostly transparent at typical KS amplitudes (tanh(0.9 × 0.2) = 0.179,
-//     a 10% attenuation — barely perceptible).
-//   • still hard-clamps at runaway amplitudes (tanh(0.9 × 2) = 0.95,
-//     tanh(0.9 × 3) = 0.992 — asymptotes to ±1.0).
+// History:
+//   v0.20:   tanh(1.3*x) — SLOPE 1.3 at origin → unconditionally UNSTABLE
+//            (loop gain = feedback × 1.3 = 1.29 even at default feedback,
+//            self-oscillated into a saturated limit cycle).
+//   v0.20.1: tanh(0.9*x) — slope 0.9, stable but DECAY slider became
+//            useless. Effective loop gain = feedback × 0.9. At feedback
+//            0.999 (max) decay time ≈ 42 ms; at 0.9 (min) decay time ≈ 21
+//            ms — both feel "very short" with no audible difference
+//            between settings. (Christopher: "adjusting decay seems to
+//            have zero effect.")
+//   v0.20.3: IDENTITY BELOW |x|=0.7, SMOOTH SATURATION ABOVE.
+//            • Below threshold: slope = exactly 1.0 → loop gain = feedback
+//              exactly. DECAY slider is fully effective again (decay time
+//              scales naturally with feedback).
+//            • Above 0.7: smooth tanh-shaped ramp to ±1.0. The limiter
+//              only kicks in when the loop actually overflows, not when
+//              it's running at sane amplitudes.
+//            • Above 1.0: clamped to ±1.0 (WaveShaperNode spec clamps
+//              input to [-1, +1] before sampling the curve).
 function makeLoopLimiterCurve() {
-  const N = 2048;
+  const N = 2049;          // odd so center sample lands exactly at x = 0
   const curve = new Float32Array(N);
+  const T = 0.7;           // threshold below which curve is identity
+  // Soft-knee shape above T: smoothly ramps to ±1.0 by x=1, using a tanh
+  // mapping so the derivative is continuous at the boundary.
   for (let i = 0; i < N; i++) {
     const x = (i / (N - 1)) * 2 - 1;
-    curve[i] = Math.tanh(0.9 * x);
+    const absX = Math.abs(x);
+    if (absX <= T) {
+      curve[i] = x;                                            // identity
+    } else {
+      const t = (absX - T) / (1 - T);                          // 0..1 above threshold
+      const k = Math.tanh(2.5 * t) / Math.tanh(2.5);           // smooth 0..1
+      curve[i] = Math.sign(x) * (T + (1 - T) * k);
+    }
   }
   return curve;
 }
@@ -1441,13 +1452,21 @@ function makeLoopLimiterCurve() {
 const JAWARI_WET_COMP = 0.35;
 
 function makeJawariCurve() {
-  const N = 2048;
+  // v0.20.3: zero-mean the curve so the 0.18 DC-bias term doesn't show up
+  // as a constant offset at the output. (Without this, the meter saw a
+  // ~0.18 DC floor any time Jawari was wet — Christopher's "noise floor
+  // on the meter when Jawari is up.") A DC-blocking highpass downstream
+  // catches any residual signal-dependent DC.
+  const N = 2049;          // odd so center sample lands exactly at x = 0
   const curve = new Float32Array(N);
+  let sum = 0;
   for (let i = 0; i < N; i++) {
     const x = (i / (N - 1)) * 2 - 1;
-    const shaped = Math.tanh(14 * x + 0.18);
-    curve[i] = shaped;
+    curve[i] = Math.tanh(14 * x + 0.18);
+    sum += curve[i];
   }
+  const mean = sum / N;
+  for (let i = 0; i < N; i++) curve[i] -= mean;
   return curve;
 }
 
@@ -1483,11 +1502,22 @@ function createKSChain(ctx) {
   filter.frequency.value = 2500;
 
   // Jawari (waveshaper, OUTSIDE the feedback loop) — dry/wet crossfade.
+  // v0.20.3: DC-blocking highpass after the shaper. The Jawari curve is
+  // asymmetric (the 0.18 DC bias is what produces the even harmonics
+  // characteristic of bell-like Jawari saturation), and even with the
+  // curve-mean zeroed there's still signal-dependent DC at small input
+  // levels (the asymmetric clipping shifts the running average). 10 Hz
+  // 1st-order HP catches anything below the audio band without coloring
+  // the timbre.
   const jwDry   = ctx.createGain(); jwDry.gain.value = 1;        // 1 - jawari/100
   const jwWet   = ctx.createGain(); jwWet.gain.value = 0;        // jawari/100
   const shaper  = ctx.createWaveShaper();
   shaper.curve  = makeJawariCurve();
   shaper.oversample = '2x';
+  const jwDcBlock = ctx.createBiquadFilter();
+  jwDcBlock.type = 'highpass';
+  jwDcBlock.frequency.value = 10;          // below the audio band
+  jwDcBlock.Q.value = 0.7071;              // Butterworth (maximally flat)
 
   // v0.16: NO output envVCA. ADSR is now baked into the noise burst (input
   // side), so the KS string's natural decay is what's heard at the output.
@@ -1548,7 +1578,8 @@ function createKSChain(ctx) {
   // node, and its enveloped output mixes into the panner alongside.
   filter.connect(jwDry);
   filter.connect(shaper);
-  shaper.connect(jwWet);
+  shaper.connect(jwDcBlock);   // v0.20.3: DC-block before wet
+  jwDcBlock.connect(jwWet);
   jwDry.connect(panner);
   jwWet.connect(panner);
   // v0.18.1: tap the halo INPUT from loopFIR (pre-brightness-filter) so it
@@ -1596,16 +1627,31 @@ function createRingModChain(ctx) {
   return { input, dry, wet, ringMul, carrier, output };
 }
 
-// Generate a synthetic stereo impulse response for the convolver.
-// Decaying random noise — sounds like a fairly natural diffuse reverb tail.
-function makeImpulseResponse(ctx, durationSec, decayPower = 2.0) {
+// v0.20.3: synthetic stereo impulse response with TRUE EXPONENTIAL decay.
+// Previous (1 - i/len)^2 had quadratic-shape decay — accelerates toward
+// the end, audibly feels like a "cut" because the tail dies fast at the
+// boundary instead of smoothly tapering. True exponential exp(-α·i)
+// reaches a target -60 dB at i = α·ln(1000) ≈ α·6.91, so we pick α so
+// the IR is at -60 dB right at the buffer end (durationSec is RT60).
+// Adds a small early-reflection envelope at the start for a more
+// natural room feel.
+function makeImpulseResponse(ctx, durationSec) {
   const sr = ctx.sampleRate;
   const len = Math.max(1, Math.floor(sr * durationSec));
   const buf = ctx.createBuffer(2, len, sr);
+  // alpha so amplitude reaches 10^(-3) (= -60 dB) at i = len:
+  //   exp(-alpha * len) = 1e-3  →  alpha = ln(1000) / len = 6.908 / len
+  const alpha = 6.908 / len;
+  // Early-reflection ramp-up: amplitude rises from 0 → 1 over the first
+  // ~12 ms so the tail isn't pure noise at sample 0 (which would sound
+  // like a click colocated with the dry signal).
+  const earlyLen = Math.min(len, Math.floor(0.012 * sr));
   for (let ch = 0; ch < 2; ch++) {
     const data = buf.getChannelData(ch);
     for (let i = 0; i < len; i++) {
-      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decayPower);
+      const envelope = Math.exp(-alpha * i);
+      const earlyGate = i < earlyLen ? (i / earlyLen) : 1;
+      data[i] = (Math.random() * 2 - 1) * envelope * earlyGate;
     }
   }
   return buf;
@@ -2452,11 +2498,21 @@ function wireReverbControls() {
   const wVal = document.getElementById('rv-wet-val');
   const byp  = document.querySelector('#mod-reverb [data-bypass="reverb"]');
 
-  function applyTime() {
+  // v0.20.3: only regenerate the IR when the user RELEASES the time slider
+  // ('change' event), not on every drag frame ('input'). Swapping a
+  // ConvolverNode's .buffer mid-stream causes the in-flight reverb tail
+  // to be discarded — at 60 fps during a drag, that's an audible cut on
+  // every pixel of slider motion. Display still updates on input so the
+  // user sees the new value continuously.
+  function updateTimeDisplay() {
+    tVal.textContent = parseFloat(time.value).toFixed(1) + ' s';
+  }
+  function commitTime() {
     ensureRunning();
-    const v = parseFloat(time.value);
-    if (reverbChain) reverbChain.conv.buffer = makeImpulseResponse(audioCtx, v);
-    tVal.textContent = v.toFixed(1) + ' s';
+    if (reverbChain) {
+      reverbChain.conv.buffer = makeImpulseResponse(audioCtx, parseFloat(time.value));
+    }
+    updateTimeDisplay();
   }
   function applyWet() {
     ensureRunning();
@@ -2466,7 +2522,8 @@ function wireReverbControls() {
     }
     wVal.textContent = Math.round(v * 100) + '%';
   }
-  time.addEventListener('input', applyTime);
+  time.addEventListener('input',  updateTimeDisplay);   // live readout
+  time.addEventListener('change', commitTime);           // build new IR only on release
   wet.addEventListener('input', applyWet);
 
   byp.addEventListener('click', e => {
