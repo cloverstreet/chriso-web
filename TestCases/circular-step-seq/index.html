@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Circular Step Sequencer — v0.1</title>
+<title>Circular Step Sequencer — v0.2</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <style>
 * { box-sizing:border-box; margin:0; padding:0; }
@@ -189,7 +189,7 @@ table.tracks td.cells { padding:0 4px; }
 
 <div id="header">
   <span class="name">CIRCULAR STEP SEQUENCER</span>
-  <span class="ver">v0.1</span>
+  <span class="ver">v0.2</span>
   <button class="about-btn" onclick="document.getElementById('about-panel').classList.add('open')">ABOUT</button>
 </div>
 
@@ -208,17 +208,18 @@ table.tracks td.cells { padding:0 4px; }
 
     <h3>How to play</h3>
     <ul>
-      <li>Click <b>START</b>. The hand begins sweeping.</li>
-      <li>Click a cell in any track row to set its strength. Click the
-          same cell again to step 0 → 1 → 2 … 9 → 0.</li>
-      <li>Change a track's <b>STEPS</b> to re-grid it (cells preserved
-          where possible).</li>
-      <li>Each track has its own <b>PITCH</b> (typeable, accepts Hz or
-          a note name like A3, C#5). The MUTE button silences a track
-          without losing its pattern.</li>
-      <li><b>TEMPO</b> controls the master sweep rate (BPM at 4 steps
-          per beat for the shortest track — actual per-track step time
-          scales with each track's step count).</li>
+      <li>Click <b>START</b>. Press <b>▶ RUN</b> to begin the sweep.</li>
+      <li><b>All cell editing happens on the canvas.</b> Click a cell to
+          cycle 0 → 1 → 2 … → 9 → 0. Double-click to type an exact value.
+          Click-and-drag to paint cells with the just-clicked value.</li>
+      <li>Each track row has: color · steps · pitch · offset · mute.
+          Offset rotates that ring clockwise by N cells (so cell N appears
+          at the top).</li>
+      <li>Pitch accepts Hz numbers or note names (e.g. <code>A3</code>,
+          <code>C#5</code>, <code>Bb2</code>).</li>
+      <li><b>TEMPO</b> changes preserve the current playhead position
+          (no jumping). One revolution = 4 quarter-notes at the master
+          tempo, regardless of how many steps each track has.</li>
     </ul>
 
     <h3>Presets</h3>
@@ -228,17 +229,23 @@ table.tracks td.cells { padding:0 4px; }
       <li>Stored in <code>localStorage</code>.</li>
     </ul>
 
-    <h3>About this build (v0.1)</h3>
+    <h3>About this build (v0.2)</h3>
     <ul>
-      <li>4 tracks (8 / 11 / 13 / 16 steps default). The full 8-track
-          version is the next iteration.</li>
+      <li>5 tracks (8 / 11 / 13 / 16 / 19 steps default — all coprime so
+          the pattern never quite repeats).</li>
+      <li>All cell editing on the canvas: click cycle, double-click type,
+          drag paint. Step dividers drawn even when cells are unset so the
+          ring structure is always visible.</li>
+      <li>Per-track Offset rotates a ring without losing its cells —
+          useful for shifting the downbeat of a rhythm independently of
+          its tempo phase.</li>
+      <li>Tempo changes preserve playhead position (phase anchor).</li>
       <li>Sound is a simple internal sine-osc with short envelope per
-          step trigger. The architecture is ready to swap that synth
-          for WebMIDI out or a richer voice (e.g. DronorParty's KS
-          strings) once the sequencer itself is solid.</li>
-      <li>Per-track step count and pitch are editable; cell strength
-          edits work; presets save/load. Drag-to-paint, swing, accents-
-          per-bar, MIDI out — future versions.</li>
+          step trigger. NOT general-MIDI — no sound-selector menu makes
+          sense yet. The architecture is ready to swap that voice for
+          WebMIDI out, a sampler, or DronorParty's KS strings.</li>
+      <li>Coming: WebMIDI out, swing, drag-to-erase, bigger value range
+          (0-127 for MIDI velocities).</li>
     </ul>
   </div>
 </div>
@@ -275,10 +282,10 @@ table.tracks td.cells { padding:0 4px; }
       <thead>
         <tr>
           <th>#</th>
+          <th>Color</th>
           <th>Steps</th>
           <th>Pitch</th>
-          <th>Cells (click to cycle 0→9)</th>
-          <th>Color</th>
+          <th>Offset</th>
           <th></th>
         </tr>
       </thead>
@@ -286,6 +293,9 @@ table.tracks td.cells { padding:0 4px; }
         <!-- populated by JS -->
       </tbody>
     </table>
+    <div style="font-size:.62rem;color:#666;letter-spacing:.08em;margin-top:6px;line-height:1.6;">
+      Click a cell on the ring to cycle 0→9. Double-click to type a value. Click-and-drag to paint.
+    </div>
 
     <div class="preset-row">
       <span class="label">Presets</span>
@@ -310,10 +320,10 @@ table.tracks td.cells { padding:0 4px; }
 /* ════════════════════════════════════════════════════════════════
    STATE
    ════════════════════════════════════════════════════════════════ */
-const NUM_TRACKS = 4;
-const DEFAULT_STEPS = [8, 11, 13, 16];
-const DEFAULT_PITCHES = [220, 330, 440, 660];        // root + P5 + 8ve + 12th
-const DEFAULT_COLORS = ['#c8a854','#7abbe0','#9ac084','#d28854'];
+const NUM_TRACKS = 5;
+const DEFAULT_STEPS   = [8, 11, 13, 16, 19];
+const DEFAULT_PITCHES = [220, 277, 330, 440, 660];        // a, c#, e, a (octave), e (octave+P5)
+const DEFAULT_COLORS  = ['#c8a854','#7abbe0','#9ac084','#d28854','#b878c8'];
 
 const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const A4_HZ = 440;
@@ -354,10 +364,29 @@ function parsePitch(s) {
 const state = {
   tempo: 80,          // BPM, where each beat = one revolution / shortest-track step count
   running: false,
-  startTime: 0,       // performance.now() at last start
+  // v0.2 phase anchor — preserves playhead position across tempo changes.
+  // currentPhase(t) = (phaseAnchor + (t - anchorTime) * revsPerSec) mod 1.
+  // On tempo change: snapshot the current phase, reset the anchor, then
+  // the new rate kicks in from that point — no playhead jump.
+  phaseAnchor: 0,     // phase at anchorTime, in revolutions [0..1)
+  anchorTime: 0,      // performance.now() at the last anchor reset
   masterGainDb: -12,
   tracks: [],
 };
+function revsPerSec() {
+  return (state.tempo / 60) / BEATS_PER_REVOLUTION;
+}
+function currentPhase() {
+  if (!state.running) return state.phaseAnchor;
+  const dt = (performance.now() - state.anchorTime) / 1000;
+  return ((state.phaseAnchor + dt * revsPerSec()) % 1 + 1) % 1;
+}
+function setTempoBpm(newBpm) {
+  // Snapshot current phase, reset anchor so the new rate kicks in continuously.
+  state.phaseAnchor = currentPhase();
+  state.anchorTime = performance.now();
+  state.tempo = newBpm;
+}
 function initState() {
   state.tracks = [];
   for (let i = 0; i < NUM_TRACKS; i++) {
@@ -366,6 +395,7 @@ function initState() {
       steps: DEFAULT_STEPS[i],
       pitch: DEFAULT_PITCHES[i],
       color: DEFAULT_COLORS[i],
+      offset: 0,                            // v0.2: rotates the ring (0..steps-1)
       muted: false,
       cells: new Array(DEFAULT_STEPS[i]).fill(0),
       lastTriggeredStep: -1,
@@ -444,11 +474,11 @@ const BEATS_PER_REVOLUTION = 4;   // one full circle = 4 quarter-notes
 let rafId = null;
 let stepIntervalId = null;
 
-function angleAt(timeSec) {
-  // Returns angle in [0, 1) — fraction of a revolution.
-  const beatsPerSec = state.tempo / 60;
-  const revsPerSec  = beatsPerSec / BEATS_PER_REVOLUTION;
-  return (timeSec * revsPerSec) % 1;
+// v0.2: stepIndexAt(ang, tr) — returns the cell index currently under the
+// hand for track `tr`, given the master angle ang (revolutions, 0..1). The
+// offset rotates the ring CW: at offset=k, cell k is centered at the top.
+function stepIndexAt(ang, tr) {
+  return ((tr.offset || 0) + Math.floor(ang * tr.steps)) % tr.steps;
 }
 
 // Step-trigger scheduler — uses setInterval so audio keeps playing even
@@ -458,11 +488,9 @@ function angleAt(timeSec) {
 // fastest case — 240 BPM, 33 steps per revolution — a step is ~30 ms long).
 function stepTick() {
   if (!state.running || !audioCtx) return;
-  const tSec = (performance.now() - state.startTime) / 1000;
-  const ang = angleAt(tSec);
+  const ang = currentPhase();
   state.tracks.forEach((tr, i) => {
-    const stepF = ang * tr.steps;
-    const step  = Math.floor(stepF) % tr.steps;
+    const step = stepIndexAt(ang, tr);
     if (step !== tr.lastTriggeredStep) {
       const strength = tr.cells[step] || 0;
       if (strength > 0) trigger(i, strength);
@@ -493,45 +521,63 @@ function drawCanvas() {
   // Track ring widths (innermost = highest density / shortest period or whatever)
   // Distribute tracks evenly across radii.
   const trackCount = state.tracks.length;
-  const ringWidth = (rOuter - 40) / trackCount;
+  // v0.2: shared geometry — inner radius shrinks with more tracks so the
+  // innermost ring doesn't get squeezed. Updated in both drawCanvas and
+  // cellAtCanvasPoint so hit-tests align with what's drawn.
+  const rInner = Math.max(28, 50 - trackCount * 3);
+  const ringWidth = (rOuter - rInner) / trackCount;
 
   // Subtle center dot
   ctx.fillStyle = '#1a1a1a';
   ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2); ctx.fill();
 
-  const tSec = state.running ? (performance.now() - state.startTime) / 1000 : 0;
-  const ang  = angleAt(tSec);
+  const ang = currentPhase();
   const handAngle = ang * Math.PI * 2 - Math.PI / 2;   // 0 at 12 o'clock
 
   // Draw each track ring
   state.tracks.forEach((tr, i) => {
-    const r1 = 40 + i * ringWidth;
+    const r1 = rInner + i * ringWidth;
     const r2 = r1 + ringWidth - 4;
     const rMid = (r1 + r2) / 2;
 
-    // Ring background
-    ctx.strokeStyle = '#1a1a1a';
+    // Ring background — outer + inner stroke
+    ctx.strokeStyle = '#252525';
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.arc(cx, cy, r1, 0, Math.PI * 2); ctx.stroke();
     ctx.beginPath(); ctx.arc(cx, cy, r2, 0, Math.PI * 2); ctx.stroke();
 
-    // Step divisions
+    // v0.2: track-currently-being-hovered highlights for editing feedback
+    const isHovered = canvasHover && canvasHover.track === i;
+
     const N = tr.steps;
+    const off = tr.offset || 0;
+    // Cell `s` is drawn in the angle range:
+    //   start = ((s - off) / N) * 2π - π/2
+    //   end   = ((s + 1 - off) / N) * 2π - π/2
+    // (offset rotates the cells clockwise so cell `off` sits at the top.)
     for (let s = 0; s < N; s++) {
-      const a1 = (s / N)     * Math.PI * 2 - Math.PI / 2;
-      const a2 = ((s + 1)/N) * Math.PI * 2 - Math.PI / 2;
+      const a1 = ((s - off)     / N) * Math.PI * 2 - Math.PI / 2;
+      const a2 = ((s + 1 - off) / N) * Math.PI * 2 - Math.PI / 2;
       const cellVal = tr.cells[s] || 0;
+      // Fill for any cell with value > 0; alpha scales with cell value.
       if (cellVal > 0) {
-        // Filled arc-segment for lit cells
         ctx.fillStyle = hexToRgba(tr.color, 0.18 + 0.65 * (cellVal / 9));
         ctx.beginPath();
         ctx.arc(cx, cy, r2, a1, a2);
         ctx.arc(cx, cy, r1, a2, a1, true);
         ctx.closePath(); ctx.fill();
+      } else if (isHovered && canvasHover.step === s) {
+        // Faint hover hint on empty cells
+        ctx.fillStyle = hexToRgba(tr.color, 0.07);
+        ctx.beginPath();
+        ctx.arc(cx, cy, r2, a1, a2);
+        ctx.arc(cx, cy, r1, a2, a1, true);
+        ctx.closePath(); ctx.fill();
       }
-      // Step divider line
-      ctx.strokeStyle = '#2a2a2a';
-      ctx.lineWidth = 0.5;
+      // v0.2: step divider — drawn ALWAYS, visibility-ready even when all
+      // cells share the same value. Stronger color/width than v0.1.
+      ctx.strokeStyle = '#3a3a3a';
+      ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(cx + Math.cos(a1) * r1, cy + Math.sin(a1) * r1);
       ctx.lineTo(cx + Math.cos(a1) * r2, cy + Math.sin(a1) * r2);
@@ -547,11 +593,12 @@ function drawCanvas() {
         ctx.fillText(String(cellVal), tx, ty);
       }
     }
-    // Track index label, at 12 o'clock above the ring
+    // Track index label, in the gap below 12 o'clock above each ring.
+    // Stays out of the way of step cells.
     ctx.fillStyle = tr.color;
-    ctx.font = 'bold 11px Courier New';
+    ctx.font = 'bold 10px Courier New';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('T' + (i + 1), cx, cy - rMid);
+    ctx.fillText('T' + (i + 1), cx + 7, cy - rMid);
   });
 
   // Clock hand — single line from center to outer ring
@@ -567,6 +614,147 @@ function drawCanvas() {
   ctx.arc(cx + Math.cos(handAngle) * rOuter, cy + Math.sin(handAngle) * rOuter, 4, 0, Math.PI * 2);
   ctx.fill();
 }
+/* ════════════════════════════════════════════════════════════════
+   CANVAS HIT-TEST + EDITING (v0.2 — moved all editing into the canvas)
+   ════════════════════════════════════════════════════════════════ */
+// Hover state — drives the empty-cell hint highlight in drawCanvas.
+let canvasHover = null;
+// Drag state — when set, cell-paint is active.
+let dragState = null;  // { paintValue, lastTrack, lastStep }
+
+function cellAtCanvasPoint(px, py) {
+  const cv = document.getElementById('seq-canvas');
+  const W = cv.clientWidth, H = cv.clientHeight;
+  const cx = W / 2, cy = H / 2;
+  const rOuter = Math.min(W, H) / 2 - CANVAS_PAD;
+  const trackCount = state.tracks.length;
+  // v0.2: shared geometry — inner radius shrinks with more tracks so the
+  // innermost ring doesn't get squeezed. Updated in both drawCanvas and
+  // cellAtCanvasPoint so hit-tests align with what's drawn.
+  const rInner = Math.max(28, 50 - trackCount * 3);
+  const ringWidth = (rOuter - rInner) / trackCount;
+  const dx = px - cx, dy = py - cy;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  // Which ring? (Innermost = track 0.)
+  let trackIdx = -1;
+  for (let i = 0; i < trackCount; i++) {
+    const r1 = rInner + i * ringWidth;
+    const r2 = r1 + ringWidth - 4;
+    if (dist >= r1 && dist <= r2) { trackIdx = i; break; }
+  }
+  if (trackIdx < 0) return null;
+  const tr = state.tracks[trackIdx];
+  // atan2: 0 along +x. We want angle measured from 12 o'clock (top), CW.
+  //   top in std atan2 is -π/2.
+  let theta = Math.atan2(dy, dx) + Math.PI / 2;
+  if (theta < 0) theta += Math.PI * 2;
+  const frac = theta / (Math.PI * 2);
+  const N = tr.steps;
+  const off = tr.offset || 0;
+  // Inverse of drawing's `a1 = ((s - off) / N) * 2π - π/2`.
+  // Solve for s: s = frac * N + off.
+  const step = ((Math.floor(frac * N) + off) % N + N) % N;
+  return { track: trackIdx, step };
+}
+
+function cycleCell(trackIdx, step) {
+  const tr = state.tracks[trackIdx];
+  if (!tr) return;
+  tr.cells[step] = ((tr.cells[step] || 0) + 1) % 10;
+  drawCanvas();
+}
+function setCell(trackIdx, step, value) {
+  const tr = state.tracks[trackIdx];
+  if (!tr) return;
+  tr.cells[step] = Math.max(0, Math.min(9, value | 0));
+  drawCanvas();
+}
+
+// Double-click → spawn a typed-value input over the cell.
+function openCellEditor(trackIdx, step, screenX, screenY) {
+  // Single in-DOM editor reused. Position it absolutely over the canvas.
+  let editor = document.getElementById('cell-editor');
+  if (editor) editor.remove();
+  editor = document.createElement('input');
+  editor.id = 'cell-editor';
+  editor.type = 'text';
+  editor.value = state.tracks[trackIdx].cells[step] || 0;
+  Object.assign(editor.style, {
+    position: 'fixed', left: (screenX - 18) + 'px', top: (screenY - 12) + 'px',
+    width: '36px', height: '22px', background: '#0a0a0a', color: '#c8a854',
+    border: '1px solid #c8a854', borderRadius: '2px',
+    fontFamily: "'Courier New',monospace", fontSize: '0.8rem',
+    textAlign: 'center', zIndex: 300, outline: 'none',
+  });
+  document.body.appendChild(editor);
+  editor.focus(); editor.select();
+  function commit() {
+    const v = parseInt(editor.value, 10);
+    if (isFinite(v)) setCell(trackIdx, step, v);
+    editor.remove();
+  }
+  editor.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { commit(); }
+    else if (e.key === 'Escape') { editor.remove(); }
+  });
+  editor.addEventListener('blur', commit);
+}
+
+function wireCanvasEditing() {
+  const cv = document.getElementById('seq-canvas');
+  // Click → cycle. Drag → paint with the just-clicked value.
+  cv.addEventListener('pointerdown', e => {
+    const r = cv.getBoundingClientRect();
+    const px = e.clientX - r.left, py = e.clientY - r.top;
+    const hit = cellAtCanvasPoint(px, py);
+    if (!hit) return;
+    cycleCell(hit.track, hit.step);
+    // Paint subsequent hovered cells with the new value.
+    const newVal = state.tracks[hit.track].cells[hit.step];
+    dragState = { paintValue: newVal, lastTrack: hit.track, lastStep: hit.step };
+    cv.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  cv.addEventListener('pointermove', e => {
+    const r = cv.getBoundingClientRect();
+    const px = e.clientX - r.left, py = e.clientY - r.top;
+    const hit = cellAtCanvasPoint(px, py);
+    canvasHover = hit;
+    if (dragState && hit) {
+      // Only paint when the dragged-over cell changes — avoid setting
+      // the same cell over and over while the cursor sits still.
+      if (hit.track !== dragState.lastTrack || hit.step !== dragState.lastStep) {
+        setCell(hit.track, hit.step, dragState.paintValue);
+        dragState.lastTrack = hit.track;
+        dragState.lastStep = hit.step;
+      }
+    } else {
+      drawCanvas();  // refresh hover hint
+    }
+  });
+  cv.addEventListener('pointerup', e => {
+    dragState = null;
+    try { cv.releasePointerCapture(e.pointerId); } catch{}
+  });
+  cv.addEventListener('pointerleave', () => {
+    canvasHover = null;
+    if (!dragState) drawCanvas();
+  });
+  cv.addEventListener('pointercancel', () => { dragState = null; });
+  cv.addEventListener('dblclick', e => {
+    const r = cv.getBoundingClientRect();
+    const px = e.clientX - r.left, py = e.clientY - r.top;
+    const hit = cellAtCanvasPoint(px, py);
+    if (!hit) return;
+    // dblclick fires AFTER pointerdown's cycle — back it out so the value
+    // doesn't appear to have changed on what the user perceived as just a
+    // double-click.
+    const tr = state.tracks[hit.track];
+    tr.cells[hit.step] = (tr.cells[hit.step] - 1 + 10) % 10;
+    openCellEditor(hit.track, hit.step, e.clientX, e.clientY);
+  });
+}
+
 function hexToRgba(hex, alpha) {
   const h = hex.replace('#', '');
   const r = parseInt(h.substr(0, 2), 16);
@@ -579,16 +767,33 @@ function hexToRgba(hex, alpha) {
    TABLE BUILDER + EVENT WIRING
    ════════════════════════════════════════════════════════════════ */
 function buildTable() {
+  // v0.2: columns are [# | Color | Steps | Pitch | Offset | Mute].
+  // The big cell-editor column is gone — all cell editing happens on the
+  // canvas (click/double-click/drag).
   const tbody = document.getElementById('tracks-body');
   tbody.innerHTML = '';
   state.tracks.forEach((tr, i) => {
     const row = document.createElement('tr');
-    // # cell
+
+    // # label
     const tdNum = document.createElement('td');
     tdNum.className = 'row-label';
     tdNum.textContent = 'T' + (i + 1);
     tdNum.style.color = tr.color;
     row.appendChild(tdNum);
+
+    // Color picker (immediately after the label per Christopher)
+    const tdColor = document.createElement('td');
+    const colorInp = document.createElement('input');
+    colorInp.type = 'color'; colorInp.value = tr.color;
+    colorInp.addEventListener('input', () => {
+      tr.color = colorInp.value;
+      buildTable();
+      drawCanvas();
+    });
+    tdColor.appendChild(colorInp);
+    row.appendChild(tdColor);
+
     // Steps input
     const tdSteps = document.createElement('td');
     tdSteps.className = 'steps-input';
@@ -600,12 +805,15 @@ function buildTable() {
       tr.cells = new Array(v).fill(0);
       for (let k = 0; k < Math.min(v, oldCells.length); k++) tr.cells[k] = oldCells[k];
       tr.steps = v;
+      // Clamp offset so it never sits outside the new step range.
+      if (tr.offset >= v) tr.offset = 0;
       tr.lastTriggeredStep = -1;
       buildTable();
       drawCanvas();
     });
     tdSteps.appendChild(stepsInp);
     row.appendChild(tdSteps);
+
     // Pitch input (Hz or note name)
     const tdPitch = document.createElement('td');
     const pitchInp = document.createElement('input');
@@ -618,44 +826,26 @@ function buildTable() {
         tr.pitch = f;
         pitchInp.value = freqToNote(f) + ' (' + Math.round(f) + ')';
       } else {
-        // Reject — restore
         pitchInp.value = freqToNote(tr.pitch) + ' (' + Math.round(tr.pitch) + ')';
       }
     });
     tdPitch.appendChild(pitchInp);
     row.appendChild(tdPitch);
-    // Cells
-    const tdCells = document.createElement('td');
-    tdCells.className = 'cells';
-    const cellsRow = document.createElement('div');
-    cellsRow.className = 'cells-row';
-    for (let s = 0; s < tr.steps; s++) {
-      const cell = document.createElement('div');
-      cell.className = 'step-cell';
-      cell.dataset.track = i;
-      cell.dataset.step = s;
-      cell.textContent = tr.cells[s] || '';
-      if (tr.cells[s] > 0) cell.classList.add('lit');
-      // Color tint based on track color
-      if (tr.cells[s] > 0) {
-        cell.style.background = hexToRgba(tr.color, 0.10 + 0.30 * (tr.cells[s] / 9));
-        cell.style.borderColor = hexToRgba(tr.color, 0.6);
-      }
-      cellsRow.appendChild(cell);
-    }
-    tdCells.appendChild(cellsRow);
-    row.appendChild(tdCells);
-    // Color picker
-    const tdColor = document.createElement('td');
-    const colorInp = document.createElement('input');
-    colorInp.type = 'color'; colorInp.value = tr.color;
-    colorInp.addEventListener('input', () => {
-      tr.color = colorInp.value;
-      buildTable();
+
+    // v0.2: Offset (rotates the ring CW by N cells). Integer 0..steps-1.
+    const tdOff = document.createElement('td');
+    const offInp = document.createElement('input');
+    offInp.type = 'number'; offInp.min = 0; offInp.max = tr.steps - 1; offInp.value = tr.offset || 0;
+    offInp.title = 'Rotation offset — number of cells to rotate this ring clockwise (0..steps-1).';
+    offInp.addEventListener('input', () => {
+      const v = ((parseInt(offInp.value) || 0) % tr.steps + tr.steps) % tr.steps;
+      tr.offset = v;
+      tr.lastTriggeredStep = -1;
       drawCanvas();
     });
-    tdColor.appendChild(colorInp);
-    row.appendChild(tdColor);
+    tdOff.appendChild(offInp);
+    row.appendChild(tdOff);
+
     // Mute button
     const tdCtrl = document.createElement('td');
     tdCtrl.className = 'track-controls';
@@ -675,36 +865,16 @@ function buildTable() {
   });
 }
 
-function wireCellEvents() {
-  // Single delegated listener on the table body for cell clicks.
-  document.getElementById('tracks-body').addEventListener('click', e => {
-    const cell = e.target.closest('.step-cell');
-    if (!cell) return;
-    const i = parseInt(cell.dataset.track);
-    const s = parseInt(cell.dataset.step);
-    const tr = state.tracks[i];
-    if (!tr) return;
-    // Cycle 0 → 1 → 2 ... → 9 → 0
-    tr.cells[s] = ((tr.cells[s] || 0) + 1) % 10;
-    // Update just this cell + ring
-    cell.textContent = tr.cells[s] || '';
-    cell.classList.toggle('lit', tr.cells[s] > 0);
-    if (tr.cells[s] > 0) {
-      cell.style.background = hexToRgba(tr.color, 0.10 + 0.30 * (tr.cells[s] / 9));
-      cell.style.borderColor = hexToRgba(tr.color, 0.6);
-    } else {
-      cell.style.background = '';
-      cell.style.borderColor = '';
-    }
-    drawCanvas();
-  });
-}
+// v0.2: wireCellEvents is gone — cell editing happens via wireCanvasEditing
+// (click cycles, double-click types, drag paints).
 
 function wireTopBar() {
   const tempo = document.getElementById('tempo');
   const tempoVal = document.getElementById('tempo-val');
   tempo.addEventListener('input', () => {
-    state.tempo = parseFloat(tempo.value);
+    // v0.2: setTempoBpm snapshots the current phase first, so the playhead
+    // stays continuous even while dragging the tempo slider — no jumping.
+    setTempoBpm(parseFloat(tempo.value));
     tempoVal.textContent = state.tempo + ' BPM';
   });
   const gain = document.getElementById('master-gain');
@@ -718,11 +888,14 @@ function wireTopBar() {
   play.addEventListener('click', () => {
     state.running = !state.running;
     if (state.running) {
-      state.startTime = performance.now();
+      // v0.2: anchor the phase clock right now so playback starts from
+      // wherever the playhead was visually (or 0 if first run).
+      state.anchorTime = performance.now();
       state.tracks.forEach(t => t.lastTriggeredStep = -1);
       play.textContent = '■ STOP';
       play.classList.remove('stopped');
     } else {
+      state.phaseAnchor = currentPhase();   // freeze playhead in place
       play.textContent = '▶ RUN';
       play.classList.add('stopped');
     }
@@ -739,7 +912,9 @@ function savePreset(slot) {
     tempo: state.tempo,
     masterGainDb: state.masterGainDb,
     tracks: state.tracks.map(t => ({
-      steps: t.steps, pitch: t.pitch, color: t.color, muted: t.muted, cells: t.cells.slice(),
+      steps: t.steps, pitch: t.pitch, color: t.color,
+      offset: t.offset || 0,                       // v0.2
+      muted: t.muted, cells: t.cells.slice(),
     })),
   };
   localStorage.setItem(PRESET_KEY_PREFIX + slot, JSON.stringify(payload));
@@ -750,7 +925,11 @@ function loadPreset(slot) {
   if (!raw) return;
   try {
     const p = JSON.parse(raw);
-    if (p.tempo != null) { state.tempo = p.tempo; document.getElementById('tempo').value = p.tempo; document.getElementById('tempo-val').textContent = p.tempo + ' BPM'; }
+    if (p.tempo != null) {
+      setTempoBpm(p.tempo);
+      document.getElementById('tempo').value = p.tempo;
+      document.getElementById('tempo-val').textContent = p.tempo + ' BPM';
+    }
     if (p.masterGainDb != null) {
       state.masterGainDb = p.masterGainDb;
       document.getElementById('master-gain').value = p.masterGainDb;
@@ -761,10 +940,11 @@ function loadPreset(slot) {
       p.tracks.forEach((pt, i) => {
         if (!state.tracks[i]) return;
         const t = state.tracks[i];
-        if (pt.steps != null) t.steps = pt.steps;
-        if (pt.pitch != null) t.pitch = pt.pitch;
-        if (pt.color)         t.color = pt.color;
-        if (pt.muted != null) t.muted = pt.muted;
+        if (pt.steps  != null) t.steps  = pt.steps;
+        if (pt.pitch  != null) t.pitch  = pt.pitch;
+        if (pt.color)          t.color  = pt.color;
+        if (pt.offset != null) t.offset = pt.offset;
+        if (pt.muted  != null) t.muted  = pt.muted;
         if (Array.isArray(pt.cells)) t.cells = pt.cells.slice();
         t.lastTriggeredStep = -1;
       });
@@ -811,7 +991,7 @@ document.getElementById('start-btn').addEventListener('click', async () => {
   cv.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
 
   buildTable();
-  wireCellEvents();
+  wireCanvasEditing();
   wireTopBar();
   wirePresets();
   drawCanvas();
