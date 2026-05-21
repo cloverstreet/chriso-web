@@ -251,6 +251,32 @@
 // ════════════════════════════════════════════════════════════════════════
 
 
+// ── Hoisted state that's read by the RAF loops before the audio section
+// gets to declare it.  `let` is in the temporal dead zone until its line
+// is reached, so anything referenced inside a function that runs at
+// module load (tickStorm, etc.) MUST be declared up here. (Site-wide
+// auto-mute pattern needs pageVisible specifically.)
+let pageVisible = (document.visibilityState !== 'hidden');
+document.addEventListener('visibilitychange', () => {
+  pageVisible = (document.visibilityState !== 'hidden');
+  // Audio side-effect handled below once actx exists
+  if (typeof actx === 'undefined' || !actx || !master) return;
+  if (pageVisible) {
+    actx.resume();
+    const t = actx.currentTime;
+    master.gain.cancelScheduledValues(t);
+    master.gain.setValueAtTime(master.gain.value, t);
+    master.gain.linearRampToValueAtTime(muted ? 0 : MASTER_LEVEL, t + 0.4);
+  } else {
+    const t = actx.currentTime;
+    master.gain.cancelScheduledValues(t);
+    master.gain.setValueAtTime(master.gain.value, t);
+    master.gain.linearRampToValueAtTime(0, t + 0.15);
+    setTimeout(() => { if (!pageVisible && actx) actx.suspend(); }, 200);
+  }
+});
+
+
 // ── Auto-populate links ────────────────────────────────────────────────
 const linksContainer = document.getElementById('links');
 const loadingEl      = document.getElementById('loading');
@@ -606,24 +632,9 @@ let started = false;
 let muted = false;
 const MASTER_LEVEL = 0.17;
 
-let pageVisible = (document.visibilityState !== 'hidden');
-document.addEventListener('visibilitychange', () => {
-  pageVisible = (document.visibilityState !== 'hidden');
-  if (!actx || !master) return;
-  if (pageVisible) {
-    actx.resume();
-    const t = actx.currentTime;
-    master.gain.cancelScheduledValues(t);
-    master.gain.setValueAtTime(master.gain.value, t);
-    master.gain.linearRampToValueAtTime(muted ? 0 : MASTER_LEVEL, t + 0.4);
-  } else {
-    const t = actx.currentTime;
-    master.gain.cancelScheduledValues(t);
-    master.gain.setValueAtTime(master.gain.value, t);
-    master.gain.linearRampToValueAtTime(0, t + 0.15);
-    setTimeout(() => { if (!pageVisible && actx) actx.suspend(); }, 200);
-  }
-});
+// pageVisible + its visibilitychange handler are hoisted above (before
+// tickStorm) to dodge the let-TDZ. Audio-specific behaviour is in the
+// same handler — it guards against actx being undefined.
 
 function startAudio() {
   if (started) return;
