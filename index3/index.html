@@ -358,13 +358,16 @@ let grainGainStill, grainGainStorm, grainBuf;
 let crackleGain;
 let started = false;
 
+const MASTER_LEVEL = 0.28;       // overall output (bumped from 0.18)
+let pageVisible = (document.visibilityState !== 'hidden');
+
 function startAudio() {
   if (started) return;
   started = true;
   actx = new (window.AudioContext || window.webkitAudioContext)();
 
   master = actx.createGain();
-  master.gain.value = 0.18;
+  master.gain.value = MASTER_LEVEL;
   master.connect(actx.destination);
 
   stillBus = actx.createGain();
@@ -581,10 +584,41 @@ document.querySelectorAll('.nav-link').forEach(a => {
   });
 });
 
-function tryStart() { startAudio(); }
-document.addEventListener('pointerdown', tryStart, { once: true });
-document.addEventListener('pointermove', tryStart, { once: true });
-document.addEventListener('touchstart', tryStart, { once: true, passive: true });
+// First-gesture audio unlock — resume() inside the gesture (iOS starts
+// the context suspended), retried until 'running', then detached.
+// touchend + click are the most reliable unlock events on iOS.
+function tryStart() {
+  startAudio();
+  if (!actx) return;
+  actx.resume().then(() => {
+    if (actx.state === 'running') {
+      for (const ev of ['pointerdown','pointermove','touchstart','touchend','click','keydown'])
+        document.removeEventListener(ev, tryStart);
+    }
+  });
+}
+document.addEventListener('pointerdown', tryStart);
+document.addEventListener('pointermove', tryStart);
+document.addEventListener('touchstart', tryStart, { passive: true });
+document.addEventListener('touchend',   tryStart, { passive: true });
+document.addEventListener('click',      tryStart);
+document.addEventListener('keydown',    tryStart);
+
+// Auto-mute + suspend when tab is not in front (standard for non-instrument pages)
+document.addEventListener('visibilitychange', () => {
+  pageVisible = (document.visibilityState !== 'hidden');
+  if (!actx || !master) return;
+  const t = actx.currentTime;
+  master.gain.cancelScheduledValues(t);
+  master.gain.setValueAtTime(master.gain.value, t);
+  if (pageVisible) {
+    actx.resume();
+    master.gain.linearRampToValueAtTime(MASTER_LEVEL, t + 0.4);
+  } else {
+    master.gain.linearRampToValueAtTime(0, t + 0.15);
+    setTimeout(() => { if (!pageVisible && actx) actx.suspend(); }, 220);
+  }
+});
 </script>
 </body>
 </html>

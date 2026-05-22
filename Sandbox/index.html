@@ -823,7 +823,7 @@ function startAudio() {
   // Listener defaults: at origin, facing -Z, up +Y.  Good as-is.
 
   master = actx.createGain();
-  master.gain.value = 0.18;
+  master.gain.value = MASTER_LEVEL;
   master.connect(actx.destination);
 
   // ── Drone with FM ─────────────────────────────────────────────────
@@ -1315,7 +1315,7 @@ tickViz();
 // want a brand-new visitor accidentally starting muted), so this no-ops
 // silently before audio has been initialised.
 const btnMute = document.getElementById('btn-mute');
-const MASTER_LEVEL = 0.18;
+const MASTER_LEVEL = 0.27;       // overall output (bumped from 0.18)
 let muted = false;
 btnMute.addEventListener('click', (e) => {
   e.stopPropagation();
@@ -1335,14 +1335,23 @@ btnMute.addEventListener('click', (e) => {
 const audioHint = document.getElementById('audio-hint');
 function tryStart() {
   startAudio();
-  if (audioHint) audioHint.classList.add('faded');
-  document.removeEventListener('pointerdown', tryStart);
-  document.removeEventListener('pointermove', tryStart);
-  document.removeEventListener('touchstart', tryStart);
+  if (!actx) return;
+  // iOS starts the context suspended — resume() inside the gesture,
+  // retry until running, then fade the hint and detach.
+  actx.resume().then(() => {
+    if (actx.state === 'running') {
+      if (audioHint) audioHint.classList.add('faded');
+      for (const ev of ['pointerdown','pointermove','touchstart','touchend','click','keydown'])
+        document.removeEventListener(ev, tryStart);
+    }
+  });
 }
 document.addEventListener('pointerdown', tryStart);
 document.addEventListener('pointermove', tryStart);
 document.addEventListener('touchstart', tryStart, { passive: true });
+document.addEventListener('touchend',   tryStart, { passive: true });
+document.addEventListener('click',      tryStart);
+document.addEventListener('keydown',    tryStart);
 
 
 // ── Bootstrap ─────────────────────────────────────────────────────────

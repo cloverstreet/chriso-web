@@ -116,6 +116,22 @@ chriso.org/
 
 ---
 
+## Audio standards for the "sound webpages" (NOT instruments)
+
+These apply to the ambient-audio pages — `glitchpage/`, `index1/2/3`, `Sandbox/`, `TestCases/` — i.e. pages with a generative audio bed, not the interactive instruments (FX Processor, buffer-shuffler, DronorParty, etc.).
+
+**1. Mobile audio unlock (the standard `tryStart` pattern).** iOS/Safari create an `AudioContext` in the `suspended` state; it only produces sound once `actx.resume()` runs *inside a user gesture*. The gesture handler must:
+- call `startAudio()` (create the context, idempotent), then `actx.resume()`;
+- stay attached and retry on every gesture until `actx.state === 'running'`, *then* detach (don't use `{ once: true }` — a stray first event that doesn't fully unlock would otherwise never retry);
+- listen on `pointerdown`, `pointermove`, `touchstart`, **`touchend`, `click`**, `keydown` — touchend + click are the most reliable unlock events on iOS; pointer events alone sometimes don't satisfy Safari's gesture requirement.
+- Symptom when missing: audio only starts after tapping some button (mute/settings) that happens to hit a resume path — exactly the bug reported 2026-05-20.
+
+**2. Auto-mute + suspend when the tab is not in front.** Non-instrument pages ramp `master.gain` to 0 and call `actx.suspend()` on `visibilitychange`→hidden (halts the audio thread = "disables processing"), and `actx.resume()` + ramp back to `MASTER_LEVEL` when visible again. Each page defines `const MASTER_LEVEL` as its canonical output level (also the unmuted target for the mute button + this handler). Overall levels were bumped 2026-05-20 (glitchpage 0.32; index1 0.27; index2/3 0.28; Sandbox/TestCases 0.27).
+
+**General TDZ caution (applies to all these pages):** several pages run RAF/`tickX` loops that start synchronously at module load. Any `let`/`const` such a loop reads must be declared *above* the first synchronous call, or defer all startup calls to the end of the script. Two "frozen on loading" bugs on TestCases (2026-05-19) traced to exactly this.
+
+---
+
 ## Notion — the cross-session knowledge base
 
 Christopher uses Notion as a living documentation system. It's connected via MCP. Key documents to know about:

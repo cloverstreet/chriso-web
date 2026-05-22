@@ -405,6 +405,8 @@ document.addEventListener('pointermove', e => { mx = e.clientX; my = e.clientY; 
 
 let audioCtx     = null;
 let audioStarted = false;
+const MASTER_LEVEL = 0.32;       // overall output level (bumped from 0.22)
+let pageVisible  = (document.visibilityState !== 'hidden');
 
 // Gain nodes
 let masterGain, noiseGain, subGain, granGain, crackleGain;
@@ -442,7 +444,7 @@ function initAudio() {
 
   audioCtx   = new (window.AudioContext || window.webkitAudioContext)();
   masterGain = audioCtx.createGain();
-  masterGain.gain.value = 0.22;
+  masterGain.gain.value = MASTER_LEVEL;
   masterGain.connect(audioCtx.destination);
 
   // ── Noise bed: BPF → static LPF → mouse-Y LPF → gain ──────────
@@ -1041,18 +1043,46 @@ function updateAudio(dt, rawSpeed) {
 }
 
 // Start audio on first user interaction (browser autoplay policy).
-// pointerdown / pointermove cover mouse, pen, and touch — so a finger
-// tap or drag on a phone unlocks the audio context the same way a mouse
-// click or move does on desktop.
+// First-gesture audio unlock. iOS/Safari create the AudioContext in a
+// 'suspended' state — it only starts producing sound once resume() is
+// called *inside* a user gesture. We resume on every gesture until the
+// context is actually 'running', then detach. touchend + click are the
+// most reliable unlock events on iOS; pointer events alone sometimes
+// don't satisfy Safari's gesture requirement.
 function tryStartAudio() {
   initAudio();
-  document.removeEventListener('pointermove', tryStartAudio);
-  document.removeEventListener('pointerdown', tryStartAudio);
-  document.removeEventListener('keydown',     tryStartAudio);
+  if (!audioCtx) return;
+  audioCtx.resume().then(() => {
+    if (audioCtx.state === 'running') {
+      for (const ev of ['pointermove','pointerdown','touchstart','touchend','click','keydown'])
+        document.removeEventListener(ev, tryStartAudio);
+    }
+  });
 }
 document.addEventListener('pointermove', tryStartAudio);
 document.addEventListener('pointerdown', tryStartAudio);
-document.addEventListener('keydown',     tryStartAudio);
+document.addEventListener('touchstart', tryStartAudio, { passive: true });
+document.addEventListener('touchend',   tryStartAudio, { passive: true });
+document.addEventListener('click',      tryStartAudio);
+document.addEventListener('keydown',    tryStartAudio);
+
+// ── Auto-mute + suspend when tab is not in front ──────────────────────
+// Standard for non-instrument pages: silence audio and halt the audio
+// thread when the page is hidden; resume when it returns to front.
+document.addEventListener('visibilitychange', () => {
+  pageVisible = (document.visibilityState !== 'hidden');
+  if (!audioCtx || !masterGain) return;
+  const t = audioCtx.currentTime;
+  masterGain.gain.cancelScheduledValues(t);
+  masterGain.gain.setValueAtTime(masterGain.gain.value, t);
+  if (pageVisible) {
+    audioCtx.resume();
+    masterGain.gain.linearRampToValueAtTime(MASTER_LEVEL, t + 0.4);
+  } else {
+    masterGain.gain.linearRampToValueAtTime(0, t + 0.15);
+    setTimeout(() => { if (!pageVisible && audioCtx) audioCtx.suspend(); }, 220);
+  }
+});
 
 
 // ══════════════════════════════════════════════════════════════════════

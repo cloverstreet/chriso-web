@@ -636,7 +636,7 @@ let granGain, crackleGain;
 let grainBuf;
 let started = false;
 let muted = false;
-const MASTER_LEVEL = 0.17;
+const MASTER_LEVEL = 0.27;       // overall output (bumped from 0.17)
 
 // pageVisible + its visibilitychange handler are hoisted above (before
 // tickStorm) to dodge the let-TDZ. Audio-specific behaviour is in the
@@ -857,14 +857,23 @@ btnMute.addEventListener('click', (e) => {
 const audioHint = document.getElementById('audio-hint');
 function tryStart() {
   startAudio();
-  if (audioHint) audioHint.classList.add('faded');
-  document.removeEventListener('pointerdown', tryStart);
-  document.removeEventListener('pointermove', tryStart);
-  document.removeEventListener('touchstart', tryStart);
+  if (!actx) return;
+  // iOS starts the context suspended — resume() inside the gesture,
+  // retry until running, then fade the hint and detach.
+  actx.resume().then(() => {
+    if (actx.state === 'running') {
+      if (audioHint) audioHint.classList.add('faded');
+      for (const ev of ['pointerdown','pointermove','touchstart','touchend','click','keydown'])
+        document.removeEventListener(ev, tryStart);
+    }
+  });
 }
 document.addEventListener('pointerdown', tryStart);
 document.addEventListener('pointermove', tryStart);
 document.addEventListener('touchstart', tryStart, { passive: true });
+document.addEventListener('touchend',   tryStart, { passive: true });
+document.addEventListener('click',      tryStart);
+document.addEventListener('keydown',    tryStart);
 
 
 // ── Bootstrap ─────────────────────────────────────────────────────────
