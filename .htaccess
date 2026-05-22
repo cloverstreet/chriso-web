@@ -1,3 +1,13 @@
+# ── Root → entrance redirect ──────────────────────────────────────────
+# chriso.org/ goes to the glitchpage entrance. Done at the Apache layer
+# (not via a redirect index.php) so a WordPress core auto-update — which
+# rewrites index.php — can't silently break the front page again. Placed
+# at the very top so it wins over WordPress's DirectoryIndex/catch-all.
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^$ /glitchpage/ [R=302,L]
+</IfModule>
+
 # ── Serve .py files as plain text instead of CGI ──────────────────────
 # Without this, requesting any .py URL triggers Apache's CGI handler
 # and returns 500 (the scripts aren't set up for CGI). ForceType makes
