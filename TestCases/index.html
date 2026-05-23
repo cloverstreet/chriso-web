@@ -405,7 +405,9 @@ function glowFrame() {
     const dy = glowMouse.y - L.cy;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
-    const reach = 460;
+    // Proximity reach — cursor must get closer to light/sound a link
+    // (dialed back ~20% from 460 on 2026-05-22). Drives glow + per-link audio.
+    const reach = 368;
     let prox = 0;
     if (glowMouse.active) {
       prox = Math.max(0, 1 - dist / reach);

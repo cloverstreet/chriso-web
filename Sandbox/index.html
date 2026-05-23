@@ -37,8 +37,8 @@
     top: 0;
     left: 0;
     width: 100vw;
-    height: 38vh;
-    z-index: 1;
+    height: 100vh;          /* full screen — particles roam everywhere */
+    z-index: 9;             /* above the title (8) so they can coat it */
     pointer-events: none;
     mix-blend-mode: screen;
   }
@@ -47,7 +47,7 @@
      having to recompute subtitle's `top` for every title size change */
   #title-wrap {
     position: fixed;
-    top: 5vh;
+    top: 9vh;
     left: 50%;
     transform: translateX(-50%);
     z-index: 8;
@@ -407,9 +407,8 @@
     /* On phone, links don't have viewport-positioned glow centers, so
        collapse the proximity-glow to a softer ambient backdrop */
     canvas#glow { opacity: 0.45; }
-    #title-wrap { top: 4vh; }
-    /* Particles stay on phone but at reduced density (handled in JS) */
-    canvas#title-particles { height: 32vh; }
+    #title-wrap { top: 7vh; }
+    /* Particles stay full-screen on phone too, just fewer (handled in JS) */
   }
 </style>
 </head>
@@ -516,8 +515,8 @@ function renderLinks(items) {
     const angle = (i / total) * Math.PI * 2 - Math.PI / 2
                 + Math.sin(i * 7.3) * 0.18;
     const rWobble = Math.sin(i * 4.7) * 6 + Math.cos(i * 3.1) * 4;
-    const rx = 34 + rWobble * 0.5;   // % of viewport
-    const ry = 28 + rWobble * 0.4;
+    const rx = 42 + rWobble * 0.5;   // % of viewport — wider ring = more spacing
+    const ry = 36 + rWobble * 0.4;
     const xPct = 50 + Math.cos(angle) * rx;
     const yPct = 52 + Math.sin(angle) * ry;
     a.style.left = xPct + 'vw';
@@ -605,7 +604,10 @@ function glowFrame() {
     const dy = glowMouse.y - L.cy;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
-    const reach = 460;
+    // Proximity reach — cursor must get closer to light/sound a link
+    // (dialed back ~20% from 460 on 2026-05-22). Drives both the visual
+    // glow and the per-link audio tone (which reads L.prox).
+    const reach = 368;
     let prox = 0;
     if (glowMouse.active) {
       prox = Math.max(0, 1 - dist / reach);
@@ -666,8 +668,7 @@ let tcW, tcH;
 
 function resizeTitleParticles() {
   tcW = window.innerWidth;
-  tcH = Math.floor(window.innerHeight * (
-    window.innerWidth < 600 ? 0.32 : 0.38));
+  tcH = window.innerHeight;           // full screen — particles roam everywhere
   tCanvas.width  = tcW * glowDpr;
   tCanvas.height = tcH * glowDpr;
   tCanvas.style.width  = tcW + 'px';
@@ -675,11 +676,42 @@ function resizeTitleParticles() {
   tCtx.setTransform(glowDpr, 0, 0, glowDpr, 0, 0);
   tCtx.fillStyle = '#000';
   tCtx.fillRect(0, 0, tcW, tcH);
+  buildTitleAttractors();
+}
+
+// Letterform attractor points sampled from the live #title element so the
+// "magnet" pulls particles onto the actual on-screen /sandbox/ text.
+let titleAttractors = [];
+function buildTitleAttractors() {
+  const titleEl = document.getElementById('title');
+  if (!titleEl || !tcW) return;
+  const r = titleEl.getBoundingClientRect();
+  if (r.width < 2) { setTimeout(buildTitleAttractors, 250); return; }  // not laid out yet
+  const off = document.createElement('canvas');
+  off.width = tcW; off.height = tcH;
+  const o = off.getContext('2d');
+  const cs = getComputedStyle(titleEl);
+  o.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  try { o.letterSpacing = cs.letterSpacing; } catch (e) {}
+  o.textAlign = 'center';
+  o.textBaseline = 'middle';
+  o.fillStyle = '#fff';
+  o.fillText(titleEl.textContent, r.left + r.width / 2, r.top + r.height / 2);
+  const data = o.getImageData(0, 0, tcW, tcH).data;
+  titleAttractors = [];
+  const step = Math.max(2, Math.floor(tcW / 480));
+  for (let y = 0; y < tcH; y += step) {
+    for (let x = 0; x < tcW; x += step) {
+      if (data[(y * tcW + x) * 4 + 3] > 100) titleAttractors.push([x, y]);
+    }
+  }
 }
 resizeTitleParticles();
 window.addEventListener('resize', resizeTitleParticles);
+// Rebuild once more after webfont/layout settle so points line up exactly
+setTimeout(buildTitleAttractors, 1200);
 
-const N_TPART = Math.min(window.innerWidth, window.innerHeight) < 600 ? 350 : 700;
+const N_TPART = Math.min(window.innerWidth, window.innerHeight) < 600 ? 450 : 1000;
 const tParticles = [];
 for (let i = 0; i < N_TPART; i++) {
   tParticles.push({
@@ -689,6 +721,15 @@ for (let i = 0; i < N_TPART; i++) {
     hue: Math.random() * 360
   });
 }
+
+// Magnet state: after ~8s of cumulative pointer activity, particles start
+// migrating onto the title and coat it; idle relaxes the pull.
+let activitySec  = 0;
+let magnetWeight = 0;
+let lastMoveAt   = 0;
+let lastTickAt   = performance.now();
+document.addEventListener('pointermove', () => { lastMoveAt = performance.now(); });
+document.addEventListener('pointerdown', () => { lastMoveAt = performance.now(); });
 
 // Pseudo curl-noise — same shape as index2's
 function tcurl(x, y, t) {
@@ -707,6 +748,17 @@ let tcFrame = 0;
 function tickTitleParticles() {
   requestAnimationFrame(tickTitleParticles);
   tcFrame++;
+  const now = performance.now();
+  const dt  = Math.min(0.05, (now - lastTickAt) / 1000);
+  lastTickAt = now;
+
+  // Cumulative activity: count seconds while the pointer is moving. Once it
+  // crosses 8s, the magnet engages — strongly while still active, easing
+  // off (but not fully releasing) when idle, so the coating stays present.
+  const moving = (now - lastMoveAt) < 400;
+  if (moving) activitySec += dt;
+  const magnetTarget = activitySec >= 8 ? (moving ? 1 : 0.5) : 0;
+  magnetWeight += (magnetTarget - magnetWeight) * 0.012;
 
   // Trail decay
   tCtx.globalCompositeOperation = 'source-over';
@@ -715,26 +767,37 @@ function tickTitleParticles() {
   tCtx.globalCompositeOperation = 'lighter';
 
   const tn = tcFrame * 0.012;
-  // Cursor counts as "active near title" when it's within ~tcH+120 of top
-  const cursorNear = glowMouse.active && glowMouse.y < tcH + 120;
-  const cMy = cursorNear ? Math.min(tcH + 40, glowMouse.y) : 0;
+  const cursorActive = glowMouse.active;
 
-  for (const p of tParticles) {
+  for (let i = 0; i < tParticles.length; i++) {
+    const p = tParticles[i];
     const [cx, cy] = tcurl(p.x, p.y, tn);
     let ax = cx * 1.4, ay = cy * 1.4;
-    if (cursorNear) {
-      const dx = glowMouse.x - p.x, dy = cMy - p.y;
+
+    if (cursorActive) {
+      const dx = glowMouse.x - p.x, dy = glowMouse.y - p.y;
       const d  = Math.max(40, Math.sqrt(dx*dx + dy*dy));
       const k  = (mSpeed > 5 ? 70 : 18) / d;
       ax += (dx / d) * k;
       ay += (dy / d) * k;
     }
-    p.vx = (p.vx + ax) * 0.92;
-    p.vy = (p.vy + ay) * 0.92;
+
+    // Magnet pull onto the title letterforms — coats the text over time
+    if (magnetWeight > 0.01 && titleAttractors.length) {
+      const at = titleAttractors[i % titleAttractors.length];
+      const dx = at[0] - p.x, dy = at[1] - p.y;
+      const d  = Math.max(2, Math.sqrt(dx*dx + dy*dy));
+      const pull = magnetWeight * Math.min(36, d) * 0.22;
+      ax += (dx / d) * pull;
+      ay += (dy / d) * pull;
+    }
+
+    p.vx = (p.vx + ax) * 0.90;
+    p.vy = (p.vy + ay) * 0.90;
     p.x += p.vx;
     p.y += p.vy;
 
-    // Wrap to keep particles in-canvas
+    // Wrap to keep particles in-canvas (only matters during free flow)
     if (p.x < 0) p.x += tcW;
     if (p.x > tcW) p.x -= tcW;
     if (p.y < 0) p.y += tcH;
