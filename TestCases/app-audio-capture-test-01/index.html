@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>App Audio Capture → TelloFoam — Test 01</title>
+<link rel="stylesheet" href="/widgets/audio-widgets.css">
+<style>
+  .docs { font-size:.62rem; line-height:1.7; color:var(--text-2nd); max-width:560px; }
+  .docs em { color:var(--amber); font-style:normal; }
+  .src-en { font-size:.66rem; padding:4px 10px; }
+  .ios-note { font-size:.58rem; color:#ff8080; letter-spacing:.06em; padding-top:4px; line-height:1.5; }
+  .note-row { display:flex; gap:6px; flex-wrap:wrap; }
+  .note-row button { font-size:.62rem; padding:5px 9px; }
+  .out-track { font-size:.6rem; color:var(--text-2nd); word-break:break-all; }
+</style>
+</head>
+<body>
+
+<div class="title">App Audio Capture → TelloFoam · Test 01</div>
+<div class="subtitle">mix mic + captured tab + in-page instrument into one outgoing stream</div>
+
+<div class="warn">⚠ Headphones recommended — monitor + mic open = feedback. The "outgoing stream" below is what TelloFoam would send to peers.</div>
+
+<div class="row">
+
+  <!-- ── Mix bus / outgoing ───────────────────────────── -->
+  <div class="col">
+    <div class="module">
+      <div class="mod-head">Outgoing Stream (→ peers)</div>
+      <div class="mod-body">
+        <button id="initBtn">1 · Init Audio</button>
+        <div id="mixMeterMount"></div>
+        <button id="monBtn" class="danger" disabled>Monitor: OFF</button>
+        <div class="kv"><span class="lbl">Stream tracks</span><span class="val" id="vTracks">—</span></div>
+        <div class="out-track" id="vTrackId">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Sources ──────────────────────────────────────── -->
+  <div class="col">
+
+    <div class="module">
+      <div class="mod-head">Source · Microphone</div>
+      <div class="mod-body">
+        <button id="micPermBtn" disabled>Grant Mic</button>
+        <div class="lbl">Input Device</div>
+        <select id="micSel" disabled><option>—</option></select>
+        <button id="micEnBtn" class="src-en" disabled>Enable → mix</button>
+        <div id="micMeterMount"></div>
+      </div>
+    </div>
+
+    <div class="module">
+      <div class="mod-head">Source · Tab / System Audio</div>
+      <div class="mod-body">
+        <div class="docs" style="padding:0 0 4px">
+          Desktop only — captures audio from a browser tab or your whole system via <em>getDisplayMedia</em>. In the picker, tick "Share tab audio" / "Share system audio".
+        </div>
+        <button id="capBtn" disabled>Capture Tab/System</button>
+        <div id="capMeterMount"></div>
+        <div class="ios-note" id="capIosNote" style="display:none">
+          getDisplayMedia is unavailable on iOS Safari — Apple does not expose
+          app/tab audio capture to web pages. Use the in-page instrument path
+          (below) instead, or capture on a desktop.
+        </div>
+      </div>
+    </div>
+
+    <div class="module">
+      <div class="mod-head">Source · In-Page Instrument</div>
+      <div class="mod-body">
+        <div class="docs" style="padding:0 0 4px">
+          Stand-in for an embedded web-instrument. Its AudioNode output routes
+          straight into the mix — <em>no capture needed</em>, so this path
+          works on iPhone too. This is the model for a "send to TelloFoam"
+          button inside FX Processor etc.
+        </div>
+        <button id="instEnBtn" class="src-en" disabled>Enable → mix</button>
+        <div class="note-row">
+          <button id="droneBtn" disabled>Drone</button>
+          <button data-note="261.63" class="noteBtn" disabled>C</button>
+          <button data-note="329.63" class="noteBtn" disabled>E</button>
+          <button data-note="392.00" class="noteBtn" disabled>G</button>
+          <button data-note="523.25" class="noteBtn" disabled>C↑</button>
+        </div>
+        <div id="instMeterMount"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── How / integration notes ──────────────────────── -->
+  <div class="col">
+    <div class="module">
+      <div class="mod-head">What this proves</div>
+      <div class="mod-body">
+        <div class="docs">
+          The <em>Outgoing Stream</em> is a single <em>MediaStreamDestination</em>
+          — exactly the node TelloFoam currently feeds from the mic alone. Here
+          three sources sum into it:
+          <br><br>
+          1. <em>Microphone</em> — the normal path.<br>
+          2. <em>Tab/System capture</em> — desktop only (getDisplayMedia).<br>
+          3. <em>In-page instrument</em> — any Web Audio graph in the same
+          page routes directly in. Works on iPhone.
+          <br><br>
+          To wire a real web-instrument: the instrument's master output node
+          gets a "send to TelloFoam" tap that connects into this mix bus.
+          That requires the instrument + TelloFoam to share one AudioContext
+          — i.e. the instrument runs inside (or alongside) the TelloFoam page,
+          not in a separate tab. Cross-tab live-audio routing isn't possible
+          in any browser.
+          <br><br>
+          On desktop, the tab-capture path is the no-integration fallback:
+          run the instrument in one tab, capture it from TelloFoam in another.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="foot">getDisplayMedia desktop-only · in-page routing universal · v0.1</div>
+
+<script src="/widgets/audio-widgets.js"></script>
+<script>
+'use strict';
+const W = window.AudioWidgets;
+const $ = id => document.getElementById(id);
+
+let audioCtx = null;
+let mixDest = null;       // MediaStreamDestination — the outgoing stream
+let monitorGain = null;   // → audioCtx.destination when monitoring
+let monitoring = false;
+let mixMeter = null;
+
+// Per-source state
+const src = {
+  mic:  { stream: null, node: null, gain: null, meter: null, enabled: false },
+  cap:  { stream: null, node: null, gain: null, meter: null, enabled: false },
+  inst: { gain: null, meter: null, enabled: false, drone: null, droneOn: false },
+};
+
+// ── Init the shared audio context + mix bus ──────────
+$('initBtn').addEventListener('click', () => {
+  if (audioCtx) return;
+  audioCtx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
+  mixDest = audioCtx.createMediaStreamDestination();
+  monitorGain = audioCtx.createGain();
+  monitorGain.gain.value = 1.0;
+  monitorGain.connect(audioCtx.destination);   // monitor path (off until toggled — see monBtn)
+  monitorGain.disconnect();                      // start disconnected
+
+  // Meter on the mix bus — taps a passthrough gain that the bus feeds.
+  // We meter mixDest by tapping the same nodes that feed it; simplest is
+  // to meter a dedicated busTap gain that every source also feeds.
+  const busTap = audioCtx.createGain();
+  audioCtx.__busTap = busTap;
+  $('mixMeterMount').innerHTML = '';
+  mixMeter = new W.MeterStrip($('mixMeterMount'), busTap, {
+    label: 'MIX', gainMin: -60, gainMax: 12, gainDefault: 0,
+    mode: 'level', height: 90, stereo: false,
+  });
+  mixMeter.start();
+
+  updateOutInfo();
+
+  $('initBtn').classList.add('active');
+  $('initBtn').textContent = '✓ Audio Ready';
+  $('micPermBtn').disabled = false;
+  $('monBtn').disabled = false;
+  $('instEnBtn').disabled = false;
+  // Capture availability
+  if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+    $('capBtn').disabled = false;
+  } else {
+    $('capIosNote').style.display = 'block';
+  }
+});
+
+// Route a source node into mix bus + busTap (meter) + monitor.
+function routeIntoMix(node) {
+  node.connect(mixDest);
+  node.connect(audioCtx.__busTap);
+}
+
+function updateOutInfo() {
+  if (!mixDest) return;
+  const tracks = mixDest.stream.getAudioTracks();
+  $('vTracks').textContent = tracks.length + ' audio';
+  $('vTrackId').textContent = tracks.length ? tracks[0].id : '—';
+}
+
+// ── Monitor toggle ───────────────────────────────────
+$('monBtn').addEventListener('click', () => {
+  if (!audioCtx) return;
+  monitoring = !monitoring;
+  if (monitoring) { monitorGain.connect(audioCtx.destination); $('monBtn').classList.add('active'); $('monBtn').textContent = 'Monitor: ON'; }
+  else            { try { monitorGain.disconnect(audioCtx.destination); } catch(e){} $('monBtn').classList.remove('active'); $('monBtn').textContent = 'Monitor: OFF'; }
+});
+
+// ── Source: Microphone ───────────────────────────────
+$('micPermBtn').addEventListener('click', async () => {
+  try {
+    const tmp = await navigator.mediaDevices.getUserMedia({audio:true});
+    tmp.getTracks().forEach(t => t.stop());
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    const ins = devs.filter(d => d.kind === 'audioinput');
+    const sel = $('micSel'); sel.innerHTML = '';
+    ins.forEach((d,i) => { const o=document.createElement('option'); o.value=W.deviceIdValue(d); o.textContent=W.formatDeviceLabel(d,i,'Input'); sel.appendChild(o); });
+    sel.disabled = false;
+    $('micEnBtn').disabled = false;
+    $('micPermBtn').classList.add('active'); $('micPermBtn').textContent = '✓ Mic';
+  } catch(e) { alert('Mic denied: ' + e.message); }
+});
+
+$('micEnBtn').addEventListener('click', async () => {
+  if (src.mic.enabled) return;
+  try {
+    src.mic.stream = await navigator.mediaDevices.getUserMedia(W.micConstraints($('micSel').value, 1));
+  } catch(e) { alert('mic open: ' + e.message); return; }
+  src.mic.node = audioCtx.createMediaStreamSource(src.mic.stream);
+  src.mic.gain = audioCtx.createGain();
+  src.mic.node.connect(src.mic.gain);
+  routeIntoMix(src.mic.gain);
+  $('micMeterMount').innerHTML = '';
+  src.mic.meter = new W.MeterStrip($('micMeterMount'), src.mic.gain, {
+    label: 'MIC', gainNode: src.mic.gain, gainMin: -30, gainMax: 30, gainDefault: 0, height: 80, stereo: false,
+  });
+  src.mic.meter.start();
+  src.mic.enabled = true;
+  $('micEnBtn').classList.add('active'); $('micEnBtn').textContent = '✓ In Mix';
+  updateOutInfo();
+});
+
+// ── Source: Tab / System capture ─────────────────────
+$('capBtn').addEventListener('click', async () => {
+  try {
+    // video:true is required by Chrome even when we only want audio; we
+    // ignore the video track.
+    const ds = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    const at = ds.getAudioTracks();
+    if (at.length === 0) {
+      alert('No audio track shared. In the picker you must tick "Share tab audio" / "Share system audio".');
+      ds.getTracks().forEach(t => t.stop());
+      return;
+    }
+    ds.getVideoTracks().forEach(t => t.stop());  // drop video, keep audio
+    src.cap.stream = ds;
+    src.cap.node = audioCtx.createMediaStreamSource(ds);
+    src.cap.gain = audioCtx.createGain();
+    src.cap.node.connect(src.cap.gain);
+    routeIntoMix(src.cap.gain);
+    $('capMeterMount').innerHTML = '';
+    src.cap.meter = new W.MeterStrip($('capMeterMount'), src.cap.gain, {
+      label: 'TAB', gainNode: src.cap.gain, gainMin: -30, gainMax: 24, gainDefault: 0, height: 80, stereo: false,
+    });
+    src.cap.meter.start();
+    src.cap.enabled = true;
+    $('capBtn').classList.add('active'); $('capBtn').textContent = '✓ In Mix';
+    // If the user stops sharing via the browser UI, reflect it
+    at[0].addEventListener('ended', () => {
+      $('capBtn').classList.remove('active'); $('capBtn').textContent = 'Capture Tab/System';
+      src.cap.enabled = false;
+    });
+    updateOutInfo();
+  } catch(e) { alert('capture: ' + e.message); }
+});
+
+// ── Source: In-page instrument (demo synth) ──────────
+$('instEnBtn').addEventListener('click', () => {
+  if (src.inst.enabled) return;
+  src.inst.gain = audioCtx.createGain();
+  src.inst.gain.gain.value = W.dbToGain(0);
+  routeIntoMix(src.inst.gain);
+  $('instMeterMount').innerHTML = '';
+  src.inst.meter = new W.MeterStrip($('instMeterMount'), src.inst.gain, {
+    label: 'INST', gainNode: src.inst.gain, gainMin: -30, gainMax: 12, gainDefault: 0, height: 80, stereo: false,
+  });
+  src.inst.meter.start();
+  src.inst.enabled = true;
+  $('instEnBtn').classList.add('active'); $('instEnBtn').textContent = '✓ In Mix';
+  $('droneBtn').disabled = false;
+  document.querySelectorAll('.noteBtn').forEach(b => b.disabled = false);
+});
+
+// A note = osc through a short AD envelope into the instrument gain.
+function playNote(freq) {
+  if (!src.inst.gain) return;
+  const t0 = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator(); osc.type = 'triangle'; osc.frequency.value = freq;
+  const env = audioCtx.createGain(); env.gain.value = 0;
+  osc.connect(env).connect(src.inst.gain);
+  env.gain.setValueAtTime(0, t0);
+  env.gain.linearRampToValueAtTime(0.4, t0 + 0.01);
+  env.gain.exponentialRampToValueAtTime(0.001, t0 + 0.9);
+  osc.start(t0); osc.stop(t0 + 1.0);
+}
+document.querySelectorAll('.noteBtn').forEach(b => {
+  b.addEventListener('click', () => playNote(parseFloat(b.dataset.note)));
+});
+
+$('droneBtn').addEventListener('click', () => {
+  if (!src.inst.gain) return;
+  src.inst.droneOn = !src.inst.droneOn;
+  if (src.inst.droneOn) {
+    const o1 = audioCtx.createOscillator(); o1.type='sawtooth'; o1.frequency.value=110;
+    const o2 = audioCtx.createOscillator(); o2.type='sawtooth'; o2.frequency.value=110.5;
+    const g  = audioCtx.createGain(); g.gain.value=0; g.gain.setTargetAtTime(0.18, audioCtx.currentTime, 0.4);
+    o1.connect(g); o2.connect(g); g.connect(src.inst.gain);
+    o1.start(); o2.start();
+    src.inst.drone = { o1, o2, g };
+    $('droneBtn').classList.add('active');
+  } else {
+    const d = src.inst.drone;
+    if (d) { d.g.gain.setTargetAtTime(0, audioCtx.currentTime, 0.3); setTimeout(() => { try { d.o1.stop(); d.o2.stop(); } catch(e){} }, 600); }
+    src.inst.drone = null;
+    $('droneBtn').classList.remove('active');
+  }
+});
+</script>
+</body>
+</html>
