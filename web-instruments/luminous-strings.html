@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Luminous Strings</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box }
@@ -47,7 +47,7 @@
   #tuningPanel button:hover { background: rgba(200,170,120,0.15); color: rgba(200,170,120,0.85) }
   #tuningPanel .divider { border: none; border-top: 1px solid rgba(200,170,120,0.06); margin: 14px 0 }
   #tuningPanel .ratios-display { font: 12px monospace; color: rgba(200,170,120,0.4); line-height: 1.6; margin: 6px 0; max-height: 200px; overflow-y: auto }
-  #tuningToggle, #bowToggle {
+  #tuningToggle, #bowToggle, #fxToggle {
     position: fixed; top: 12px; z-index: 25;
     padding: 6px 14px; font: 12px Georgia, serif;
     background: rgba(200,170,120,0.06); border: 1px solid rgba(200,170,120,0.1);
@@ -55,7 +55,10 @@
   }
   #tuningToggle { right: 12px; }
   #bowToggle    { right: 100px; }
-  #tuningToggle:hover, #bowToggle:hover { color: rgba(200,170,120,0.6); border-color: rgba(200,170,120,0.25) }
+  #fxToggle     { right: 170px; }
+  #tuningToggle:hover, #bowToggle:hover, #fxToggle:hover { color: rgba(200,170,120,0.6); border-color: rgba(200,170,120,0.25) }
+  /* v4.9: FX toggle lit when the FX dial cluster is shown */
+  #fxToggle.active { color: rgba(200,170,120,0.7); border-color: rgba(200,170,120,0.4); background: rgba(200,170,120,0.12) }
   /* Bow panel — same skin as tuning panel, mirrored on left so they don't collide */
   #bowPanel {
     position: fixed; top: 0; left: -320px;
@@ -91,11 +94,12 @@
 <body>
 <div id="invite">
   <span>touch to begin</span>
-  <span class="hint">Z = bow &middot; X = tune &middot; D = delay in &middot; T = tuning &middot; B = bow panel</span>
-  <span class="hint" style="margin-top:1.5em;font-size:0.85rem;color:rgba(200,170,120,0.12)">v4.8</span>
+  <span class="hint">Z = bow &middot; X = tune &middot; D = delay in &middot; T = tuning &middot; B = bow &middot; F = fx</span>
+  <span class="hint" style="margin-top:1.5em;font-size:0.85rem;color:rgba(200,170,120,0.12)">v4.9</span>
 </div>
 <button id="tuningToggle">TUNING</button>
 <button id="bowToggle">BOW</button>
+<button id="fxToggle">FX</button>
 <div id="bowPanel">
   <h3>Bow Behavior</h3>
   <label>Proximity Threshold <span class="val" id="bowProxVal">45</span></label>
@@ -219,6 +223,9 @@ var ratios = TUNING_PRESETS[0].ratios.slice();
 // BOW_FALLOFF_EXP/MUL: shape of distance-based falloff for proximity excitation
 var PROXIMITY_THRESHOLD = 45;
 var BOW_SPEED_GATE = 0.8;
+// v4.9: how far past a string's endpoints a bow gesture still counts
+// (so you can excite near the tips without a dead zone). Px.
+var BOW_END_MARGIN = 24;
 var BOW_VELO_DIVISOR = 20;
 var BOW_FALLOFF_EXP = 0.75;
 var BOW_FALLOFF_MUL = 0.55;
@@ -235,6 +242,38 @@ var STRING_COS = Math.cos(STRING_THETA);
 // perpCoord(x,y) = sinθ·x + cosθ·y. Both endpoints (0,0) and (W,H) have the
 // extreme values; the screen's perp range is [0, W·sinθ + H·cosθ].
 function perpCoord(x, y) { return STRING_SIN * x + STRING_COS * y; }
+
+// v4.9: generic per-segment perpendicular info. Works for ANY string
+// placement (spiral, fan, diagonal) — replaces the parallel-only
+// perpCoord + s.d model. Returns:
+//   perp  — signed perpendicular distance from the point to the string's
+//           infinite line (sign flips as you cross the string).
+//   along — projection onto the string direction, 0..len within the segment.
+//   len   — segment length.
+function stringPerpInfo(s, px, py) {
+  var dx = s.Bx - s.Ax, dy = s.By - s.Ay;
+  var len2 = dx * dx + dy * dy;
+  if (len2 < 1e-6) return null;
+  var len = Math.sqrt(len2);
+  var ux = dx / len, uy = dy / len;       // unit along string
+  var nx = -uy, ny = ux;                   // unit perpendicular
+  var vx = px - s.Ax, vy = py - s.Ay;
+  return { along: vx * ux + vy * uy, perp: vx * nx + vy * ny, len: len };
+}
+// Nearest string to a point (by perpendicular distance, only counting
+// points whose projection falls within the segment + small end margin).
+function nearestStringTo(px, py) {
+  var best = null, bestDist = Infinity, bestInfo = null;
+  for (var si = 0; si < strings.length; si++) {
+    var info = stringPerpInfo(strings[si], px, py);
+    if (!info) continue;
+    var within = info.along >= -BOW_END_MARGIN && info.along <= info.len + BOW_END_MARGIN;
+    if (!within) continue;
+    var d = Math.abs(info.perp);
+    if (d < bestDist) { bestDist = d; best = strings[si]; bestInfo = info; }
+  }
+  return best ? { string: best, dist: bestDist, info: bestInfo } : null;
+}
 // Find the two screen-edge intersection points of the line at perp distance d.
 // Line is parameterized as: x(t) = d·sinθ + t·cosθ,  y(t) = d·cosθ - t·sinθ.
 function lineEndpoints(d) {
@@ -515,6 +554,10 @@ var draggingDial = null;
 var dialDragStartY = 0;
 var dialDragStartVal = 0;
 var hoveringDial = -1;
+// v4.9: FX dial cluster hidden by default so the spiral play surface is
+// clean. The FX toggle button reveals it. When hidden, the dials don't
+// draw and don't capture pointer events.
+var fxVisible = false;
 
 // --- Audio engine ---
 function initAudio() {
@@ -870,23 +913,47 @@ function buildStrings() {
   updateFreqDisplay();
 }
 
+// v4.9: SPIRAL layout. Strings are straight segments arranged along an
+// Archimedean spiral from the center outward. Index 0 (lowest pitch) is
+// the longest, innermost string; higher strings are progressively shorter
+// and further out along the spiral arm. Each string leans tangent to the
+// spiral so the whole shape reads as a coil rather than a sunburst.
+//
+//   t       = i / (n-1)          0..1, low→high pitch
+//   angle   = startAngle + t·turns·2π
+//   rIn     = innermost radius growing with t (spiral arm)
+//   length  = baseLen·(1 - shrink·t)   higher = shorter
+//   tilt    = lean each segment partway toward the tangent direction
+var SPIRAL_TURNS  = 1.35;   // how many times the arm wraps around
+var SPIRAL_SHRINK = 0.66;   // how much shorter the highest string is vs lowest
+var SPIRAL_TILT   = 0.55;   // 0 = radial spokes, 1 = fully tangent
 function layoutStrings() {
   if (!W || !H) return;
   var n = strings.length;
-  // Total perpendicular range across the screen at 25°: from corner (0,0)=0 to
-  // corner (W,H) = W·sinθ + H·cosθ. Index 0 = bottom-left (high d), index N-1 = top-right (low d).
-  var totalPerp = W * STRING_SIN + H * STRING_COS;
-  var margin = totalPerp * 0.10;
-  var span = totalPerp - 2 * margin;
+  var cx = W * 0.5, cy = H * 0.52;     // slightly below center, leaves room up top for toggles
+  var maxR = Math.min(W, H) * 0.46;
+  var baseLen = Math.min(W, H) * 0.52;
+  var startAngle = -Math.PI / 2;        // begin pointing up
   for (var i = 0; i < n; i++) {
-    var d = n > 1 ? (totalPerp - margin) - (i / (n - 1)) * span : totalPerp / 2;
-    strings[i].d = d;
-    var ep = lineEndpoints(d);
-    if (ep) {
-      strings[i].Ax = ep.Ax; strings[i].Ay = ep.Ay;
-      strings[i].Bx = ep.Bx; strings[i].By = ep.By;
-      strings[i].length = ep.length;
-    }
+    var t = n > 1 ? i / (n - 1) : 0;
+    var ang = startAngle + t * SPIRAL_TURNS * Math.PI * 2;
+    var rIn = maxR * (0.10 + 0.90 * t);
+    var len = baseLen * (1 - SPIRAL_SHRINK * t);
+    // Radial direction (outward from center) and tangent (perpendicular, CCW).
+    var rdx = Math.cos(ang), rdy = Math.sin(ang);
+    var tdx = -rdy,           tdy = rdx;
+    // Blend radial + tangent for the string direction so it follows the coil.
+    var ddx = rdx * (1 - SPIRAL_TILT) + tdx * SPIRAL_TILT;
+    var ddy = rdy * (1 - SPIRAL_TILT) + tdy * SPIRAL_TILT;
+    var dlen = Math.hypot(ddx, ddy) || 1;
+    ddx /= dlen; ddy /= dlen;
+    // Inner endpoint sits on the spiral; string extends outward along ddx/ddy.
+    var ax = cx + rdx * rIn;
+    var ay = cy + rdy * rIn;
+    strings[i].Ax = ax;            strings[i].Ay = ay;
+    strings[i].Bx = ax + ddx * len; strings[i].By = ay + ddy * len;
+    strings[i].length = len;
+    strings[i].d = rIn;            // retained for any legacy reference; not used for bowing now
   }
 }
 
@@ -920,6 +987,7 @@ window.addEventListener('keydown', function(e) {
   }
   if (e.key === 't' || e.key === 'T') { toggleTuningPanel(); e.preventDefault(); }
   if (e.key === 'b' || e.key === 'B') { toggleBowPanel(); e.preventDefault(); }
+  if (e.key === 'f' || e.key === 'F') { toggleFxControls(); e.preventDefault(); }
 });
 window.addEventListener('keyup', function(e) {
   if (e.key === 'z' || e.key === 'Z') { bowEngaged = false; e.preventDefault(); }
@@ -930,6 +998,7 @@ window.addEventListener('keyup', function(e) {
 var mouseX = 0, mouseY = 0, prevX = null, prevY = null, cursorVisible = false;
 
 function isOverDial(x, y) {
+  if (!fxVisible) return -1;   // v4.9: dials hidden → no hit
   var layout = getLayout();
   var hitR = DIAL_R + 14;
   for (var i = 0; i < layout.positions.length; i++) {
@@ -949,6 +1018,7 @@ function isOverToggle(x, y, tidx) {
 }
 
 function isOverAnyToggle(x, y) {
+  if (!fxVisible) return -1;   // v4.9: FX on/off toggles hidden with the cluster
   for (var i = 0; i < toggleDefs.length; i++) {
     if (isOverToggle(x, y, i)) return i;
   }
@@ -987,19 +1057,26 @@ function onPointerMove(x, y) {
   if (prevX !== null && started && bowEngaged && !overInterface) {
     var dx = mouseX - prevX, dy = mouseY - prevY;
     var speed = Math.sqrt(dx * dx + dy * dy);
-    var prevPerp = perpCoord(prevX, prevY);
-    var curPerp  = perpCoord(mouseX, mouseY);
-    var perpSpeed = Math.abs(curPerp - prevPerp);
+    var threshold = strings.length > 20 ? Math.min(38, PROXIMITY_THRESHOLD) : PROXIMITY_THRESHOLD;
 
+    // v4.9: per-segment bow detection — works for the spiral (and any) layout.
+    // For each string, compute the cursor's signed perpendicular distance now
+    // vs. the previous frame. If the sign flipped AND the crossing happens
+    // within the segment span, that's a bow stroke across the string. Otherwise
+    // a near-but-not-crossing fast move within the span gives proximity excite.
     for (var si = 0; si < strings.length; si++) {
       var s = strings[si];
-      var crossed = (prevPerp < s.d && curPerp >= s.d) || (prevPerp > s.d && curPerp <= s.d);
+      var prev = stringPerpInfo(s, prevX, prevY);
+      var cur  = stringPerpInfo(s, mouseX, mouseY);
+      if (!prev || !cur) continue;
+      var within = cur.along >= -BOW_END_MARGIN && cur.along <= cur.len + BOW_END_MARGIN;
+      if (!within) continue;
+      var crossed = (prev.perp < 0 && cur.perp >= 0) || (prev.perp > 0 && cur.perp <= 0);
       if (crossed) {
         s.excite(mouseX, mouseY, speed);
       } else {
-        var dist = Math.abs(curPerp - s.d);
-        // Threshold scales down a bit when many strings are packed close together
-        var threshold = strings.length > 20 ? Math.min(38, PROXIMITY_THRESHOLD) : PROXIMITY_THRESHOLD;
+        var dist = Math.abs(cur.perp);
+        var perpSpeed = Math.abs(cur.perp - prev.perp);
         if (dist < threshold && perpSpeed > BOW_SPEED_GATE) {
           var falloff = Math.pow(1 - dist / threshold, BOW_FALLOFF_EXP);
           s.excite(mouseX, mouseY, falloff * perpSpeed * BOW_FALLOFF_MUL);
@@ -1011,6 +1088,13 @@ function onPointerMove(x, y) {
 }
 
 function onPointerDown(x, y) {
+  // v4.9: a tap on the canvas (the play surface) closes any open side
+  // panel so the panels never stay covering the strings while you play.
+  // The panels' own DOM sits above the canvas and swallows its own taps,
+  // so reaching here means the tap was on the play surface.
+  if (panelOpen)   { panelOpen = false;   panel.classList.remove('open'); }
+  if (bowPanelOpen){ bowPanelOpen = false; bowPanel.classList.remove('open'); }
+
   var tidx = isOverAnyToggle(x, y);
   if (tidx >= 0) {
     toggleDefs[tidx].toggle();
@@ -1085,6 +1169,7 @@ function drawControlsArea(cx) {
 }
 
 function drawDials(cx) {
+  if (!fxVisible) return;   // v4.9: cluster hidden unless FX toggle is on
   var layout = getLayout();
   var positions = layout.positions;
   var groups = layout.groups;
@@ -1204,17 +1289,10 @@ function drawHUD(cx) {
     // Z key: staccato/sustain label — based on bowFrac of nearest string (projection
     // onto string direction), not raw screen X, since strings are now diagonal.
     if (bowEngaged && strings.length > 0) {
-      var nearest = null, nearestPerpDist = Infinity;
-      var curPerp = perpCoord(mouseX, mouseY);
-      for (var si = 0; si < strings.length; si++) {
-        var d = Math.abs(curPerp - strings[si].d);
-        if (d < nearestPerpDist) { nearestPerpDist = d; nearest = strings[si]; }
-      }
-      if (nearest && nearest.length) {
-        var sdx = nearest.Bx - nearest.Ax, sdy = nearest.By - nearest.Ay;
-        var len2 = sdx*sdx + sdy*sdy;
-        var bowFrac = ((mouseX - nearest.Ax)*sdx + (mouseY - nearest.Ay)*sdy) / len2;
-        bowFrac = Math.max(0, Math.min(1, bowFrac));
+      // v4.9: nearest-string via generic per-segment distance.
+      var near = nearestStringTo(mouseX, mouseY);
+      if (near && near.string.length) {
+        var bowFrac = Math.max(0, Math.min(1, near.info.along / near.info.len));
         var sl = bowFrac < 0.2 ? 'staccato' : bowFrac > 0.85 ? 'sustain' : '';
         if (sl) {
           cx.fillStyle = 'rgba(200,170,120,0.15)'; cx.font = '12px Georgia, serif';
@@ -1245,12 +1323,11 @@ function frame(time) {
 
   // Cursor
   if (cursorVisible && hoveringDial < 0 && draggingDial === null) {
-    var nd = Infinity, nh = 280; // jewel-tone default
-    var curPerp = perpCoord(mouseX, mouseY);
-    for (var si = 0; si < strings.length; si++) {
-      var d = Math.abs(curPerp - strings[si].d);
-      if (d < nd) { nd = d; nh = strings[si].hue; }
-    }
+    var nh = 280; // jewel-tone default
+    // v4.9: nearest string via generic per-segment distance (spiral-aware).
+    var nearC = nearestStringTo(mouseX, mouseY);
+    var nd = nearC ? nearC.dist : Infinity;
+    if (nearC) nh = nearC.string.hue;
     var prox = Math.max(0, 1 - nd / 60);
     var cs = 3 + prox * 4;
     var ca = bowEngaged ? 0.6 + prox * 0.4 : 0.15 + prox * 0.2;
@@ -1302,6 +1379,15 @@ function toggleBowPanel() {
   bowPanel.classList.toggle('open', bowPanelOpen);
 }
 bowToggleBtn.addEventListener('click', toggleBowPanel);
+
+// v4.9: FX cluster show/hide. Lit when visible.
+var fxToggleBtn = document.getElementById('fxToggle');
+function toggleFxControls() {
+  fxVisible = !fxVisible;
+  fxToggleBtn.classList.toggle('active', fxVisible);
+  layoutDirty = true;
+}
+fxToggleBtn.addEventListener('click', toggleFxControls);
 
 function applyBowSettings(s) {
   PROXIMITY_THRESHOLD = s.prox;
