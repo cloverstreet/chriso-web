@@ -94,8 +94,8 @@
 <body>
 <div id="invite">
   <span>touch to begin</span>
-  <span class="hint">Z = bow &middot; X = tune &middot; D = delay in &middot; T = tuning &middot; B = bow &middot; F = fx</span>
-  <span class="hint" style="margin-top:1.5em;font-size:0.85rem;color:rgba(200,170,120,0.12)">v4.9</span>
+  <span class="hint">drag to play &middot; X = mute &middot; Z = tune &middot; D = delay &middot; T = tuning &middot; B = bow &middot; F = fx</span>
+  <span class="hint" style="margin-top:1.5em;font-size:0.85rem;color:rgba(200,170,120,0.12)">v4.10</span>
 </div>
 <button id="tuningToggle">TUNING</button>
 <button id="bowToggle">BOW</button>
@@ -317,7 +317,7 @@ var canvas = document.getElementById('canvas');
 var cctx = canvas.getContext('2d');
 var W, H, bgGradient;
 
-var bowEngaged = false;
+var bowEngaged = true;    // v4.10: bow always-on by default (touch plays w/o keyboard; X mutes)
 var fundEngaged = false;
 var fundAnchorX = null;
 var fundAnchorVal = 0;
@@ -970,9 +970,14 @@ function resize() {
 buildStrings();
 
 // --- Keyboard ---
+// v4.10: bow is ALWAYS ON (bowEngaged defaults true) so touchscreens play
+// by dragging with no keyboard. Inverted desktop model per Christopher:
+//   • X (held) = MUTE — silence for repositioning the cursor.
+//   • Z (held) = TUNE — drag horizontally to change the fundamental
+//     (moved here from X, which was the old tune key).
 window.addEventListener('keydown', function(e) {
-  if (e.key === 'z' || e.key === 'Z') { bowEngaged = true; e.preventDefault(); }
-  if (e.key === 'x' || e.key === 'X') {
+  if (e.key === 'x' || e.key === 'X') { bowEngaged = false; e.preventDefault(); }   // mute while held
+  if (e.key === 'z' || e.key === 'Z') {
     if (!fundEngaged) {
       fundEngaged = true;
       fundAnchorX = mouseX;
@@ -990,8 +995,8 @@ window.addEventListener('keydown', function(e) {
   if (e.key === 'f' || e.key === 'F') { toggleFxControls(); e.preventDefault(); }
 });
 window.addEventListener('keyup', function(e) {
-  if (e.key === 'z' || e.key === 'Z') { bowEngaged = false; e.preventDefault(); }
-  if (e.key === 'x' || e.key === 'X') { fundEngaged = false; fundAnchorX = null; e.preventDefault(); }
+  if (e.key === 'x' || e.key === 'X') { bowEngaged = true; e.preventDefault(); }     // release mute → playing again
+  if (e.key === 'z' || e.key === 'Z') { fundEngaged = false; fundAnchorX = null; e.preventDefault(); }
 });
 
 // --- Mouse / Touch Input ---
@@ -1249,12 +1254,13 @@ function drawHUD(cx) {
   cx.font = '13px Georgia, serif'; cx.textAlign = 'right';
 
   // Bow status
-  cx.fillStyle = 'rgba(200,170,120,' + (bowEngaged ? 0.5 : 0.15) + ')';
-  cx.fillText(bowEngaged ? 'BOW' : 'Z bow', W - 24, statusY);
+  // v4.10: bow is always on; X mutes. Show MUTE (red-ish dim) when muted.
+  cx.fillStyle = 'rgba(200,170,120,' + (bowEngaged ? 0.35 : 0.15) + ')';
+  cx.fillText(bowEngaged ? 'play' : 'X MUTE', W - 24, statusY);
 
-  // Tune status
+  // Tune status (Z held = tune)
   cx.fillStyle = 'rgba(200,170,120,' + (fundEngaged ? 0.5 : 0.15) + ')';
-  cx.fillText(fundEngaged ? 'TUNE' : 'X tune', W - 24, statusY - 14);
+  cx.fillText(fundEngaged ? 'TUNE' : 'Z tune', W - 24, statusY - 14);
 
   // Delay send status
   cx.fillStyle = 'rgba(200,170,120,' + (delaySendEnabled ? 0.3 : 0.12) + ')';
