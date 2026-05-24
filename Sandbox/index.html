@@ -144,21 +144,27 @@
     50%      { transform: translateX(30%);  opacity: 0.8; }
   }
 
-  /* Stereo / binaural toggle — segmented control bottom-right */
+  /* Stereo / binaural toggle — segmented control, lives inside the audio panel */
   #mode-toggle {
-    position: fixed;
-    right: 18px;
-    bottom: 18px;
-    z-index: 11;
-    display: flex;
+    display: inline-flex;
     gap: 0;
     background: rgba(0,0,0,0.4);
     border: 1px solid rgba(220,200,160,0.18);
-    border-radius: 20px;
-    padding: 4px;
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
+    border-radius: 16px;
+    padding: 3px;
     font-family: 'Courier New', monospace;
+  }
+  /* Row holding the spatial-mode label + toggle inside the panel */
+  #spatial-panel .mode-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  /* Mount point for the shared MeterStrip gain/meter widget */
+  #meter-mount {
+    margin: 4px 0 14px;
+    min-height: 76px;
   }
   #mode-toggle button {
     appearance: none;
@@ -179,11 +185,11 @@
     background: rgba(220,200,160,0.12);
   }
 
-  /* Standalone mute pill — stacked above the mode toggle */
+  /* Standalone mute pill — lowest corner button (quick toggle) */
   #btn-mute {
     position: fixed;
     right: 18px;
-    bottom: 60px;
+    bottom: 18px;
     z-index: 11;
     appearance: none;
     border: 1px solid rgba(220,200,160,0.18);
@@ -207,11 +213,11 @@
     border-color: rgba(220,200,160,0.32);
   }
 
-  /* Spatial diagnostic — pill that opens a tweakable panel */
+  /* Audio settings — pill that opens the consolidated audio panel */
   #btn-spatial {
     position: fixed;
     right: 18px;
-    bottom: 102px;
+    bottom: 58px;
     z-index: 11;
     appearance: none;
     border: 1px solid rgba(220,200,160,0.18);
@@ -397,12 +403,12 @@
       left: 50%;
       transform: translateX(-50%);
       width: 86%;
-      max-height: 60vh;
+      max-height: 64vh;
       overflow-y: auto;
       z-index: 10;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 10px;
     }
     /* On phone, links don't have viewport-positioned glow centers, so
        collapse the proximity-glow to a softer ambient backdrop */
@@ -411,6 +417,7 @@
     /* Particles stay full-screen on phone too, just fewer (handled in JS) */
   }
 </style>
+<link rel="stylesheet" href="/widgets/audio-widgets.css">
 </head>
 <body>
 <canvas id="glow"></canvas>
@@ -425,15 +432,19 @@
 
 <div id="audio-hint">move · tap · to begin</div>
 
-<button id="btn-spatial">spatial</button>
+<button id="btn-spatial">audio settings</button>
 <button id="btn-mute">mute</button>
-<div id="mode-toggle">
-  <button id="btn-stereo">stereo</button>
-  <button id="btn-binaural" class="active">binaural</button>
-</div>
 
 <div id="spatial-panel">
-  <h4>spatial · tweak to taste</h4>
+  <h4>audio settings</h4>
+  <div class="row mode-row">
+    <label>spatial</label>
+    <div id="mode-toggle">
+      <button id="btn-stereo">stereo</button>
+      <button id="btn-binaural" class="active">binaural</button>
+    </div>
+  </div>
+  <div id="meter-mount"></div>
   <div class="row">
     <label>vol</label>
     <input type="range" id="sl-vol"   min="0" max="3"    step="0.05" value="1">
@@ -462,6 +473,8 @@
   <div id="spatial-status">binaural · panners 0</div>
 </div>
 
+<!-- Shared gain/meter widget kit (provides window.AudioWidgets.MeterStrip) -->
+<script src="/widgets/audio-widgets.js"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════════
 // /Sandbox/ landing page
@@ -512,13 +525,16 @@ function renderLinks(items) {
 
     // Scatter position: ring around the central title, with radius wobble
     // and starting angle offset by index so the ring rotates as N changes.
+    // Ring is centred low (58vh) so its top arc clears the title band up
+    // top; moderate radius = spread out but not flung to the edges, and
+    // labels stay fully on-screen.
     const angle = (i / total) * Math.PI * 2 - Math.PI / 2
                 + Math.sin(i * 7.3) * 0.18;
-    const rWobble = Math.sin(i * 4.7) * 6 + Math.cos(i * 3.1) * 4;
-    const rx = 42 + rWobble * 0.5;   // % of viewport — wider ring = more spacing
-    const ry = 36 + rWobble * 0.4;
+    const rWobble = Math.sin(i * 4.7) * 5 + Math.cos(i * 3.1) * 3;
+    const rx = 33 + rWobble * 0.5;   // % of viewport
+    const ry = 25 + rWobble * 0.4;
     const xPct = 50 + Math.cos(angle) * rx;
-    const yPct = 52 + Math.sin(angle) * ry;
+    const yPct = 58 + Math.sin(angle) * ry;
     a.style.left = xPct + 'vw';
     a.style.top  = yPct + 'vh';
 
@@ -970,6 +986,26 @@ function startAudio() {
   modulateLoop();
 }
 
+// Mount the shared MeterStrip (gain + L/R level meter) in the audio-settings
+// panel, metering the master bus. The slider retunes master level (and
+// MASTER_LEVEL, so mute/visibility restore to the chosen level) — this is the
+// tool for dialing consistent levels across the front pages.
+let masterMeter = null;
+function ensureMeter() {
+  if (masterMeter || !actx || !master) return;
+  if (typeof AudioWidgets === 'undefined' || !AudioWidgets.MeterStrip) return;
+  const mount = document.getElementById('meter-mount');
+  if (!mount) return;
+  masterMeter = new AudioWidgets.MeterStrip(mount, master, {
+    gainNode: master,
+    label: 'MASTER',
+    gainMin: -40,
+    gainMax: 6,
+    height: 72,
+    onGainChange: (db) => { MASTER_LEVEL = AudioWidgets.dbToGain(db); }
+  });
+}
+
 // Spawn a grain. Every grain carries its own PannerNode whose position
 // animates linearly from a start point to an end point over the grain's
 // lifespan. Trajectories bias toward "pass close to the head" — start
@@ -1230,6 +1266,10 @@ btnSpatial.addEventListener('click', () => {
   const open = !spatialPanel.classList.contains('open');
   spatialPanel.classList.toggle('open', open);
   btnSpatial.classList.toggle('active', open);
+  // Mount the meter once the panel is actually visible (so the widget
+  // measures a non-zero width). rAF lets the same-click audio-unlock
+  // gesture create the context first.
+  if (open) requestAnimationFrame(ensureMeter);
 });
 
 function bindSlider(slider, valEl, setter) {
@@ -1378,7 +1418,8 @@ tickViz();
 // want a brand-new visitor accidentally starting muted), so this no-ops
 // silently before audio has been initialised.
 const btnMute = document.getElementById('btn-mute');
-const MASTER_LEVEL = 0.27;       // overall output (bumped from 0.18)
+let MASTER_LEVEL = 0.27;         // overall output (bumped from 0.18); the
+                                 // audio-settings MeterStrip slider can retune it
 let muted = false;
 btnMute.addEventListener('click', (e) => {
   e.stopPropagation();
