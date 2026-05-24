@@ -1,0 +1,1525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spatial Audio Test 01 — Binaural (HRTF) v0.4</title>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:#0d0d0d; color:#d8d8d8;
+  font-family:'Courier New',monospace; font-size:14px;
+  min-height:100vh; display:flex; flex-direction:column;
+  align-items:center; padding:14px 12px;
+}
+
+#version-badge {
+  position:fixed; top:8px; right:10px;
+  font-family:'Courier New',monospace; font-size:.7rem;
+  letter-spacing:.16em; color:#777; pointer-events:none; z-index:50;
+}
+
+#hp-banner {
+  font-size:.8rem; letter-spacing:.18em; color:#e8c870;
+  text-transform:uppercase; padding:8px 16px;
+  border:1px solid #6a5a30; border-radius:3px;
+  margin-bottom:14px;
+}
+
+#start-screen {
+  display:flex; flex-direction:column; align-items:center;
+  gap:18px; margin-top:10vh; padding:0 20px;
+}
+#start-screen .intro {
+  text-align:center; max-width:680px; color:#c0c0c0;
+  line-height:1.6; font-size:.9rem;
+}
+#start-screen .intro .b { color:#7fc4e8; }
+#start-screen .intro .g { color:#e8c870; }
+#start-btn {
+  padding:16px 48px; background:transparent;
+  border:1px solid #e8c870; color:#e8c870;
+  font-family:'Courier New',monospace; font-size:1rem;
+  letter-spacing:.22em; cursor:pointer; transition:all .2s;
+}
+#start-btn:hover { background:#e8c870; color:#000; }
+
+/* ---------- Main layout ---------- */
+#board { display:none; flex-direction:row; align-items:flex-start; gap:14px; }
+.col { display:flex; flex-direction:column; gap:12px; flex-shrink:0; }
+.col.left  { width:268px; }
+.col.right { width:268px; }
+.col.center { width:740px; }
+
+/* ---------- Panel groups ---------- */
+.panel-group {
+  border:1px solid #383838;
+  border-radius:6px;
+  background:#0f0f0f;
+  padding:8px;
+  display:flex; flex-direction:column; gap:8px;
+}
+.panel-group > .group-label {
+  font-size:.7rem; letter-spacing:.28em; color:#e8c870;
+  text-transform:uppercase;
+  padding:2px 4px 6px;
+  border-bottom:1px solid #2a2a2a;
+  margin-bottom:2px;
+}
+.panel-group.src > .group-label { color:#7fc4e8; }
+.panel-group.lst > .group-label { color:#e8c870; }
+.panel-group.gbl > .group-label { color:#c0c0c0; }
+
+/* ---------- Modules within a panel group ---------- */
+.module {
+  background:#171717; border:1px solid #2a2a2a;
+  border-radius:5px; padding:10px 12px 11px;
+  position:relative;
+}
+.mod-head {
+  display:flex; align-items:center; gap:6px;
+  margin-bottom:9px; padding-bottom:7px;
+  border-bottom:1px solid #242424;
+}
+.mod-title {
+  font-size:.82rem; letter-spacing:.14em; color:#d8d8d8;
+  text-transform:uppercase;
+}
+.mod-title.src { color:#7fc4e8; }
+.mod-title.lst { color:#e8c870; }
+
+.row {
+  display:flex; align-items:center; gap:8px;
+  padding:4px 0; font-size:.82rem;
+}
+.row label {
+  color:#a8a8a8; min-width:62px; letter-spacing:.05em;
+  text-transform:uppercase; font-size:.72rem;
+}
+.row .val {
+  margin-left:auto; color:#e8c870; font-size:.78rem;
+  min-width:60px; text-align:right;
+}
+.row.src .val { color:#7fc4e8; }
+.row input[type=range] { flex:1; min-width:80px; accent-color:#e8c870; }
+.row.src input[type=range] { accent-color:#7fc4e8; }
+.row select, .row input[type=number] {
+  background:#1a1a1a; border:1px solid #333;
+  color:#e0e0e0; padding:4px 6px; font-family:inherit;
+  font-size:.8rem; border-radius:2px;
+}
+.row select { flex:1; }
+.row input[type=number] { width:60px; }
+
+button.tog {
+  padding:6px 10px; background:rgba(30,30,30,.5);
+  border:1px solid #444; color:#aaa;
+  font-family:'Courier New',monospace; font-size:.74rem;
+  letter-spacing:.1em; cursor:pointer; border-radius:2px;
+  text-transform:uppercase; transition:all .12s;
+}
+button.tog:hover { border-color:#666; color:#d8d8d8; }
+button.tog.on {
+  background:rgba(80,140,80,.22); border-color:#5aa05a;
+  color:#9c5; text-shadow:0 0 6px rgba(120,200,120,.3);
+}
+button.tog.warn.on {
+  background:rgba(160,90,40,.22); border-color:#b06030;
+  color:#f4b870; text-shadow:0 0 6px rgba(220,160,80,.3);
+}
+
+.tog-row { display:flex; gap:4px; flex-wrap:wrap; }
+
+.section-divider {
+  height:1px; background:#2a2a2a;
+  margin:8px -12px; padding:0;
+}
+
+/* ---------- 3D views ---------- */
+.view-overview {
+  width:740px; height:440px;
+  background:#040404; border:1px solid #2a2a2a;
+  border-radius:4px; position:relative; overflow:hidden;
+  cursor:grab;
+}
+.view-overview.dragging-source,
+.view-overview.dragging-listener { cursor:grabbing; }
+.view-overview canvas { display:block; }
+
+.povs-row { display:flex; gap:12px; }
+.view-pov {
+  width:364px; height:240px;
+  background:#040404; border:1px solid #2a2a2a;
+  border-radius:4px; position:relative; overflow:hidden;
+}
+.view-pov canvas { display:block; }
+.pov-label {
+  position:absolute; top:6px; left:8px;
+  font-family:'Courier New',monospace;
+  font-size:.65rem; letter-spacing:.22em;
+  padding:3px 7px; border-radius:2px;
+  background:rgba(0,0,0,0.6);
+  text-transform:uppercase;
+}
+.pov-label.lst { color:#e8c870; border:1px solid #6a5a30; }
+.pov-label.src { color:#7fc4e8; border:1px solid #2c5c78; }
+.pov-crosshair {
+  position:absolute; left:50%; top:50%;
+  width:24px; height:24px; pointer-events:none;
+  transform:translate(-50%,-50%);
+  border:1px solid rgba(255,255,255,0.18);
+  border-radius:50%;
+}
+.pov-crosshair::before, .pov-crosshair::after {
+  content:''; position:absolute; background:rgba(255,255,255,0.18);
+}
+.pov-crosshair::before {
+  left:50%; top:-6px; bottom:-6px; width:1px; transform:translateX(-50%);
+}
+.pov-crosshair::after {
+  top:50%; left:-6px; right:-6px; height:1px; transform:translateY(-50%);
+}
+
+#scene-overlay {
+  position:absolute; inset:0; pointer-events:none;
+  font-size:.65rem; color:#888; letter-spacing:.1em;
+}
+#scene-legend {
+  position:absolute; top:8px; right:10px;
+  text-align:right; line-height:1.6;
+}
+#scene-legend .blue { color:#7fc4e8; }
+#scene-legend .gold { color:#e8c870; }
+#scene-tip {
+  position:absolute; bottom:8px; left:10px;
+  font-size:.65rem; color:#888;
+}
+
+#dist-overlay {
+  position:absolute;
+  font-family:'Courier New',monospace; font-size:.78rem;
+  background:rgba(15,15,15,0.9); border:1px solid #6a5a30;
+  color:#e8c870; padding:5px 9px; border-radius:3px;
+  transform:translate(-50%, -130%);
+  pointer-events:none; opacity:0;
+  transition:opacity .14s ease;
+  white-space:nowrap; line-height:1.35;
+  letter-spacing:.06em;
+  text-shadow:0 0 6px rgba(200,168,84,.3);
+}
+#dist-overlay .tof { color:#bbb; font-size:.68rem; }
+
+.tip {
+  font-size:.7rem; color:#9a9a9a; letter-spacing:.04em;
+  line-height:1.55; margin-top:6px;
+}
+.tip strong { color:#d8d8d8; }
+.tip .b { color:#7fc4e8; }
+.tip .g { color:#e8c870; }
+
+#level-bar {
+  width:100%; height:5px; background:#1a1a1a;
+  border-radius:2px; overflow:hidden; margin-top:4px;
+}
+#level-fill {
+  height:100%; background:#7fc4e8;
+  width:0%; transition:width .04s linear;
+  box-shadow:0 0 6px rgba(127,196,232,.6);
+}
+</style>
+</head>
+<body>
+
+<div id="version-badge">v0.4</div>
+
+<div id="start-screen">
+  <div id="hp-banner">⚠ Wear Headphones — Binaural Test</div>
+  <div class="intro">
+    Test 01 v0.4 — physical-scale spatial scene (meters, real speed of sound).<br>
+    Default source distance ≈ 100 ft (30.5 m).
+    Three live views: overview, <span class="g">listener-POV</span>, <span class="b">source-POV</span>.<br>
+    Drag the <span class="b">blue source</span> or <span class="g">gold head</span> in the overview to reposition them.
+    Beam width controls visual cone <em>and</em> the PannerNode directionality.<br>
+    Hover the path between them for distance + time-of-flight.
+  </div>
+  <button id="start-btn">START AUDIO</button>
+</div>
+
+<div id="board">
+
+  <!-- ========== LEFT: SOURCE GROUP ========== -->
+  <div class="col left">
+    <div class="panel-group src">
+      <div class="group-label">Source</div>
+
+      <!-- Test Signal -->
+      <div class="module">
+        <div class="mod-head"><div class="mod-title src">Test Signal</div></div>
+
+        <div class="row src">
+          <label>Type</label>
+          <select id="sig-type">
+            <option value="noise-burst">Noise Bursts (best)</option>
+            <option value="clicks">Click Train</option>
+            <option value="pulse-tone">Pulsed Tone</option>
+            <option value="sine">Continuous Sine</option>
+            <option value="noise">Continuous Noise</option>
+            <option value="speech-like">Speech-like Sweep</option>
+          </select>
+        </div>
+
+        <div class="row src">
+          <label>Freq</label>
+          <input type="range" id="sig-freq" min="80" max="4000" value="440" step="1">
+          <span class="val" id="sig-freq-val">440 Hz</span>
+        </div>
+
+        <div class="row src">
+          <label>Rate</label>
+          <input type="range" id="sig-rate" min="0.5" max="12" value="2" step="0.1">
+          <span class="val" id="sig-rate-val">2.0 Hz</span>
+        </div>
+
+        <div class="row src">
+          <label>Gain</label>
+          <input type="range" id="sig-gain" min="0" max="1" value="0.7" step="0.01">
+          <span class="val" id="sig-gain-val">0.70</span>
+        </div>
+
+        <div class="row" style="padding-top:6px;">
+          <label>Level</label>
+          <div id="level-bar"><div id="level-fill"></div></div>
+        </div>
+      </div>
+
+      <!-- Source Position Y -->
+      <div class="module">
+        <div class="mod-head"><div class="mod-title src">Source Position</div></div>
+        <div class="row src">
+          <label>Y (up)</label>
+          <input type="range" id="src-y-slider" min="-30" max="30" value="0" step="0.1">
+          <span class="val" id="src-y-val">0.00</span>
+        </div>
+        <div class="row src"><label>X</label><span class="val" id="src-x">0.00</span></div>
+        <div class="row src"><label>Y</label><span class="val" id="src-y">0.00</span></div>
+        <div class="row src"><label>Z</label><span class="val" id="src-z">-30.50</span></div>
+        <div class="tip">Drag the cone in the overview to move X/Z.</div>
+      </div>
+
+      <!-- Source Beam -->
+      <div class="module">
+        <div class="mod-head"><div class="mod-title src">Source Beam</div></div>
+
+        <div class="row src">
+          <label>Yaw</label>
+          <input type="range" id="src-yaw" min="-180" max="180" value="180" step="1">
+          <span class="val" id="src-yaw-val">180°</span>
+        </div>
+
+        <div class="row src">
+          <label>Pitch</label>
+          <input type="range" id="src-pitch" min="-89" max="89" value="0" step="1">
+          <span class="val" id="src-pitch-val">0°</span>
+        </div>
+
+        <div class="row src">
+          <label>Width</label>
+          <input type="range" id="src-width" min="5" max="360" value="90" step="1">
+          <span class="val" id="src-width-val">90°</span>
+        </div>
+
+        <div class="row" style="padding-top:4px; gap:6px;">
+          <button class="tog" id="aim-at-listener" style="flex:1;">AIM AT LISTENER</button>
+          <button class="tog" id="lock-aim" title="Lock continuous aim">LOCK</button>
+        </div>
+
+        <div class="tip">
+          <strong>Width:</strong> 5° = laser, 360° = omni. Drives visual cone + PannerNode <code>cone*</code>.
+          <strong>LOCK</strong> keeps the beam tracking the listener.
+        </div>
+      </div>
+
+      <!-- Auto-Orbit -->
+      <div class="module">
+        <div class="mod-head"><div class="mod-title src">Auto-Orbit (source)</div></div>
+
+        <div class="row">
+          <label>Enable</label>
+          <button class="tog" id="orbit-on">OFF</button>
+        </div>
+
+        <div class="row">
+          <label>Speed</label>
+          <input type="range" id="orbit-speed" min="0.02" max="1" value="0.15" step="0.01">
+          <span class="val" id="orbit-speed-val">0.15 Hz</span>
+        </div>
+
+        <div class="row">
+          <label>Radius</label>
+          <input type="range" id="orbit-radius" min="2" max="50" value="20" step="0.5">
+          <span class="val" id="orbit-radius-val">20.0 m</span>
+        </div>
+
+        <div class="row">
+          <label>Plane</label>
+          <select id="orbit-plane">
+            <option value="xz">XZ — horizontal</option>
+            <option value="xy">XY — vertical L/R</option>
+            <option value="yz">YZ — front/back vert.</option>
+            <option value="3d">3D spiral</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== CENTER: 3D VIEWS ========== -->
+  <div class="col center">
+    <div class="view-overview" id="view-overview">
+      <div id="scene-overlay">
+        <div id="scene-legend">
+          <span class="blue">▼</span> source &nbsp; <span class="gold">●</span> listener<br>
+          drag cone or head · hover path for dist
+        </div>
+        <div id="scene-tip">+X right · +Y up · +Z toward camera (front of head: −Z)</div>
+      </div>
+      <div id="dist-overlay">
+        <div id="dist-text">— m</div>
+        <div class="tof" id="dist-tof">— ms ToF</div>
+      </div>
+    </div>
+
+    <div class="povs-row">
+      <div class="view-pov" id="view-lst-pov">
+        <div class="pov-label lst">Listener POV</div>
+        <div class="pov-crosshair"></div>
+      </div>
+      <div class="view-pov" id="view-src-pov">
+        <div class="pov-label src">Source POV (beam axis)</div>
+        <div class="pov-crosshair"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== RIGHT: LISTENER + GLOBAL ========== -->
+  <div class="col right">
+
+    <div class="panel-group lst">
+      <div class="group-label">Listener</div>
+
+      <div class="module">
+        <div class="mod-head"><div class="mod-title lst">Head</div></div>
+
+        <div class="row">
+          <label>Yaw</label>
+          <input type="range" id="lst-yaw" min="-180" max="180" value="0" step="1">
+          <span class="val" id="lst-yaw-val">0°</span>
+        </div>
+
+        <div class="row">
+          <label>Pitch</label>
+          <input type="range" id="lst-pitch" min="-89" max="89" value="0" step="1">
+          <span class="val" id="lst-pitch-val">0°</span>
+        </div>
+
+        <div class="row">
+          <label>Y (up)</label>
+          <input type="range" id="lst-y-slider" min="-10" max="10" value="0" step="0.05">
+          <span class="val" id="lst-y-val">0.00</span>
+        </div>
+
+        <div class="row"><label>X</label><span class="val" id="lst-x">0.00</span></div>
+        <div class="row"><label>Y</label><span class="val" id="lst-y">0.00</span></div>
+        <div class="row"><label>Z</label><span class="val" id="lst-z">0.00</span></div>
+
+        <div class="tip">Drag head in overview for X/Z. (Phone-sensor head-tracking planned next.)</div>
+      </div>
+    </div>
+
+    <div class="panel-group gbl">
+      <div class="group-label">Global</div>
+
+      <!-- Spatializer -->
+      <div class="module">
+        <div class="mod-head"><div class="mod-title">Spatializer</div></div>
+
+        <div class="row">
+          <label>Mode</label>
+          <div class="tog-row" style="flex:1;">
+            <button class="tog on" id="mode-hrtf">HRTF</button>
+            <button class="tog" id="mode-equal">EqualPower</button>
+          </div>
+        </div>
+
+        <div class="row">
+          <label>Dist Mdl</label>
+          <select id="dist-model">
+            <option value="inverse" selected>inverse</option>
+            <option value="linear">linear</option>
+            <option value="exponential">exponential</option>
+          </select>
+        </div>
+
+        <div class="row">
+          <label>RefDist</label>
+          <input type="range" id="ref-dist" min="0.5" max="50" value="10" step="0.5">
+          <span class="val" id="ref-dist-val">10.0</span>
+        </div>
+
+        <div class="row">
+          <label>Rolloff</label>
+          <input type="range" id="rolloff" min="0" max="4" value="1" step="0.05">
+          <span class="val" id="rolloff-val">1.00</span>
+        </div>
+
+        <div class="row">
+          <label>MaxDist</label>
+          <input type="range" id="max-dist" min="20" max="500" value="200" step="5">
+          <span class="val" id="max-dist-val">200</span>
+        </div>
+      </div>
+
+      <!-- Visualization -->
+      <div class="module">
+        <div class="mod-head"><div class="mod-title">Visualization</div></div>
+
+        <div class="row">
+          <label>Time×</label>
+          <input type="range" id="time-scale" min="0.05" max="1" value="0.25" step="0.01">
+          <span class="val" id="time-scale-val">0.25×</span>
+        </div>
+
+        <div class="row">
+          <label>Units</label>
+          <div class="tog-row" style="flex:1;">
+            <button class="tog on" id="unit-m">METERS</button>
+            <button class="tog" id="unit-ft">FEET</button>
+          </div>
+        </div>
+
+        <div class="tip">
+          <strong>Time×</strong> slows wavefronts for visibility. 1× = real (343 m/s).
+        </div>
+      </div>
+
+      <!-- Readout -->
+      <div class="module">
+        <div class="mod-head"><div class="mod-title">Readout</div></div>
+        <div class="row"><label>Dist</label><span class="val" id="readout-dist">30.50 m</span></div>
+        <div class="row"><label>ToF</label><span class="val" id="readout-tof">89 ms</span></div>
+
+        <div class="section-divider"></div>
+
+        <div class="row">
+          <label></label>
+          <button class="tog" id="reset-btn" style="flex:1;">RESET ALL</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ============================================================
+// Config / state
+// ============================================================
+const SPEED_OF_SOUND = 343;
+const M_TO_FT = 3.28084;
+const WORLD_HALF = 60;
+const $ = id => document.getElementById(id);
+
+const source = {
+  pos: { x: 0, y: 0, z: -30.5 },
+  yaw: 180,
+  pitch: 0,
+  beamWidth: 90
+};
+const listener = {
+  pos: { x: 0, y: 0, z: 0 },
+  yaw: 0,
+  pitch: 0
+};
+
+let timeScale = 0.25;
+let useFeet = false;
+let lockAim = false;
+
+let ctx, panner, sourceGain, masterGain, analyser;
+let analyserBuf = null;
+let sigType = 'noise-burst';
+let started = false;
+
+let orbitOn = false;
+let orbitT0 = 0;
+
+// Continuous source nodes (sine, continuous noise, speech-like)
+let continuousNodes = [];
+// Pulse gate (noise-burst, pulse-tone)
+let pulseGateNode = null;
+let pulseGateOsc  = null;
+let pulseGateNoise = null;
+
+// ============================================================
+// THREE.js — single scene, three views (cameras + renderers)
+// ============================================================
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x040404);
+scene.fog = new THREE.Fog(0x040404, 80, 250);
+
+// Overview camera + renderer
+const OV_W = 740, OV_H = 440;
+const overviewCam = new THREE.PerspectiveCamera(45, OV_W/OV_H, 0.1, 500);
+overviewCam.position.set(28, 28, 26);
+
+const ovRenderer = new THREE.WebGLRenderer({ antialias:true, alpha:false });
+ovRenderer.setSize(OV_W, OV_H);
+ovRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+$('view-overview').appendChild(ovRenderer.domElement);
+
+const controls = new OrbitControls(overviewCam, ovRenderer.domElement);
+controls.target.set(0, 0, -15);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 4;
+controls.maxDistance = 300;
+
+// POV cameras + renderers
+const POV_W = 364, POV_H = 240;
+
+const lstCam = new THREE.PerspectiveCamera(75, POV_W/POV_H, 0.01, 500);
+const lstRenderer = new THREE.WebGLRenderer({ antialias:true, alpha:false });
+lstRenderer.setSize(POV_W, POV_H);
+lstRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+$('view-lst-pov').appendChild(lstRenderer.domElement);
+
+const srcCam = new THREE.PerspectiveCamera(75, POV_W/POV_H, 0.01, 500);
+const srcRenderer = new THREE.WebGLRenderer({ antialias:true, alpha:false });
+srcRenderer.setSize(POV_W, POV_H);
+srcRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+$('view-src-pov').appendChild(srcRenderer.domElement);
+
+// --- Lights -------------------------------------------------
+scene.add(new THREE.AmbientLight(0x404858, 0.6));
+const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
+keyLight.position.set(20, 40, 25);
+scene.add(keyLight);
+const rimLight = new THREE.DirectionalLight(0x6688aa, 0.4);
+rimLight.position.set(-25, 15, -20);
+scene.add(rimLight);
+
+// --- Floor / grid ------------------------------------------
+const grid = new THREE.GridHelper(WORLD_HALF*2, 24, 0x2a3540, 0x141a20);
+grid.position.y = -0.001;
+scene.add(grid);
+
+const fineGrid = new THREE.GridHelper(WORLD_HALF*2, 120, 0x1a2026, 0x0e1418);
+fineGrid.position.y = -0.002;
+scene.add(fineGrid);
+
+const floorMat = new THREE.MeshBasicMaterial({ color: 0x080a0d, transparent:true, opacity:0.6 });
+const floorDisc = new THREE.Mesh(new THREE.CircleGeometry(WORLD_HALF, 64), floorMat);
+floorDisc.rotation.x = -Math.PI/2;
+floorDisc.position.y = -0.003;
+scene.add(floorDisc);
+
+function makeAxisLine(color, end) {
+  const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), end]);
+  return new THREE.Line(g, new THREE.LineBasicMaterial({ color, transparent:true, opacity:0.32 }));
+}
+scene.add(makeAxisLine(0xff5050, new THREE.Vector3(WORLD_HALF, 0, 0)));
+scene.add(makeAxisLine(0x50ff50, new THREE.Vector3(0, WORLD_HALF/2, 0)));
+scene.add(makeAxisLine(0x5080ff, new THREE.Vector3(0, 0, WORLD_HALF)));
+
+function makeRangeRing(radiusM, color, opacity=0.16) {
+  const g = new THREE.RingGeometry(radiusM*0.997, radiusM*1.003, 96);
+  const m = new THREE.MeshBasicMaterial({ color, transparent:true, opacity, side:THREE.DoubleSide });
+  const ring = new THREE.Mesh(g, m);
+  ring.rotation.x = -Math.PI/2;
+  ring.position.y = 0.001;
+  return ring;
+}
+scene.add(makeRangeRing(3.05, 0x335566, 0.18));
+scene.add(makeRangeRing(9.14, 0x335566, 0.22));
+scene.add(makeRangeRing(30.48, 0x4a7088, 0.32));
+scene.add(makeRangeRing(60.96, 0x335566, 0.16));
+
+// ============================================================
+// Listener head
+// ============================================================
+const headGroup = new THREE.Group();
+const skinMat = new THREE.MeshStandardMaterial({ color: 0xc8a874, roughness: 0.65, metalness: 0.05 });
+const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.55, 40, 28), skinMat);
+headGroup.add(headMesh);
+
+const earGeo = new THREE.SphereGeometry(0.13, 18, 14);
+const leftEar = new THREE.Mesh(earGeo, skinMat);
+leftEar.position.set(-0.55, 0.05, 0); leftEar.scale.set(0.6, 1.0, 0.7);
+headGroup.add(leftEar);
+const rightEar = new THREE.Mesh(earGeo, skinMat);
+rightEar.position.set(0.55, 0.05, 0); rightEar.scale.set(0.6, 1.0, 0.7);
+headGroup.add(rightEar);
+
+const noseMat = new THREE.MeshStandardMaterial({ color: 0xb89060, roughness: 0.6 });
+const nose = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.22, 16), noseMat);
+nose.position.set(0, -0.05, -0.55); nose.rotation.x = -Math.PI/2;
+headGroup.add(nose);
+
+const eyeMat = new THREE.MeshStandardMaterial({ color: 0x101010, roughness: 0.3 });
+const eyeGeo = new THREE.SphereGeometry(0.055, 14, 10);
+const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+leftEye.position.set(-0.18, 0.13, -0.48); headGroup.add(leftEye);
+const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+rightEye.position.set(0.18, 0.13, -0.48); headGroup.add(rightEye);
+
+const neckMat = new THREE.MeshStandardMaterial({ color: 0x2a2e35, roughness: 0.8 });
+const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 0.4, 20), neckMat);
+neck.position.y = -0.7;
+headGroup.add(neck);
+
+const headPickHit = new THREE.Mesh(
+  new THREE.SphereGeometry(0.85, 12, 8),
+  new THREE.MeshBasicMaterial({ visible:false })
+);
+headGroup.add(headPickHit);
+
+const lstFootMat = new THREE.MeshBasicMaterial({ color: 0xc8a854, transparent:true, opacity:0.55, side:THREE.DoubleSide });
+const lstFootRing = new THREE.Mesh(new THREE.RingGeometry(0.6, 0.7, 36), lstFootMat);
+lstFootRing.rotation.x = -Math.PI/2;
+scene.add(lstFootRing);
+
+scene.add(headGroup);
+
+// ============================================================
+// Source — ball (2× bigger), cone (half length)
+// ============================================================
+const sourceGroup = new THREE.Group();
+
+const coneMat = new THREE.MeshStandardMaterial({
+  color: 0x5ab8e8,
+  emissive: 0x2a6a90,
+  emissiveIntensity: 0.5,
+  roughness: 0.4, metalness: 0.1,
+  transparent: true, opacity: 0.55,
+  side: THREE.DoubleSide
+});
+const coneWireMat = new THREE.MeshBasicMaterial({
+  color: 0x9ad8ff, wireframe:true, transparent:true, opacity:0.22
+});
+
+const apexMat = new THREE.MeshBasicMaterial({ color: 0xc8e8ff });
+const apexOrb = new THREE.Mesh(new THREE.SphereGeometry(0.20, 18, 14), apexMat);
+sourceGroup.add(apexOrb);
+
+// Source "ball" — bumped from 0.32 → 0.64 (2× radius)
+const bodyMat = new THREE.MeshStandardMaterial({
+  color: 0x5ab8e8, emissive: 0x2a6a90, emissiveIntensity:0.45,
+  roughness:0.5, metalness:0.15
+});
+const sourceBody = new THREE.Mesh(new THREE.SphereGeometry(0.64, 28, 18), bodyMat);
+sourceGroup.add(sourceBody);
+
+let coneMesh = null, coneWire = null;
+const CONE_LENGTH = 3;  // halved from 6
+
+function rebuildSourceCone(widthDeg) {
+  if (coneMesh) { sourceGroup.remove(coneMesh); coneMesh.geometry.dispose(); }
+  if (coneWire) { sourceGroup.remove(coneWire); coneWire.geometry.dispose(); }
+  if (widthDeg >= 350) {
+    coneMesh = new THREE.Mesh(new THREE.SphereGeometry(0.85, 20, 12), coneMat);
+    coneWire = new THREE.Mesh(new THREE.SphereGeometry(0.85, 16, 10), coneWireMat);
+    sourceGroup.add(coneMesh); sourceGroup.add(coneWire);
+    return;
+  }
+  const halfAngle = Math.min(85, widthDeg/2) * Math.PI/180;
+  const len = CONE_LENGTH;
+  const baseR = len * Math.tan(halfAngle);
+  const geo = new THREE.ConeGeometry(baseR, len, 36, 1, true);
+  geo.rotateX(Math.PI);
+  geo.translate(0, len/2, 0);
+  coneMesh = new THREE.Mesh(geo, coneMat);
+  const geoW = new THREE.ConeGeometry(baseR, len, 18, 1, true);
+  geoW.rotateX(Math.PI);
+  geoW.translate(0, len/2, 0);
+  coneWire = new THREE.Mesh(geoW, coneWireMat);
+  sourceGroup.add(coneMesh); sourceGroup.add(coneWire);
+}
+rebuildSourceCone(source.beamWidth);
+
+const srcFootMat = new THREE.MeshBasicMaterial({ color: 0x5ab8e8, transparent:true, opacity:0.55, side:THREE.DoubleSide });
+const srcFootRing = new THREE.Mesh(new THREE.RingGeometry(0.7, 0.82, 36), srcFootMat);
+srcFootRing.rotation.x = -Math.PI/2;
+scene.add(srcFootRing);
+
+const srcPickHit = new THREE.Mesh(
+  new THREE.SphereGeometry(1.2, 12, 8),
+  new THREE.MeshBasicMaterial({ visible:false })
+);
+sourceGroup.add(srcPickHit);
+
+scene.add(sourceGroup);
+
+// ============================================================
+// Distance line + hover overlay
+// ============================================================
+const distLineMat = new THREE.LineBasicMaterial({ color: 0xc8a854, transparent:true, opacity:0.08 });
+const distLineGeo = new THREE.BufferGeometry();
+distLineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+const distLine = new THREE.Line(distLineGeo, distLineMat);
+scene.add(distLine);
+
+const distOverlay = $('dist-overlay');
+const distText = $('dist-text');
+const distTof = $('dist-tof');
+
+// ============================================================
+// Wavefronts (audio-reactive expanding shells)
+// ============================================================
+const wavefronts = [];
+function spawnWavefront(level) {
+  const halfAngleRad = Math.min(180, source.beamWidth/2) * Math.PI / 180;
+  let geo;
+  if (source.beamWidth >= 350) {
+    geo = new THREE.SphereGeometry(1, 32, 18);
+  } else {
+    geo = new THREE.SphereGeometry(1, 32, 18, 0, Math.PI*2, 0, halfAngleRad);
+  }
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0x5ab8e8, transparent:true, opacity:0.0,
+    side: THREE.DoubleSide, depthWrite:false
+  });
+  const wfMesh = new THREE.Mesh(geo, mat);
+  const wireMat = new THREE.MeshBasicMaterial({
+    color: 0x9ad8ff, transparent:true, opacity:0.0,
+    wireframe:true, depthWrite:false
+  });
+  const wfWire = new THREE.Mesh(geo, wireMat);
+
+  const pos3 = new THREE.Vector3(source.pos.x, source.pos.y, source.pos.z);
+  wfMesh.position.copy(pos3); wfWire.position.copy(pos3);
+  const dir = orientVec(source.yaw, source.pitch);
+  const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
+  wfMesh.quaternion.copy(q); wfWire.quaternion.copy(q);
+  wfMesh.scale.setScalar(0.05); wfWire.scale.setScalar(0.05);
+
+  scene.add(wfMesh); scene.add(wfWire);
+  wavefronts.push({
+    mesh: wfMesh, wire: wfWire, mat, wireMat, geo,
+    spawnTime: performance.now(),
+    level
+  });
+}
+function updateWavefronts(now) {
+  const v = SPEED_OF_SOUND * timeScale;
+  const maxLifeMs = (120 / v) * 1000;
+  for (let i = wavefronts.length - 1; i >= 0; i--) {
+    const w = wavefronts[i];
+    const elapsed = (now - w.spawnTime) / 1000;
+    const radius = elapsed * v;
+    const lifeFrac = Math.min(1, (now - w.spawnTime) / maxLifeMs);
+    if (lifeFrac >= 1 || radius > 160) {
+      scene.remove(w.mesh); scene.remove(w.wire);
+      w.mat.dispose(); w.wireMat.dispose(); w.geo.dispose();
+      wavefronts.splice(i, 1); continue;
+    }
+    w.mesh.scale.setScalar(Math.max(0.05, radius));
+    w.wire.scale.setScalar(Math.max(0.05, radius));
+    const fadeIn = Math.min(1, elapsed * 12);
+    const fadeOut = Math.max(0, 1 - lifeFrac);
+    w.mat.opacity     = 0.18 * w.level * fadeIn * fadeOut;
+    w.wireMat.opacity = 0.45 * w.level * fadeIn * fadeOut;
+  }
+}
+
+// ============================================================
+// Helpers
+// ============================================================
+function orientVec(yawDeg, pitchDeg) {
+  const y = yawDeg * Math.PI/180;
+  const p = pitchDeg * Math.PI/180;
+  return new THREE.Vector3(
+    Math.sin(y) * Math.cos(p),
+    Math.sin(p),
+    -Math.cos(y) * Math.cos(p)
+  );
+}
+function listenerUpVector(yawDeg, pitchDeg) {
+  const y = yawDeg * Math.PI/180;
+  const p = pitchDeg * Math.PI/180;
+  const fx = Math.sin(y)*Math.cos(p), fy = Math.sin(p), fz = -Math.cos(y)*Math.cos(p);
+  const rx = Math.cos(y), ry = 0, rz = Math.sin(y);
+  return new THREE.Vector3(
+    ry*fz - rz*fy,
+    rz*fx - rx*fz,
+    rx*fy - ry*fx
+  ).normalize();
+}
+function distMeters() {
+  const dx = source.pos.x - listener.pos.x;
+  const dy = source.pos.y - listener.pos.y;
+  const dz = source.pos.z - listener.pos.z;
+  return Math.sqrt(dx*dx + dy*dy + dz*dz);
+}
+function tofMs() { return distMeters() / SPEED_OF_SOUND * 1000; }
+
+// ============================================================
+// Visual updates
+// ============================================================
+function updateSourceVis() {
+  sourceGroup.position.set(source.pos.x, source.pos.y, source.pos.z);
+  const dir = orientVec(source.yaw, source.pitch);
+  const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
+  sourceGroup.quaternion.copy(q);
+
+  srcFootRing.position.set(source.pos.x, 0.002, source.pos.z);
+  srcFootMat.opacity = Math.max(0.05, 0.55 - Math.abs(source.pos.y)*0.04);
+
+  const lp = distLineGeo.attributes.position;
+  lp.array[0] = source.pos.x;   lp.array[1] = source.pos.y;   lp.array[2] = source.pos.z;
+  lp.array[3] = listener.pos.x; lp.array[4] = listener.pos.y; lp.array[5] = listener.pos.z;
+  lp.needsUpdate = true;
+
+  $('src-x').textContent = source.pos.x.toFixed(2);
+  $('src-y').textContent = source.pos.y.toFixed(2);
+  $('src-z').textContent = source.pos.z.toFixed(2);
+  refreshDistanceReadout();
+}
+function updateListenerVis() {
+  headGroup.position.set(listener.pos.x, listener.pos.y, listener.pos.z);
+  headGroup.rotation.order = 'YXZ';
+  headGroup.rotation.y = -listener.yaw * Math.PI / 180;
+  headGroup.rotation.x =  listener.pitch * Math.PI / 180;
+
+  lstFootRing.position.set(listener.pos.x, 0.001, listener.pos.z);
+  lstFootMat.opacity = Math.max(0.05, 0.55 - Math.abs(listener.pos.y)*0.04);
+
+  const lp = distLineGeo.attributes.position;
+  lp.array[0] = source.pos.x;   lp.array[1] = source.pos.y;   lp.array[2] = source.pos.z;
+  lp.array[3] = listener.pos.x; lp.array[4] = listener.pos.y; lp.array[5] = listener.pos.z;
+  lp.needsUpdate = true;
+
+  $('lst-x').textContent = listener.pos.x.toFixed(2);
+  $('lst-y').textContent = listener.pos.y.toFixed(2);
+  $('lst-z').textContent = listener.pos.z.toFixed(2);
+  refreshDistanceReadout();
+}
+function refreshDistanceReadout() {
+  const d = distMeters();
+  const t = tofMs();
+  $('readout-dist').textContent = useFeet ? `${(d*M_TO_FT).toFixed(1)} ft` : `${d.toFixed(2)} m`;
+  $('readout-tof').textContent  = `${t.toFixed(0)} ms`;
+}
+
+// ============================================================
+// Lock-aim handling
+// ============================================================
+function aimSourceAtListener() {
+  const dx = listener.pos.x - source.pos.x;
+  const dy = listener.pos.y - source.pos.y;
+  const dz = listener.pos.z - source.pos.z;
+  const len = Math.sqrt(dx*dx + dy*dy + dz*dz) || 1;
+  const pitch = Math.asin(dy/len) * 180/Math.PI;
+  const yaw = Math.atan2(dx, -dz) * 180/Math.PI;
+  source.yaw   = yaw;
+  source.pitch = Math.max(-89, Math.min(89, pitch));
+  $('src-yaw').value = source.yaw;
+  $('src-yaw-val').textContent = source.yaw.toFixed(0)+'°';
+  $('src-pitch').value = source.pitch;
+  $('src-pitch-val').textContent = source.pitch.toFixed(0)+'°';
+}
+
+// ============================================================
+// Audio
+// ============================================================
+function applyPanner() {
+  if (!panner) return;
+  const t = ctx.currentTime;
+  const setVec = (param, v) => param ? param.setTargetAtTime(v, t, 0.01) : null;
+
+  if (panner.positionX) {
+    setVec(panner.positionX, source.pos.x);
+    setVec(panner.positionY, source.pos.y);
+    setVec(panner.positionZ, source.pos.z);
+  } else {
+    panner.setPosition(source.pos.x, source.pos.y, source.pos.z);
+  }
+  const o = orientVec(source.yaw, source.pitch);
+  if (panner.orientationX) {
+    setVec(panner.orientationX, o.x);
+    setVec(panner.orientationY, o.y);
+    setVec(panner.orientationZ, o.z);
+  } else {
+    panner.setOrientation(o.x, o.y, o.z);
+  }
+  if (source.beamWidth >= 350) {
+    panner.coneInnerAngle = 360;
+    panner.coneOuterAngle = 360;
+    panner.coneOuterGain  = 1.0;
+  } else {
+    panner.coneInnerAngle = source.beamWidth;
+    panner.coneOuterAngle = Math.min(360, source.beamWidth * 1.6);
+    panner.coneOuterGain  = 0.05;
+  }
+}
+function applyListener() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const L = ctx.listener;
+  if (L.positionX) {
+    L.positionX.setTargetAtTime(listener.pos.x, t, 0.01);
+    L.positionY.setTargetAtTime(listener.pos.y, t, 0.01);
+    L.positionZ.setTargetAtTime(listener.pos.z, t, 0.01);
+  } else if (L.setPosition) {
+    L.setPosition(listener.pos.x, listener.pos.y, listener.pos.z);
+  }
+  const f = orientVec(listener.yaw, listener.pitch);
+  const u = listenerUpVector(listener.yaw, listener.pitch);
+  if (L.forwardX) {
+    L.forwardX.setValueAtTime(f.x, t);
+    L.forwardY.setValueAtTime(f.y, t);
+    L.forwardZ.setValueAtTime(f.z, t);
+    L.upX.setValueAtTime(u.x, t);
+    L.upY.setValueAtTime(u.y, t);
+    L.upZ.setValueAtTime(u.z, t);
+  } else if (L.setOrientation) {
+    L.setOrientation(f.x, f.y, f.z, u.x, u.y, u.z);
+  }
+}
+
+// ============================================================
+// Drag interaction (overview only)
+// ============================================================
+const raycaster = new THREE.Raycaster();
+const mouseNDC = new THREE.Vector2();
+const dragPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
+let dragMode = null;
+let mouseLocal = { x:-9999, y:-9999, inside:false };
+
+function setNDC(ev) {
+  const r = ovRenderer.domElement.getBoundingClientRect();
+  const cx = (ev.clientX !== undefined ? ev.clientX : ev.touches[0].clientX) - r.left;
+  const cy = (ev.clientY !== undefined ? ev.clientY : ev.touches[0].clientY) - r.top;
+  mouseNDC.x = (cx / r.width) * 2 - 1;
+  mouseNDC.y = -(cy / r.height) * 2 + 1;
+}
+ovRenderer.domElement.addEventListener('pointerdown', (ev) => {
+  setNDC(ev);
+  raycaster.setFromCamera(mouseNDC, overviewCam);
+  const sHits = raycaster.intersectObject(sourceGroup, true);
+  const lHits = raycaster.intersectObject(headGroup, true);
+  let pick = null;
+  if (sHits.length && lHits.length) pick = sHits[0].distance < lHits[0].distance ? 'source' : 'listener';
+  else if (sHits.length) pick = 'source';
+  else if (lHits.length) pick = 'listener';
+  if (pick) {
+    dragMode = pick;
+    controls.enabled = false;
+    $('view-overview').classList.add(pick === 'source' ? 'dragging-source' : 'dragging-listener');
+    ev.preventDefault();
+  }
+});
+ovRenderer.domElement.addEventListener('pointermove', (ev) => {
+  const r = ovRenderer.domElement.getBoundingClientRect();
+  mouseLocal.x = (ev.clientX !== undefined ? ev.clientX : (ev.touches?ev.touches[0].clientX:0)) - r.left;
+  mouseLocal.y = (ev.clientY !== undefined ? ev.clientY : (ev.touches?ev.touches[0].clientY:0)) - r.top;
+  mouseLocal.inside = true;
+  if (!dragMode) return;
+  setNDC(ev);
+  raycaster.setFromCamera(mouseNDC, overviewCam);
+  const target = dragMode === 'source' ? source : listener;
+  dragPlane.set(new THREE.Vector3(0,1,0), -target.pos.y);
+  const hit = new THREE.Vector3();
+  if (raycaster.ray.intersectPlane(dragPlane, hit)) {
+    target.pos.x = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, hit.x));
+    target.pos.z = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, hit.z));
+    if (dragMode === 'source') { updateSourceVis(); applyPanner(); }
+    else                       { updateListenerVis(); applyListener(); }
+  }
+});
+function endDrag() {
+  if (!dragMode) return;
+  $('view-overview').classList.remove('dragging-source', 'dragging-listener');
+  dragMode = null; controls.enabled = true;
+}
+ovRenderer.domElement.addEventListener('pointerup', endDrag);
+ovRenderer.domElement.addEventListener('pointerleave', () => { endDrag(); mouseLocal.inside = false; });
+
+// ============================================================
+// Distance hover overlay (overview only)
+// ============================================================
+function pointToSegmentPx(px, py, ax, ay, bx, by) {
+  const dx = bx-ax, dy = by-ay;
+  const len2 = dx*dx + dy*dy;
+  if (len2 < 0.001) return Math.hypot(px-ax, py-ay);
+  let t = ((px-ax)*dx + (py-ay)*dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t*dx), py - (ay + t*dy));
+}
+function updateDistanceHover() {
+  if (!mouseLocal.inside) {
+    distLineMat.opacity = 0.08;
+    distOverlay.style.opacity = '0';
+    return;
+  }
+  const r = ovRenderer.domElement.getBoundingClientRect();
+  const sN = new THREE.Vector3(source.pos.x, source.pos.y, source.pos.z).project(overviewCam);
+  const lN = new THREE.Vector3(listener.pos.x, listener.pos.y, listener.pos.z).project(overviewCam);
+  const sx = (sN.x+1)/2 * r.width,  sy = (1-sN.y)/2 * r.height;
+  const lx = (lN.x+1)/2 * r.width,  ly = (1-lN.y)/2 * r.height;
+  const d = pointToSegmentPx(mouseLocal.x, mouseLocal.y, sx, sy, lx, ly);
+
+  const HOVER_PX = 36;
+  const hovered = d < HOVER_PX;
+  distLineMat.opacity = hovered ? 0.7 : 0.08;
+  distOverlay.style.opacity = hovered ? '1' : '0';
+  if (hovered) {
+    distOverlay.style.left = ((sx + lx) / 2) + 'px';
+    distOverlay.style.top  = ((sy + ly) / 2) + 'px';
+    const dm = distMeters();
+    distText.textContent = useFeet ? `${(dm*M_TO_FT).toFixed(1)} ft` : `${dm.toFixed(2)} m`;
+    distTof.textContent  = `${tofMs().toFixed(0)} ms ToF (real)`;
+  }
+}
+
+// ============================================================
+// Audio start
+// ============================================================
+$('start-btn').addEventListener('click', startAudio);
+
+async function startAudio() {
+  if (started) return;
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  await ctx.resume();
+  if (ctx.state === 'suspended') await ctx.resume();
+
+  masterGain = ctx.createGain();
+  masterGain.gain.value = 1.0;
+  masterGain.connect(ctx.destination);
+
+  panner = ctx.createPanner();
+  panner.panningModel = 'HRTF';
+  panner.distanceModel = 'inverse';
+  panner.refDistance = parseFloat($('ref-dist').value);
+  panner.maxDistance = parseFloat($('max-dist').value);
+  panner.rolloffFactor = parseFloat($('rolloff').value);
+  panner.connect(masterGain);
+
+  sourceGain = ctx.createGain();
+  sourceGain.gain.value = parseFloat($('sig-gain').value);
+  sourceGain.connect(panner);
+
+  analyser = ctx.createAnalyser();
+  analyser.fftSize = 512;
+  analyser.smoothingTimeConstant = 0.0;
+  sourceGain.connect(analyser);
+  analyserBuf = new Float32Array(analyser.fftSize);
+
+  applyListener();
+  applyPanner();
+  rebuildSignal();
+  startScheduler();
+
+  $('start-screen').style.display = 'none';
+  $('board').style.display = 'flex';
+  started = true;
+}
+
+// ============================================================
+// Signal generators — continuous voices are constructed here.
+// Pulsed/click events are scheduled by the look-ahead scheduler.
+// ============================================================
+function clearContinuous() {
+  for (const n of continuousNodes) {
+    try { n.stop && n.stop(); } catch(e){}
+    try { n.disconnect && n.disconnect(); } catch(e){}
+  }
+  continuousNodes = [];
+  if (pulseGateNode)  { try { pulseGateNode.disconnect(); } catch(e){} pulseGateNode = null; }
+  if (pulseGateOsc)   { try { pulseGateOsc.stop(); pulseGateOsc.disconnect(); } catch(e){} pulseGateOsc = null; }
+  if (pulseGateNoise) { try { pulseGateNoise.stop(); pulseGateNoise.disconnect(); } catch(e){} pulseGateNoise = null; }
+}
+
+function rebuildSignal() {
+  if (!ctx) return;
+  clearContinuous();
+  switch (sigType) {
+    case 'sine':           buildSine(); break;
+    case 'noise':          buildNoise(); break;
+    case 'speech-like':    buildSpeechLike(); break;
+    case 'pulse-tone':     buildPulseToneGate(); break;
+    case 'noise-burst':    buildNoiseBurstGate(); break;
+    case 'clicks':         /* nothing continuous; scheduler creates one-shots */ break;
+  }
+  // resync next event so rhythm starts immediately after switching
+  if (ctx) nextEventTime = ctx.currentTime + 0.05;
+}
+
+function makeWhiteNoiseNode() {
+  const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = (Math.random()*2 - 1) * 0.6;
+  const src = ctx.createBufferSource();
+  src.buffer = buf; src.loop = true; src.start();
+  return src;
+}
+function buildSine() {
+  const o = ctx.createOscillator();
+  o.type = 'sine';
+  o.frequency.value = parseFloat($('sig-freq').value);
+  o.connect(sourceGain); o.start();
+  continuousNodes.push(o);
+}
+function buildNoise() {
+  const node = makeWhiteNoiseNode();
+  node.connect(sourceGain);
+  continuousNodes.push(node);
+}
+function buildSpeechLike() {
+  const noise = makeWhiteNoiseNode();
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass'; bp.Q.value = 6; bp.frequency.value = 800;
+  const lfo = ctx.createOscillator();
+  lfo.frequency.value = 1.2;
+  const lfoG = ctx.createGain();
+  lfoG.gain.value = 600;
+  lfo.connect(lfoG).connect(bp.frequency);
+  noise.connect(bp).connect(sourceGain);
+  lfo.start();
+  continuousNodes.push(noise, bp, lfo, lfoG);
+}
+function buildPulseToneGate() {
+  pulseGateOsc = ctx.createOscillator();
+  pulseGateOsc.type = 'triangle';
+  pulseGateOsc.frequency.value = parseFloat($('sig-freq').value);
+  pulseGateNode = ctx.createGain();
+  pulseGateNode.gain.value = 0;
+  pulseGateOsc.connect(pulseGateNode).connect(sourceGain);
+  pulseGateOsc.start();
+}
+function buildNoiseBurstGate() {
+  pulseGateNoise = makeWhiteNoiseNode();
+  pulseGateNode = ctx.createGain();
+  pulseGateNode.gain.value = 0;
+  pulseGateNoise.connect(pulseGateNode).connect(sourceGain);
+}
+
+// ============================================================
+// Look-ahead scheduler — Chris Wilson pattern for steady timing
+// ============================================================
+const LOOKAHEAD_MS = 25;       // how often the scheduler runs
+const SCHEDULE_AHEAD_S = 0.12; // how far ahead it schedules events
+let nextEventTime = 0;
+let schedulerTimer = null;
+
+function startScheduler() {
+  if (schedulerTimer) clearInterval(schedulerTimer);
+  nextEventTime = ctx.currentTime + 0.05;
+  schedulerTimer = setInterval(schedulerTick, LOOKAHEAD_MS);
+}
+function schedulerTick() {
+  if (!ctx) return;
+  const isPulseMode = (sigType === 'noise-burst' || sigType === 'pulse-tone');
+  const isClickMode = (sigType === 'clicks');
+  if (!isPulseMode && !isClickMode) return;
+  const rate = parseFloat($('sig-rate').value);
+  const period = 1 / rate;
+  while (nextEventTime < ctx.currentTime + SCHEDULE_AHEAD_S) {
+    if (isPulseMode && pulseGateNode) {
+      schedulePulseAt(nextEventTime, period);
+    } else if (isClickMode) {
+      scheduleClickAt(nextEventTime);
+    }
+    nextEventTime += period;
+  }
+}
+function schedulePulseAt(t, period) {
+  const burstMs = Math.min(120, period * 1000 * 0.35);
+  const g = pulseGateNode.gain;
+  g.setValueAtTime(0, t);
+  g.linearRampToValueAtTime(1, t + 0.005);
+  g.linearRampToValueAtTime(1, t + burstMs/1000 - 0.01);
+  g.linearRampToValueAtTime(0, t + burstMs/1000);
+}
+function scheduleClickAt(t) {
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(1, t + 0.0005);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.012);
+  const buf = ctx.createBuffer(1, 64, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i=0; i<d.length; i++) d[i] = (Math.random()*2 - 1);
+  const s = ctx.createBufferSource(); s.buffer = buf;
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass'; bp.frequency.value = 2200; bp.Q.value = 1.5;
+  s.connect(bp).connect(g).connect(sourceGain);
+  s.start(t);
+  s.stop(t + 0.04);
+}
+
+// ============================================================
+// POV camera updates
+// ============================================================
+const tmpVec = new THREE.Vector3();
+const tmpUp = new THREE.Vector3();
+function updatePovCameras() {
+  // Listener-POV: at head position, looking along listener's forward
+  lstCam.position.set(listener.pos.x, listener.pos.y, listener.pos.z);
+  const lf = orientVec(listener.yaw, listener.pitch);
+  const lu = listenerUpVector(listener.yaw, listener.pitch);
+  tmpVec.set(listener.pos.x + lf.x, listener.pos.y + lf.y, listener.pos.z + lf.z);
+  lstCam.up.copy(lu);
+  lstCam.lookAt(tmpVec);
+
+  // Source-POV: at source position, looking along beam axis
+  srcCam.position.set(source.pos.x, source.pos.y, source.pos.z);
+  const sf = orientVec(source.yaw, source.pitch);
+  tmpVec.set(source.pos.x + sf.x, source.pos.y + sf.y, source.pos.z + sf.z);
+  // build a sensible up vector (world up unless beam is near vertical)
+  if (Math.abs(sf.y) > 0.95) tmpUp.set(0,0,1); else tmpUp.set(0,1,0);
+  srcCam.up.copy(tmpUp);
+  srcCam.lookAt(tmpVec);
+}
+
+// ============================================================
+// Animation loop
+// ============================================================
+let smoothLevel = 0;
+let lastWavefrontTime = 0;
+
+function animate() {
+  const now = performance.now();
+
+  if (lockAim) {
+    aimSourceAtListener();
+  }
+
+  if (orbitOn && ctx) {
+    const t = (ctx.currentTime - orbitT0);
+    const speed = parseFloat($('orbit-speed').value);
+    const r = parseFloat($('orbit-radius').value);
+    const a = t * speed * Math.PI * 2;
+    const plane = $('orbit-plane').value;
+    switch (plane) {
+      case 'xz': source.pos.x = Math.cos(a)*r; source.pos.z = Math.sin(a)*r; break;
+      case 'xy': source.pos.x = Math.cos(a)*r; source.pos.y = Math.sin(a)*r; break;
+      case 'yz': source.pos.y = Math.sin(a)*r; source.pos.z = Math.cos(a)*r; break;
+      case '3d':
+        source.pos.x = Math.cos(a)*r;
+        source.pos.z = Math.sin(a)*r;
+        source.pos.y = Math.sin(a*0.4)*r*0.4;
+        break;
+    }
+    $('src-y-slider').value = source.pos.y.toFixed(2);
+    $('src-y-val').textContent = source.pos.y.toFixed(2);
+    updateSourceVis(); applyPanner();
+  }
+
+  // Audio level
+  let level = 0;
+  if (analyser) {
+    analyser.getFloatTimeDomainData(analyserBuf);
+    let peak = 0;
+    for (let i = 0; i < analyserBuf.length; i++) {
+      const a = Math.abs(analyserBuf[i]); if (a > peak) peak = a;
+    }
+    level = peak;
+  }
+  smoothLevel = Math.max(level, smoothLevel * 0.85);
+
+  coneMat.emissiveIntensity = 0.45 + smoothLevel * 1.6;
+  coneMat.opacity = 0.40 + smoothLevel * 0.35;
+  bodyMat.emissiveIntensity = 0.4 + smoothLevel * 1.4;
+  apexOrb.scale.setScalar(1 + smoothLevel * 1.6);
+  apexMat.color.setRGB(0.78 + smoothLevel*0.22, 0.91 + smoothLevel*0.09, 1.0);
+
+  if (level > 0.04) {
+    const minGap = 70 + (1 - Math.min(1, level)) * 110;
+    if (now - lastWavefrontTime > minGap) {
+      spawnWavefront(Math.min(1, level * 1.3));
+      lastWavefrontTime = now;
+    }
+  }
+  updateWavefronts(now);
+  updateDistanceHover();
+  $('level-fill').style.width = (Math.min(1, smoothLevel*1.2) * 100).toFixed(1) + '%';
+
+  controls.update();
+  updatePovCameras();
+
+  // --- Render overview (everything visible) ---
+  ovRenderer.render(scene, overviewCam);
+
+  // --- Render listener POV (hide head) ---
+  headGroup.visible = false;
+  lstRenderer.render(scene, lstCam);
+  headGroup.visible = true;
+
+  // --- Render source POV (hide source group) ---
+  sourceGroup.visible = false;
+  srcRenderer.render(scene, srcCam);
+  sourceGroup.visible = true;
+
+  requestAnimationFrame(animate);
+}
+updateSourceVis();
+updateListenerVis();
+updatePovCameras();
+animate();
+
+// ============================================================
+// UI bindings
+// ============================================================
+function bindRange(id, valId, fmt) {
+  const el = $(id), out = $(valId);
+  const refresh = () => out.textContent = fmt(parseFloat(el.value));
+  el.addEventListener('input', refresh);
+  refresh();
+  return el;
+}
+bindRange('sig-freq',     'sig-freq-val',     v => v.toFixed(0)+' Hz');
+bindRange('sig-rate',     'sig-rate-val',     v => v.toFixed(2)+' Hz');
+bindRange('sig-gain',     'sig-gain-val',     v => v.toFixed(2));
+bindRange('ref-dist',     'ref-dist-val',     v => v.toFixed(2));
+bindRange('rolloff',      'rolloff-val',      v => v.toFixed(2));
+bindRange('max-dist',     'max-dist-val',     v => v.toFixed(0));
+bindRange('orbit-speed',  'orbit-speed-val',  v => v.toFixed(2)+' Hz');
+bindRange('orbit-radius', 'orbit-radius-val', v => v.toFixed(2)+' m');
+bindRange('time-scale',   'time-scale-val',   v => v.toFixed(2)+'×');
+bindRange('src-yaw',      'src-yaw-val',      v => v.toFixed(0)+'°');
+bindRange('src-pitch',    'src-pitch-val',    v => v.toFixed(0)+'°');
+bindRange('src-width',    'src-width-val',    v => v.toFixed(0)+'°');
+bindRange('lst-yaw',      'lst-yaw-val',      v => v.toFixed(0)+'°');
+bindRange('lst-pitch',    'lst-pitch-val',    v => v.toFixed(0)+'°');
+
+$('sig-type').addEventListener('change', e => { sigType = e.target.value; rebuildSignal(); });
+$('sig-freq').addEventListener('input', () => {
+  if (!ctx) return;
+  const f = parseFloat($('sig-freq').value);
+  if (pulseGateOsc) pulseGateOsc.frequency.setTargetAtTime(f, ctx.currentTime, 0.01);
+  for (const n of continuousNodes) {
+    if (n && n.frequency && n.type !== undefined &&
+        (n.type==='sine' || n.type==='triangle' || n.type==='square' || n.type==='sawtooth')) {
+      n.frequency.setTargetAtTime(f, ctx.currentTime, 0.01);
+    }
+  }
+});
+$('sig-rate').addEventListener('input', () => { /* scheduler reads slider live */ });
+$('sig-gain').addEventListener('input', () => {
+  if (!sourceGain) return;
+  sourceGain.gain.setTargetAtTime(parseFloat($('sig-gain').value), ctx.currentTime, 0.01);
+});
+
+function setMode(mode) {
+  if (panner) panner.panningModel = mode;
+  $('mode-hrtf').classList.toggle('on', mode === 'HRTF');
+  $('mode-equal').classList.toggle('on', mode === 'equalpower');
+  $('mode-equal').classList.toggle('warn', mode === 'equalpower');
+}
+$('mode-hrtf').addEventListener('click',  () => setMode('HRTF'));
+$('mode-equal').addEventListener('click', () => setMode('equalpower'));
+
+$('dist-model').addEventListener('change', e => { if (panner) panner.distanceModel = e.target.value; });
+$('ref-dist').addEventListener('input',   e => { if (panner) panner.refDistance   = parseFloat(e.target.value); });
+$('rolloff').addEventListener('input',    e => { if (panner) panner.rolloffFactor = parseFloat(e.target.value); });
+$('max-dist').addEventListener('input',   e => { if (panner) panner.maxDistance   = parseFloat(e.target.value); });
+
+$('src-yaw').addEventListener('input', e => {
+  if (lockAim) return; // ignore manual input while locked
+  source.yaw = parseFloat(e.target.value);
+  updateSourceVis(); applyPanner();
+});
+$('src-pitch').addEventListener('input', e => {
+  if (lockAim) return;
+  source.pitch = parseFloat(e.target.value);
+  updateSourceVis(); applyPanner();
+});
+$('src-width').addEventListener('input', e => {
+  source.beamWidth = parseFloat(e.target.value);
+  rebuildSourceCone(source.beamWidth);
+  applyPanner();
+});
+
+$('aim-at-listener').addEventListener('click', () => {
+  aimSourceAtListener();
+  updateSourceVis(); applyPanner();
+});
+$('lock-aim').addEventListener('click', () => {
+  lockAim = !lockAim;
+  $('lock-aim').classList.toggle('on', lockAim);
+  $('lock-aim').textContent = lockAim ? 'LOCK ON' : 'LOCK';
+});
+
+$('lst-yaw').addEventListener('input', e => {
+  listener.yaw = parseFloat(e.target.value);
+  updateListenerVis(); applyListener();
+});
+$('lst-pitch').addEventListener('input', e => {
+  listener.pitch = parseFloat(e.target.value);
+  updateListenerVis(); applyListener();
+});
+
+$('src-y-slider').addEventListener('input', e => {
+  source.pos.y = parseFloat(e.target.value);
+  $('src-y-val').textContent = source.pos.y.toFixed(2);
+  updateSourceVis(); applyPanner();
+});
+$('lst-y-slider').addEventListener('input', e => {
+  listener.pos.y = parseFloat(e.target.value);
+  $('lst-y-val').textContent = listener.pos.y.toFixed(2);
+  updateListenerVis(); applyListener();
+});
+
+$('time-scale').addEventListener('input', e => { timeScale = parseFloat(e.target.value); });
+function setUnits(ft) {
+  useFeet = ft;
+  $('unit-m').classList.toggle('on', !ft);
+  $('unit-ft').classList.toggle('on', ft);
+  refreshDistanceReadout();
+}
+$('unit-m').addEventListener('click',  () => setUnits(false));
+$('unit-ft').addEventListener('click', () => setUnits(true));
+
+$('orbit-on').addEventListener('click', () => {
+  orbitOn = !orbitOn;
+  $('orbit-on').classList.toggle('on', orbitOn);
+  $('orbit-on').textContent = orbitOn ? 'ON' : 'OFF';
+  if (orbitOn && ctx) orbitT0 = ctx.currentTime;
+});
+
+$('reset-btn').addEventListener('click', () => {
+  source.pos = { x:0, y:0, z:-30.5 };
+  source.yaw = 180; source.pitch = 0; source.beamWidth = 90;
+  listener.pos = { x:0, y:0, z:0 };
+  listener.yaw = 0; listener.pitch = 0;
+  lockAim = false;
+  $('lock-aim').classList.remove('on');
+  $('lock-aim').textContent = 'LOCK';
+
+  $('src-yaw').value = 180;   $('src-yaw-val').textContent = '180°';
+  $('src-pitch').value = 0;   $('src-pitch-val').textContent = '0°';
+  $('src-width').value = 90;  $('src-width-val').textContent = '90°';
+  $('src-y-slider').value = 0; $('src-y-val').textContent = '0.00';
+  $('lst-yaw').value = 0;     $('lst-yaw-val').textContent = '0°';
+  $('lst-pitch').value = 0;   $('lst-pitch-val').textContent = '0°';
+  $('lst-y-slider').value = 0; $('lst-y-val').textContent = '0.00';
+
+  rebuildSourceCone(source.beamWidth);
+  updateSourceVis(); updateListenerVis();
+  applyPanner(); applyListener();
+});
+</script>
+</body>
+</html>
