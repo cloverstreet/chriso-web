@@ -95,7 +95,7 @@
 <div id="invite">
   <span>touch to begin</span>
   <span class="hint">drag to play &middot; X = mute &middot; Z = tune &middot; D = delay &middot; T = tuning &middot; B = bow &middot; F = fx</span>
-  <span class="hint" style="margin-top:1.5em;font-size:0.85rem;color:rgba(200,170,120,0.12)">v4.10</span>
+  <span class="hint" style="margin-top:1.5em;font-size:0.85rem;color:rgba(200,170,120,0.12)">v4.11</span>
 </div>
 <button id="tuningToggle">TUNING</button>
 <button id="bowToggle">BOW</button>
@@ -563,7 +563,14 @@ var fxVisible = false;
 function initAudio() {
   try {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state !== 'running') audioCtx.resume();
+    // v4.11: iOS — by default Safari plays WebAudio through the "ambient"
+    // session, which the hardware mute/ringer switch silences. Setting the
+    // session type to "playback" (iOS 16.4+) makes audio ignore the mute
+    // switch. Wrapped in try/catch — unsupported elsewhere.
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch(e) {}
+    if (audioCtx.state !== 'running') {
+      audioCtx.resume().catch(function(){});
+    }
 
     masterGainNode = audioCtx.createGain();
     masterGainNode.gain.value = masterVol;
@@ -1656,9 +1663,46 @@ resize();
 window.addEventListener('resize', resize);
 
 var invite = document.getElementById('invite');
+
+// v4.11: iOS audio unlock. Two-pronged so audio plays even with the
+// hardware mute switch on:
+//   1. A silent, looping <audio playsinline> element. Once it's playing
+//      (started inside a user gesture), iOS promotes the page's audio
+//      session to media playback, which the mute switch doesn't silence.
+//      This is the fallback for iOS < 16.4 that lacks navigator.audioSession.
+//   2. navigator.audioSession.type = 'playback' (set in initAudio) for 16.4+.
+var iosUnlockEl = null;
+function makeSilentWavUrl(seconds) {
+  var sr = 8000, n = Math.floor(sr * seconds);
+  var buf = new ArrayBuffer(44 + n * 2), dv = new DataView(buf);
+  function ws(o, s) { for (var i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); }
+  ws(0, 'RIFF'); dv.setUint32(4, 36 + n * 2, true); ws(8, 'WAVE'); ws(12, 'fmt ');
+  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, sr, true); dv.setUint32(28, sr * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+  ws(36, 'data'); dv.setUint32(40, n * 2, true);   // samples default to 0 = silence
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+}
+function unlockIosAudio() {
+  if (!iosUnlockEl) {
+    iosUnlockEl = new Audio();
+    iosUnlockEl.src = makeSilentWavUrl(0.5);
+    iosUnlockEl.loop = true;
+    iosUnlockEl.setAttribute('playsinline', '');
+    iosUnlockEl.volume = 1;     // silent CONTENT, not muted — so the session promotes
+  }
+  iosUnlockEl.play().catch(function(){});
+}
+
 function start() {
-  if (started) return;
+  unlockIosAudio();             // must run inside the user gesture
+  if (started) {
+    // Already initialized — just make sure the context is awake (iOS can
+    // re-suspend after backgrounding).
+    if (audioCtx && audioCtx.state !== 'running') audioCtx.resume().catch(function(){});
+    return;
+  }
   initAudio();
+  if (audioCtx && audioCtx.state !== 'running') audioCtx.resume().catch(function(){});
   invite.classList.add('gone');
   setTimeout(function() { invite.remove(); }, 1200);
 }
