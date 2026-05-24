@@ -2,39 +2,37 @@
   ============================================================================
   Binaural Explorer — phone-targeted spatial-audio interface sketch
   ============================================================================
-  Deploy path: chriso.org/TestCases/binaural-explorer/
+  Deploy path: chriso.org/TestCases/spatialAudio/binaural-explorer/
+  (moved 2026-05-24 from /TestCases/binaural-explorer/; all binaural test
+   cases now live under /TestCases/spatialAudio/. Companion:
+   /TestCases/spatialAudio/binaural-visualizer/ — the HRTF visualizer.)
 
   HISTORY:
-    v0.1–v0.5  — see prior versions in git / Notion.
-    v0.6 (2026-05-19)
-      • iOS audio unlock (silent-buffer trick + resume on every user gesture).
-        Note: iOS Safari respects the ringer/silent switch — banner reminds.
-      • AUDIO SETTINGS panel (top-right): mute toggle, STEREO/BINAURAL spatial
-        mode switch, HRTF refDistance + rolloff sliders.
-      • Switchable spatial routing:
-          binaural  → PannerNode(panningModel='HRTF') with AudioListener
-                      tracking the visual listener's position+orientation
-          stereo    → StereoPannerNode with pan derived from
-                      speaker-position-in-listener's-right-vector frame
-      • Conversation manager now allows ~15% overlap and ~10% interrupt so
-        the room feels less rigidly turn-taken.
-      • Voice pitch variation widened substantially (per-utterance spread
-        0.4–1.8, trend ±0.6, per-word multiplier wider range).
-      • WASD navigation (desktop) + virtual joystick (mobile / touch).
-        Movement is in the listener's local frame.
-      • Player can TALK: spacebar (desktop) or TALK button (mobile).
-        Quick tap = short burst; hold = continuous utterance.
-      • Three rooms placed around the salon, each with a speaker inside
-        and a distinct ConvolverNode reverb (brick / soft / dry).
-        Listener+speaker on opposite sides of a wall → direct path is
-        occluded (lowpass + gain reduction). Player voice is routed to
-        whichever room's reverb the player is currently inside.
-      • Top-down camera follows the listener so they don't walk off-screen.
+    v0.1–v0.6  — see git / Notion.
+    v0.7 (2026-05-24)
+      • Rooms spread further apart; room SIZE scales with reverb length
+        (Brick = big/long, Soft = medium/short-dark, Dry = small/tight).
+      • Textured walls via CanvasTexture matching acoustic character:
+        brick, padded/quilted, acoustic-panel, metal (solid), glass, concrete.
+        Ceilings left as wireframe (transparent) so the top-down view sees in.
+      • Heads + bodies get a translucent filled surface + brighter face plate
+        + chest panel, so facing direction reads clearly.
+      • "Hyper-real-ish" audio model (cheap but convincing):
+          - DIRECTIVITY: a speaker facing away is much quieter + darker
+            (cardioid gain + off-axis lowpass). Dial in the AUDIO panel.
+          - AIR ABSORPTION: highs roll off with distance.
+          - WALL OCCLUSION: geometric segment test through free-standing
+            walls; per-material transmission (solid blocks, glass passes
+            low/mid, concrete is a distant reflector).
+          - SPACE CONVOLVER: sparse-tap IR (open-area early reflections +
+            distant-wall slap ~128 ms), fed by every voice.
+      • Test structures + characters in revealing spots: solid metal wall
+        with a hidden speaker behind it; glass wall with a speaker behind it;
+        distant concrete reflector wall; an Open speaker out in the field
+        that slowly rotates (directivity sweep test).
+    NOT perfect realism — approximations tuned to *feel* convincing.
 
-  NOTE TO OTHER CLAUDE SESSIONS:
-    Phone-targeted counterpart to /TestCases/spatialAudio/Test01-binaural/.
-    Audio is intentionally exploratory — formant garble, synthetic IRs,
-    binary occlusion. NOT a serious binaural production rig.
+  NOTE TO OTHER CLAUDE SESSIONS: phone-targeted; audio is exploratory.
   ============================================================================
 -->
 <!DOCTYPE html>
@@ -42,298 +40,74 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Binaural Explorer — spatial-audio sketch (v0.6)</title>
+<title>Binaural Explorer — spatial-audio sketch (v0.7)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
   *,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
-    margin: 0; padding: 0; width: 100%; height: 100vh;
-    overflow: hidden;
-    background: #0a1424;
-    color: #d8e2f0;
-    font-family: 'Inter', sans-serif;
-    touch-action: none;
-    overscroll-behavior: none;
+    margin: 0; padding: 0; width: 100%; height: 100vh; overflow: hidden;
+    background: #0a1424; color: #d8e2f0; font-family: 'Inter', sans-serif;
+    touch-action: none; overscroll-behavior: none;
     -webkit-user-select: none; user-select: none;
   }
   #scene { position: fixed; inset: 0; z-index: 1; cursor: grab; }
   #scene.dragging { cursor: grabbing; }
-
-  .corner {
-    position: fixed; z-index: 10;
-    font-weight: 300; letter-spacing: 0.08em;
-    color: rgba(216, 226, 240, 0.72);
-    pointer-events: none;
-  }
-  .top-center {
-    top: 1.0rem; left: 50%; transform: translateX(-50%);
-    font-size: 0.66rem; letter-spacing: 0.18em;
-    text-align: center; color: rgba(216,226,240,0.55);
-  }
-
-  .back {
-    position: fixed; top: 1.1rem; left: 1.1rem;
-    z-index: 11; pointer-events: auto;
-    color: #6ec6ff; text-decoration: none;
-    font-size: 0.58rem; letter-spacing: 0.18em; opacity: 0.5;
-    text-transform: lowercase;
-  }
+  .corner { position: fixed; z-index: 10; font-weight: 300; letter-spacing: 0.08em; color: rgba(216,226,240,0.72); pointer-events: none; }
+  .top-center { top: 1.0rem; left: 50%; transform: translateX(-50%); font-size: 0.66rem; letter-spacing: 0.18em; text-align: center; color: rgba(216,226,240,0.55); }
+  .back { position: fixed; top: 1.1rem; left: 1.1rem; z-index: 11; pointer-events: auto; color: #6ec6ff; text-decoration: none; font-size: 0.58rem; letter-spacing: 0.18em; opacity: 0.5; text-transform: lowercase; }
   .back:hover { opacity: 1; }
-
-  /* iOS silent-switch reminder (shown briefly when audio is first enabled) */
-  #ios-reminder {
-    position: fixed; top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 25;
-    background: rgba(20,30,50,0.96);
-    border: 1px solid rgba(255,200,100,0.6);
-    color: #ffd07a;
-    font-family: 'Inter', sans-serif;
-    font-size: 0.8rem; letter-spacing: 0.12em;
-    padding: 14px 22px;
-    border-radius: 6px;
-    text-align: center;
-    max-width: 80%;
-    opacity: 0;
-    transition: opacity 0.3s;
-    pointer-events: none;
-    line-height: 1.5;
-  }
+  #ios-reminder { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 25;
+    background: rgba(20,30,50,0.96); border: 1px solid rgba(255,200,100,0.6); color: #ffd07a;
+    font-size: 0.8rem; letter-spacing: 0.12em; padding: 14px 22px; border-radius: 6px; text-align: center;
+    max-width: 80%; opacity: 0; transition: opacity 0.3s; pointer-events: none; line-height: 1.5; }
   #ios-reminder.visible { opacity: 1; }
   #ios-reminder small { color: #d8e2f0; font-size: 0.65rem; letter-spacing: 0.1em; opacity: 0.75; display: block; margin-top: 6px; }
-
-  /* AUDIO settings panel toggle (top-right) */
-  #audio-settings-btn {
-    position: fixed; top: 1.0rem; right: 1.1rem;
-    z-index: 14; pointer-events: auto;
-    font-family: 'Inter', sans-serif; font-weight: 400;
-    font-size: 0.58rem; letter-spacing: 0.18em;
-    text-transform: uppercase;
-    padding: 7px 13px;
-    border: 1px solid rgba(110,198,255,0.45);
-    background: rgba(10,20,36,0.72); color: #6ec6ff;
-    border-radius: 999px;
-    cursor: pointer; transition: all 0.18s;
-    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
-  }
+  #audio-settings-btn { position: fixed; top: 1.0rem; right: 1.1rem; z-index: 14; pointer-events: auto;
+    font-weight: 400; font-size: 0.58rem; letter-spacing: 0.18em; text-transform: uppercase; padding: 7px 13px;
+    border: 1px solid rgba(110,198,255,0.45); background: rgba(10,20,36,0.72); color: #6ec6ff; border-radius: 999px;
+    cursor: pointer; transition: all 0.18s; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
   #audio-settings-btn:hover { border-color: #6ec6ff; }
-  #audio-settings-btn .dot {
-    display:inline-block; width:6px; height:6px; border-radius:50%;
-    background:#a0e060; margin-right:6px; vertical-align:middle;
-    box-shadow: 0 0 6px rgba(160,224,96,0.6);
-  }
-  #audio-settings-btn.muted .dot {
-    background:#ff8a6a; box-shadow: 0 0 6px rgba(255,138,106,0.6);
-  }
-
-  #audio-panel {
-    position: fixed; top: 3.2rem; right: 1.1rem;
-    width: 240px;
-    z-index: 14;
-    background: rgba(10,20,36,0.92);
-    border: 1px solid rgba(110,198,255,0.35);
-    border-radius: 8px;
-    padding: 14px 14px 12px;
-    transform: translateY(-15px) scale(0.96);
-    opacity: 0;
-    transition: opacity 0.18s, transform 0.18s;
-    pointer-events: none;
-    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
-  }
-  #audio-panel.visible {
-    transform: translateY(0) scale(1);
-    opacity: 1; pointer-events: auto;
-  }
-  #audio-panel .ap-title {
-    font-size: 0.6rem; letter-spacing: 0.2em;
-    color: rgba(216,226,240,0.5); text-transform: uppercase;
-    border-bottom: 1px solid rgba(110,198,255,0.18);
-    padding-bottom: 7px; margin-bottom: 9px;
-  }
-  #audio-panel .ap-row {
-    display: flex; align-items: center; gap: 10px;
-    margin: 8px 0; font-size: 0.62rem;
-    letter-spacing: 0.12em; text-transform: uppercase;
-    color: rgba(216,226,240,0.65);
-  }
-  #audio-panel .ap-label { min-width: 60px; }
-  #audio-panel .ap-val   { color: #6ec6ff; min-width: 30px; text-align: right; }
+  #audio-settings-btn .dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:#a0e060; margin-right:6px; vertical-align:middle; box-shadow: 0 0 6px rgba(160,224,96,0.6); }
+  #audio-settings-btn.muted .dot { background:#ff8a6a; box-shadow: 0 0 6px rgba(255,138,106,0.6); }
+  #audio-panel { position: fixed; top: 3.2rem; right: 1.1rem; width: 252px; z-index: 14;
+    background: rgba(10,20,36,0.92); border: 1px solid rgba(110,198,255,0.35); border-radius: 8px; padding: 14px 14px 12px;
+    transform: translateY(-15px) scale(0.96); opacity: 0; transition: opacity 0.18s, transform 0.18s; pointer-events: none;
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+  #audio-panel.visible { transform: translateY(0) scale(1); opacity: 1; pointer-events: auto; }
+  #audio-panel .ap-title { font-size: 0.6rem; letter-spacing: 0.2em; color: rgba(216,226,240,0.5); text-transform: uppercase; border-bottom: 1px solid rgba(110,198,255,0.18); padding-bottom: 7px; margin-bottom: 9px; }
+  #audio-panel .ap-row { display: flex; align-items: center; gap: 10px; margin: 8px 0; font-size: 0.62rem; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(216,226,240,0.65); }
+  #audio-panel .ap-label { min-width: 62px; }
+  #audio-panel .ap-val { color: #6ec6ff; min-width: 30px; text-align: right; }
   #audio-panel input[type=range] { flex: 1; accent-color: #6ec6ff; }
-
   .ap-toggle-pair { display: flex; gap: 4px; flex: 1; }
-  .ap-toggle {
-    flex: 1;
-    font-family: 'Inter', sans-serif; font-weight: 400;
-    font-size: 0.58rem; letter-spacing: 0.14em;
-    text-transform: uppercase;
-    padding: 6px 8px;
-    border: 1px solid transparent;
-    background: rgba(216,226,240,0.04); color: rgba(216,226,240,0.55);
-    border-radius: 4px;
-    cursor: pointer; transition: all 0.15s;
-  }
-  .ap-toggle.active {
-    background: rgba(110,198,255,0.18);
-    border-color: rgba(110,198,255,0.5);
-    color: #6ec6ff;
-  }
-  .ap-toggle.danger.active {
-    background: rgba(255,138,106,0.16);
-    border-color: rgba(255,138,106,0.55);
-    color: #ff8a6a;
-  }
-
-  /* Bottom-center controls */
-  #controls {
-    position: fixed; bottom: 1.0rem; left: 50%;
-    transform: translateX(-50%);
-    z-index: 12;
-    display: flex; flex-direction: column; gap: 7px;
-    align-items: center;
-    pointer-events: auto;
-  }
-  #cam-selector {
-    display: flex; gap: 3px;
-    padding: 3px;
-    background: rgba(10,20,36,0.72);
-    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
-    border-radius: 999px;
-    border: 1px solid rgba(110,198,255,0.25);
-  }
-  .cam-btn {
-    font-family: 'Inter', sans-serif; font-weight: 400;
-    font-size: 0.56rem; letter-spacing: 0.16em;
-    text-transform: uppercase;
-    padding: 5px 10px;
-    border: 1px solid transparent;
-    background: transparent; color: rgba(216,226,240,0.55);
-    border-radius: 999px;
-    cursor: pointer; transition: all 0.18s;
-  }
+  .ap-toggle { flex: 1; font-weight: 400; font-size: 0.58rem; letter-spacing: 0.14em; text-transform: uppercase; padding: 6px 8px;
+    border: 1px solid transparent; background: rgba(216,226,240,0.04); color: rgba(216,226,240,0.55); border-radius: 4px; cursor: pointer; transition: all 0.15s; }
+  .ap-toggle.active { background: rgba(110,198,255,0.18); border-color: rgba(110,198,255,0.5); color: #6ec6ff; }
+  .ap-toggle.danger.active { background: rgba(255,138,106,0.16); border-color: rgba(255,138,106,0.55); color: #ff8a6a; }
+  #controls { position: fixed; bottom: 1.0rem; left: 50%; transform: translateX(-50%); z-index: 12; display: flex; flex-direction: column; gap: 7px; align-items: center; pointer-events: auto; }
+  #cam-selector { display: flex; gap: 3px; padding: 3px; background: rgba(10,20,36,0.72); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); border-radius: 999px; border: 1px solid rgba(110,198,255,0.25); }
+  .cam-btn { font-weight: 400; font-size: 0.56rem; letter-spacing: 0.16em; text-transform: uppercase; padding: 5px 10px; border: 1px solid transparent; background: transparent; color: rgba(216,226,240,0.55); border-radius: 999px; cursor: pointer; transition: all 0.18s; }
   .cam-btn:hover { color: #d8e2f0; }
-  .cam-btn.active {
-    background: rgba(110,198,255,0.18);
-    border-color: rgba(110,198,255,0.5);
-    color: #6ec6ff;
-  }
-
-  #track-status {
-    font-family: 'Inter', sans-serif; font-weight: 300;
-    font-size: 0.52rem; letter-spacing: 0.14em;
-    color: rgba(160,224,96,0.85);
-    opacity: 0; transition: opacity 0.3s;
-    white-space: nowrap;
-    height: 0; overflow: hidden;
-  }
+  .cam-btn.active { background: rgba(110,198,255,0.18); border-color: rgba(110,198,255,0.5); color: #6ec6ff; }
+  #track-status { font-weight: 300; font-size: 0.52rem; letter-spacing: 0.14em; color: rgba(160,224,96,0.85); opacity: 0; transition: opacity 0.3s; white-space: nowrap; height: 0; overflow: hidden; }
   #track-status.visible { opacity: 1; height: auto; }
-
   #track-row { display: flex; gap: 5px; align-items: center; }
-  .track-btn-base {
-    font-family: 'Inter', sans-serif; font-weight: 400;
-    font-size: 0.58rem; letter-spacing: 0.18em;
-    text-transform: uppercase;
-    padding: 7px 14px;
-    border-radius: 999px;
-    cursor: pointer; transition: all 0.2s;
-    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
-  }
-  #track-enable {
-    border: 1px solid rgba(110,198,255,0.55);
-    background: rgba(10,20,36,0.72); color: #6ec6ff;
-    padding: 8px 16px; font-size: 0.62rem;
-  }
+  .track-btn-base { font-weight: 400; font-size: 0.58rem; letter-spacing: 0.18em; text-transform: uppercase; padding: 7px 14px; border-radius: 999px; cursor: pointer; transition: all 0.2s; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+  #track-enable { border: 1px solid rgba(110,198,255,0.55); background: rgba(10,20,36,0.72); color: #6ec6ff; padding: 8px 16px; font-size: 0.62rem; }
   #track-enable.error { border-color: #ff8a6a; color: #ff8a6a; }
-  #track-recal {
-    border: 1px solid rgba(160,224,96,0.55);
-    background: rgba(10,30,15,0.72); color: #a0e060;
-  }
-  #track-disable {
-    border: 1px solid rgba(216,226,240,0.4);
-    background: rgba(10,20,36,0.72); color: rgba(216,226,240,0.75);
-  }
-
-  /* Virtual joystick (bottom-left, shown on touch) */
-  #joystick {
-    position: fixed; bottom: 1.3rem; left: 1.3rem;
-    width: 96px; height: 96px;
-    border-radius: 50%;
-    border: 1px solid rgba(110,198,255,0.35);
-    background: rgba(10,20,36,0.65);
-    z-index: 13;
-    pointer-events: auto;
-    touch-action: none;
-    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
-  }
-  #joystick-knob {
-    position: absolute;
-    width: 30px; height: 30px;
-    left: 33px; top: 33px;
-    border-radius: 50%;
-    background: rgba(110,198,255,0.45);
-    border: 1px solid #6ec6ff;
-    pointer-events: none;
-    transition: transform 0.0s;
-  }
-  #joystick::after {
-    content: 'MOVE';
-    position: absolute; top: -1.1rem; left: 50%;
-    transform: translateX(-50%);
-    font-size: 0.5rem; letter-spacing: 0.22em;
-    color: rgba(110,198,255,0.45);
-    text-transform: uppercase;
-    pointer-events: none;
-  }
-
-  /* TALK button (bottom-right) */
-  #talk-btn {
-    position: fixed; bottom: 1.3rem; right: 1.3rem;
-    width: 96px; height: 96px;
-    border-radius: 50%;
-    border: 1px solid rgba(255,200,120,0.5);
-    background: rgba(36,28,16,0.65);
-    color: #ffd07a;
-    z-index: 13;
-    pointer-events: auto;
-    cursor: pointer;
-    font-family: 'Inter', sans-serif; font-weight: 500;
-    font-size: 0.78rem; letter-spacing: 0.24em;
-    text-transform: uppercase;
-    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
-    transition: all 0.1s;
-    -webkit-user-select: none; user-select: none;
-  }
-  #talk-btn.active {
-    background: rgba(255,200,120,0.25);
-    border-color: #ffd07a;
-    box-shadow: 0 0 20px rgba(255,208,122,0.4);
-  }
-  #talk-btn::before {
-    content: 'TALK';
-  }
-  #talk-btn .sub {
-    display:block; font-size: 0.48rem; letter-spacing: 0.16em;
-    opacity: 0.55; margin-top: 3px; font-weight: 300;
-  }
-
-  /* Desktop-specific hint */
-  .desktop-hint {
-    position: fixed; bottom: 1.4rem; left: 1.3rem;
-    z-index: 11; pointer-events: none;
-    font-size: 0.52rem; letter-spacing: 0.16em;
-    color: rgba(216,226,240,0.5);
-    line-height: 1.7;
-    text-transform: uppercase;
-  }
-  .desktop-hint .k {
-    display:inline-block; padding: 1px 6px;
-    border:1px solid rgba(110,198,255,0.35);
-    color:#6ec6ff; border-radius:3px;
-    margin-right: 4px; min-width: 12px; text-align:center;
-  }
-
-  /* Hide joystick on desktop, hide desktop hints on touch */
+  #track-recal { border: 1px solid rgba(160,224,96,0.55); background: rgba(10,30,15,0.72); color: #a0e060; }
+  #track-disable { border: 1px solid rgba(216,226,240,0.4); background: rgba(10,20,36,0.72); color: rgba(216,226,240,0.75); }
+  #joystick { position: fixed; bottom: 1.3rem; left: 1.3rem; width: 96px; height: 96px; border-radius: 50%; border: 1px solid rgba(110,198,255,0.35); background: rgba(10,20,36,0.65); z-index: 13; pointer-events: auto; touch-action: none; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+  #joystick-knob { position: absolute; width: 30px; height: 30px; left: 33px; top: 33px; border-radius: 50%; background: rgba(110,198,255,0.45); border: 1px solid #6ec6ff; pointer-events: none; }
+  #joystick::after { content: 'MOVE'; position: absolute; top: -1.1rem; left: 50%; transform: translateX(-50%); font-size: 0.5rem; letter-spacing: 0.22em; color: rgba(110,198,255,0.45); text-transform: uppercase; pointer-events: none; }
+  #talk-btn { position: fixed; bottom: 1.3rem; right: 1.3rem; width: 96px; height: 96px; border-radius: 50%; border: 1px solid rgba(255,200,120,0.5); background: rgba(36,28,16,0.65); color: #ffd07a; z-index: 13; pointer-events: auto; cursor: pointer; font-weight: 500; font-size: 0.78rem; letter-spacing: 0.24em; text-transform: uppercase; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); transition: all 0.1s; -webkit-user-select: none; user-select: none; }
+  #talk-btn.active { background: rgba(255,200,120,0.25); border-color: #ffd07a; box-shadow: 0 0 20px rgba(255,208,122,0.4); }
+  #talk-btn::before { content: 'TALK'; }
+  #talk-btn .sub { display:block; font-size: 0.48rem; letter-spacing: 0.16em; opacity: 0.55; margin-top: 3px; font-weight: 300; }
+  .desktop-hint { position: fixed; bottom: 1.4rem; left: 1.3rem; z-index: 11; pointer-events: none; font-size: 0.52rem; letter-spacing: 0.16em; color: rgba(216,226,240,0.5); line-height: 1.7; text-transform: uppercase; }
+  .desktop-hint .k { display:inline-block; padding: 1px 6px; border:1px solid rgba(110,198,255,0.35); color:#6ec6ff; border-radius:3px; margin-right: 4px; min-width: 12px; text-align:center; }
   body.has-touch .desktop-hint { display: none; }
   body:not(.has-touch) #joystick { display: none; }
   body:not(.has-touch) #talk-btn { display: none; }
@@ -341,56 +115,27 @@
 </head>
 <body>
 
-<a class="back" href="/TestCases/">← testcases</a>
-<div class="corner top-center">binaural explorer · v0.6</div>
+<a class="back" href="/TestCases/spatialAudio/">← spatialaudio</a>
+<div class="corner top-center">binaural explorer · v0.7</div>
 
 <div id="ios-reminder">
   iOS · check the ringer switch<br>
-  <small>Safari respects the silent-mode switch for Web Audio.<br>
-  Flip the side switch UP (no orange) for sound.</small>
+  <small>Safari respects the silent-mode switch for Web Audio.<br>Flip the side switch UP (no orange) for sound.</small>
 </div>
 
 <button id="audio-settings-btn"><span class="dot"></span>AUDIO</button>
-
 <div id="audio-panel">
   <div class="ap-title">Audio Settings</div>
-
-  <div class="ap-row">
-    <span class="ap-label">Output</span>
-    <div class="ap-toggle-pair">
-      <button class="ap-toggle active" id="mute-on" data-val="on">ON</button>
-      <button class="ap-toggle danger" id="mute-off" data-val="off">MUTED</button>
-    </div>
-  </div>
-
-  <div class="ap-row">
-    <span class="ap-label">Spatial</span>
-    <div class="ap-toggle-pair">
-      <button class="ap-toggle" id="mode-stereo" data-mode="stereo">Stereo</button>
-      <button class="ap-toggle active" id="mode-binaural" data-mode="binaural">Binaural</button>
-    </div>
-  </div>
-
-  <div class="ap-row">
-    <span class="ap-label">Ref Dist</span>
-    <input type="range" id="ref-dist" min="0.5" max="5" step="0.1" value="1.5">
-    <span class="ap-val" id="ref-dist-v">1.5</span>
-  </div>
-
-  <div class="ap-row">
-    <span class="ap-label">Rolloff</span>
-    <input type="range" id="rolloff" min="0" max="3" step="0.1" value="1">
-    <span class="ap-val" id="rolloff-v">1.0</span>
-  </div>
-
-  <div class="ap-row">
-    <span class="ap-label">Master</span>
-    <input type="range" id="master-vol" min="0" max="1" step="0.01" value="0.5">
-    <span class="ap-val" id="master-vol-v">0.5</span>
-  </div>
+  <div class="ap-row"><span class="ap-label">Output</span>
+    <div class="ap-toggle-pair"><button class="ap-toggle active" id="mute-on">ON</button><button class="ap-toggle danger" id="mute-off">MUTED</button></div></div>
+  <div class="ap-row"><span class="ap-label">Spatial</span>
+    <div class="ap-toggle-pair"><button class="ap-toggle" id="mode-stereo">Stereo</button><button class="ap-toggle active" id="mode-binaural">Binaural</button></div></div>
+  <div class="ap-row"><span class="ap-label">Ref Dist</span><input type="range" id="ref-dist" min="0.5" max="5" step="0.1" value="1.5"><span class="ap-val" id="ref-dist-v">1.5</span></div>
+  <div class="ap-row"><span class="ap-label">Rolloff</span><input type="range" id="rolloff" min="0" max="3" step="0.1" value="1"><span class="ap-val" id="rolloff-v">1.0</span></div>
+  <div class="ap-row"><span class="ap-label">Directivity</span><input type="range" id="directivity" min="0" max="1" step="0.05" value="1"><span class="ap-val" id="directivity-v">1.0</span></div>
+  <div class="ap-row"><span class="ap-label">Master</span><input type="range" id="master-vol" min="0" max="1" step="0.01" value="0.5"><span class="ap-val" id="master-vol-v">0.5</span></div>
 </div>
 
-<!-- Controls (camera + tracking) -->
 <div id="controls">
   <div id="cam-selector">
     <button class="cam-btn active" data-mode="topdown">top-down</button>
@@ -405,11 +150,8 @@
   </div>
 </div>
 
-<!-- Mobile-only navigation + talk -->
 <div id="joystick"><div id="joystick-knob"></div></div>
 <button id="talk-btn"><span class="sub">tap or hold</span></button>
-
-<!-- Desktop-only navigation hint (hidden on touch devices) -->
 <div class="desktop-hint">
   <span class="k">W</span><span class="k">A</span><span class="k">S</span><span class="k">D</span> move<br>
   <span class="k">SPACE</span> talk · drag scene to pan/tilt head
@@ -422,1295 +164,509 @@
 'use strict';
 
 const container = document.getElementById('scene');
-
-// Detect touch capability so the right controls show
-if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
-  document.body.classList.add('has-touch');
-}
+if ('ontouchstart' in window || navigator.maxTouchPoints > 0) document.body.classList.add('has-touch');
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
 // ─── Scene + cameras ────────────────────────────────────────────────────
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x0a1424, 0.010);
-
-const FRUSTUM_H = 22;
-function frustumWidth() { return FRUSTUM_H * (window.innerWidth / window.innerHeight); }
-const orthoCam = new THREE.OrthographicCamera(
-  -frustumWidth()/2, frustumWidth()/2,
-   FRUSTUM_H/2, -FRUSTUM_H/2, 0.1, 200
-);
-orthoCam.position.set(6, 16, 8);
-orthoCam.lookAt(0, 0.5, 0);
-
-const perspCam = new THREE.PerspectiveCamera(62, innerWidth/innerHeight, 0.05, 200);
-
-let cameraMode = 'topdown';
-let activeCam = orthoCam;
-
+scene.fog = new THREE.FogExp2(0x0a1424, 0.008);
+const FRUSTUM_H = 24;
+function frustumWidth() { return FRUSTUM_H * (innerWidth / innerHeight); }
+const orthoCam = new THREE.OrthographicCamera(-frustumWidth()/2, frustumWidth()/2, FRUSTUM_H/2, -FRUSTUM_H/2, 0.1, 240);
+orthoCam.position.set(7, 18, 9); orthoCam.lookAt(0, 0.5, 0);
+const perspCam = new THREE.PerspectiveCamera(62, innerWidth/innerHeight, 0.05, 240);
+let cameraMode = 'topdown', activeCam = orthoCam;
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(innerWidth, innerHeight);
-renderer.setClearColor(0x000000, 0);
+renderer.setSize(innerWidth, innerHeight); renderer.setClearColor(0x000000, 0);
 container.appendChild(renderer.domElement);
+scene.add(new THREE.AmbientLight(0x8898b0, 0.95));
+const sun = new THREE.DirectionalLight(0xffffff, 0.5); sun.position.set(8, 20, 6); scene.add(sun);
 
 // ─── Floor / grid / axes ────────────────────────────────────────────────
-const grid = new THREE.GridHelper(36, 36, 0x2c4a78, 0x152035);
-grid.material.transparent = true; grid.material.opacity = 0.5;
-scene.add(grid);
-const axisMat = new THREE.LineBasicMaterial({ color: 0x4a7088, transparent: true, opacity: 0.55 });
-scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(
-  [new THREE.Vector3(-16, 0.01, 0), new THREE.Vector3(16, 0.01, 0)]), axisMat));
-scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(
-  [new THREE.Vector3(0, 0.01, -16), new THREE.Vector3(0, 0.01, 16)]), axisMat));
+const grid = new THREE.GridHelper(48, 48, 0x2c4a78, 0x152035);
+grid.material.transparent = true; grid.material.opacity = 0.5; scene.add(grid);
+const axisMat = new THREE.LineBasicMaterial({ color: 0x4a7088, transparent: true, opacity: 0.5 });
+scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-22,0.01,0), new THREE.Vector3(22,0.01,0)]), axisMat));
+scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0.01,-22), new THREE.Vector3(0,0.01,22)]), axisMat));
 
-// ─── Center marker (world origin) ───────────────────────────────────────
+// ─── Canvas textures ────────────────────────────────────────────────────
+function makeTex(draw, w=256, h=256) {
+  const c = document.createElement('canvas'); c.width=w; c.height=h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+}
+const TEX = {
+  brick: makeTex((g,w,h) => {
+    g.fillStyle='#3a1810'; g.fillRect(0,0,w,h); const bh=h/5, bw=w/3;
+    for (let r=0;r<5;r++){ const off=(r%2)*bw/2;
+      for (let c=-1;c<4;c++){ g.fillStyle=`hsl(${10+Math.random()*14},${42+Math.random()*16}%,${26+Math.random()*14}%)`; g.fillRect(c*bw+off+2, r*bh+2, bw-4, bh-4); } } }),
+  padded: makeTex((g,w,h) => {
+    g.fillStyle='#352c4a'; g.fillRect(0,0,w,h); const n=4, s=w/n;
+    g.strokeStyle='#2a2240'; g.lineWidth=2;
+    for (let i=-n;i<=n*2;i++){ g.beginPath(); g.moveTo(i*s,0); g.lineTo((i+n)*s,h); g.stroke(); g.beginPath(); g.moveTo(i*s,0); g.lineTo((i-n)*s,h); g.stroke(); }
+    g.fillStyle='#1c1730'; for (let i=0;i<=n;i++) for (let j=0;j<=n;j++){ g.beginPath(); g.arc(i*s,j*s,4,0,7); g.fill(); } }),
+  panel: makeTex((g,w,h) => {
+    g.fillStyle='#3a4038'; g.fillRect(0,0,w,h); const n=8, s=w/n;
+    for (let i=0;i<n;i++) for (let j=0;j<n;j++){ const v=40+((i+j)%2)*16+Math.random()*8; g.fillStyle=`rgb(${v},${v+6},${v-4})`; g.fillRect(i*s+1,j*s+1,s-2,s-2); } }),
+  metal: makeTex((g,w,h) => {
+    const grd=g.createLinearGradient(0,0,w,h); grd.addColorStop(0,'#3a4048'); grd.addColorStop(0.5,'#5e6670'); grd.addColorStop(1,'#2e343a');
+    g.fillStyle=grd; g.fillRect(0,0,w,h); g.strokeStyle='#1a1e22'; g.lineWidth=5; g.strokeRect(6,6,w-12,h-12);
+    g.beginPath(); g.moveTo(w/2,6); g.lineTo(w/2,h-6); g.stroke(); g.fillStyle='#9aa4ae';
+    for (const [x,y] of [[18,18],[w-18,18],[18,h-18],[w-18,h-18],[w/2-12,18],[w/2+12,h-18]]){ g.beginPath(); g.arc(x,y,5,0,7); g.fill(); } }),
+  concrete: makeTex((g,w,h) => {
+    g.fillStyle='#4a4a50'; g.fillRect(0,0,w,h);
+    for (let i=0;i<2600;i++){ const v=40+Math.random()*55|0; g.fillStyle=`rgba(${v},${v},${v+4},0.5)`; g.fillRect(Math.random()*w,Math.random()*h,2,2); }
+    g.strokeStyle='rgba(20,20,24,0.5)'; g.lineWidth=2; g.strokeRect(2,2,w-4,h-4); }),
+  // Opaque light speckle — used as a multiply map for translucent head/body fills
+  soft: makeTex((g,w,h) => {
+    g.fillStyle='#bcc0c8'; g.fillRect(0,0,w,h);
+    for (let i=0;i<900;i++){ const v=150+Math.random()*90|0; g.fillStyle=`rgb(${v},${v},${v+6})`; g.fillRect(Math.random()*w,Math.random()*h,2,2); } }, 128, 128),
+};
+
+// ─── Markers ─────────────────────────────────────────────────────────────
 function makeCenterMarker(x, z) {
   const grp = new THREE.Group();
-  const m  = new THREE.LineBasicMaterial({ color: 0x80c0ff, transparent: true, opacity: 0.75 });
-  const md = new THREE.LineBasicMaterial({ color: 0x80c0ff, transparent: true, opacity: 0.4 });
-  grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(
-    [new THREE.Vector3(0,0,0), new THREE.Vector3(0,3.2,0)]), m));
-  grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(
-    [new THREE.Vector3(-0.45,2.9,0), new THREE.Vector3(0.45,2.9,0)]), m));
-  grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(
-    [new THREE.Vector3(0,2.9,-0.45), new THREE.Vector3(0,2.9,0.45)]), m));
-  const top = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.SphereGeometry(0.18, 14, 10)), m);
-  top.position.set(0, 3.35, 0); grp.add(top);
-  const ringPts = [];
-  for (let i = 0; i <= 48; i++) {
-    const a = i * Math.PI * 2 / 48;
-    ringPts.push(new THREE.Vector3(Math.cos(a)*0.7, 0.02, Math.sin(a)*0.7));
-  }
-  grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ringPts), m));
-  grp.position.set(x, 0, z);
-  return grp;
+  const m = new THREE.LineBasicMaterial({ color: 0x80c0ff, transparent: true, opacity: 0.7 });
+  grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,3.2,0)]), m));
+  grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.45,2.9,0), new THREE.Vector3(0.45,2.9,0)]), m));
+  grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,2.9,-0.45), new THREE.Vector3(0,2.9,0.45)]), m));
+  const top = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.SphereGeometry(0.18,14,10)), m); top.position.set(0,3.35,0); grp.add(top);
+  const rp=[]; for (let i=0;i<=48;i++){ const a=i*Math.PI*2/48; rp.push(new THREE.Vector3(Math.cos(a)*0.7,0.02,Math.sin(a)*0.7)); }
+  grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(rp), m)); grp.position.set(x,0,z); return grp;
 }
 function makeStandingMarker(color) {
-  const grp = new THREE.Group();
-  const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.7 });
-  const pts1 = [], pts2 = [];
-  for (let i = 0; i <= 32; i++) {
-    const a = i * Math.PI * 2 / 32;
-    pts1.push(new THREE.Vector3(Math.cos(a)*0.45, 0.005, Math.sin(a)*0.45));
-    pts2.push(new THREE.Vector3(Math.cos(a)*0.55, 0.005, Math.sin(a)*0.55));
-  }
-  grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts1), mat));
-  grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts2), mat));
-  return grp;
+  const grp=new THREE.Group(); const mat=new THREE.LineBasicMaterial({ color, transparent:true, opacity:0.7 }); const p1=[],p2=[];
+  for (let i=0;i<=32;i++){ const a=i*Math.PI*2/32; p1.push(new THREE.Vector3(Math.cos(a)*0.45,0.005,Math.sin(a)*0.45)); p2.push(new THREE.Vector3(Math.cos(a)*0.55,0.005,Math.sin(a)*0.55)); }
+  grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(p1), mat)); grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(p2), mat)); return grp;
 }
 
 // ─── Person factory ─────────────────────────────────────────────────────
-const HEAD_R = 0.32;
-const HEAD_Y = 1.72;
-const SHOULDER_Y = 1.4;
-const HIP_Y = 0.65;
-const CONE_LENGTH = 1.55;
-
+const HEAD_R=0.32, HEAD_Y=1.72, SHOULDER_Y=1.4, HIP_Y=0.65, CONE_LENGTH=1.55;
 function makePerson(name, color, x, z) {
-  const group = new THREE.Group();
-  group.position.set(x, 0, z);
-  const mat  = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.92 });
-  const matD = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.55 });
+  const group = new THREE.Group(); group.position.set(x,0,z);
+  const mat  = new THREE.LineBasicMaterial({ color, transparent:true, opacity:0.92 });
+  const matD = new THREE.LineBasicMaterial({ color, transparent:true, opacity:0.5 });
 
   const bodyGroup = new THREE.Group();
-  bodyGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(
-    [new THREE.Vector3(-0.42, SHOULDER_Y, 0), new THREE.Vector3(0.42, SHOULDER_Y, 0)]), mat));
-  bodyGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(-0.28, SHOULDER_Y, 0),
-    new THREE.Vector3(   0,  SHOULDER_Y, -0.42),
-    new THREE.Vector3( 0.28, SHOULDER_Y, 0),
-  ]), mat));
-  bodyGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(-0.40, SHOULDER_Y, -0.02),
-    new THREE.Vector3( 0.40, SHOULDER_Y, -0.02),
-    new THREE.Vector3( 0.28, HIP_Y,      -0.02),
-    new THREE.Vector3(-0.28, HIP_Y,      -0.02),
-    new THREE.Vector3(-0.40, SHOULDER_Y, -0.02),
-  ]), matD));
-  bodyGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(-0.40, SHOULDER_Y, 0.05),
-    new THREE.Vector3( 0.40, SHOULDER_Y, 0.05),
-    new THREE.Vector3( 0.28, HIP_Y,      0.05),
-    new THREE.Vector3(-0.28, HIP_Y,      0.05),
-    new THREE.Vector3(-0.40, SHOULDER_Y, 0.05),
-  ]), matD));
-  bodyGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(
-    [new THREE.Vector3(0, SHOULDER_Y, 0), new THREE.Vector3(0, HIP_Y, 0)]), matD));
-  bodyGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(
-    [new THREE.Vector3(-0.28, HIP_Y, 0), new THREE.Vector3(0.28, HIP_Y, 0)]), mat));
-  bodyGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(-0.42, SHOULDER_Y, 0),
-    new THREE.Vector3(-0.50, SHOULDER_Y - 0.42, 0.02),
-    new THREE.Vector3(-0.46, HIP_Y - 0.05, 0.04),
-  ]), matD));
-  bodyGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3( 0.42, SHOULDER_Y, 0),
-    new THREE.Vector3( 0.50, SHOULDER_Y - 0.42, 0.02),
-    new THREE.Vector3( 0.46, HIP_Y - 0.05, 0.04),
-  ]), matD));
-  bodyGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(-0.16, HIP_Y, 0),
-    new THREE.Vector3(-0.18, HIP_Y - 0.32, -0.02),
-    new THREE.Vector3(-0.20, 0, 0),
-  ]), matD));
-  bodyGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3( 0.16, HIP_Y, 0),
-    new THREE.Vector3( 0.18, HIP_Y - 0.32, -0.02),
-    new THREE.Vector3( 0.20, 0, 0),
-  ]), matD));
-  const footPts = [];
-  for (let i = 0; i <= 32; i++) {
-    const a = i * Math.PI * 2 / 32;
-    footPts.push(new THREE.Vector3(Math.cos(a)*0.34, 0.005, Math.sin(a)*0.34));
-  }
-  bodyGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(footPts), mat));
+  const torsoFillMat = new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.16, side:THREE.DoubleSide, map:TEX.soft, depthWrite:false });
+  const torsoFront = new THREE.Mesh(new THREE.PlaneGeometry(0.78, SHOULDER_Y-HIP_Y), torsoFillMat);
+  torsoFront.position.set(0,(SHOULDER_Y+HIP_Y)/2,-0.02); bodyGroup.add(torsoFront);
+  bodyGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.42,SHOULDER_Y,0),new THREE.Vector3(0.42,SHOULDER_Y,0)]), mat));
+  bodyGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.28,SHOULDER_Y,0),new THREE.Vector3(0,SHOULDER_Y,-0.42),new THREE.Vector3(0.28,SHOULDER_Y,0)]), mat));
+  bodyGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.40,SHOULDER_Y,0.05),new THREE.Vector3(0.40,SHOULDER_Y,0.05),new THREE.Vector3(0.28,HIP_Y,0.05),new THREE.Vector3(-0.28,HIP_Y,0.05),new THREE.Vector3(-0.40,SHOULDER_Y,0.05)]), matD));
+  bodyGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,SHOULDER_Y,0),new THREE.Vector3(0,HIP_Y,0)]), matD));
+  bodyGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.28,HIP_Y,0),new THREE.Vector3(0.28,HIP_Y,0)]), mat));
+  bodyGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.42,SHOULDER_Y,0),new THREE.Vector3(-0.50,SHOULDER_Y-0.42,0.02),new THREE.Vector3(-0.46,HIP_Y-0.05,0.04)]), matD));
+  bodyGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0.42,SHOULDER_Y,0),new THREE.Vector3(0.50,SHOULDER_Y-0.42,0.02),new THREE.Vector3(0.46,HIP_Y-0.05,0.04)]), matD));
+  bodyGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.16,HIP_Y,0),new THREE.Vector3(-0.18,HIP_Y-0.32,-0.02),new THREE.Vector3(-0.20,0,0)]), matD));
+  bodyGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0.16,HIP_Y,0),new THREE.Vector3(0.18,HIP_Y-0.32,-0.02),new THREE.Vector3(0.20,0,0)]), matD));
+  const fp=[]; for (let i=0;i<=32;i++){ const a=i*Math.PI*2/32; fp.push(new THREE.Vector3(Math.cos(a)*0.34,0.005,Math.sin(a)*0.34)); }
+  bodyGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(fp), mat));
   group.add(bodyGroup);
 
-  const headGroup = new THREE.Group();
-  headGroup.position.y = HEAD_Y;
-  const shell = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.SphereGeometry(HEAD_R, 16, 12)), mat);
-  shell.scale.set(0.96, 1.0, 1.12);
-  headGroup.add(shell);
-
-  const earGeo = new THREE.SphereGeometry(0.08, 10, 8);
-  const lEar = new THREE.LineSegments(new THREE.EdgesGeometry(earGeo), matD);
-  lEar.position.set(-0.30, 0.02, 0); lEar.scale.set(0.55, 1.0, 0.85); headGroup.add(lEar);
-  const rEar = new THREE.LineSegments(new THREE.EdgesGeometry(earGeo), matD);
-  rEar.position.set(0.30, 0.02, 0);  rEar.scale.set(0.55, 1.0, 0.85); headGroup.add(rEar);
-
-  const noseGeo = new THREE.ConeGeometry(0.07, 0.20, 10);
-  noseGeo.rotateX(-Math.PI/2); noseGeo.translate(0, -0.04, -0.40);
+  const headGroup = new THREE.Group(); headGroup.position.y = HEAD_Y;
+  const fillMat = new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.30, map:TEX.soft, depthWrite:true });
+  const fill = new THREE.Mesh(new THREE.SphereGeometry(HEAD_R*0.96,18,14), fillMat); fill.scale.set(0.96,1.0,1.12); headGroup.add(fill);
+  const shell = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.SphereGeometry(HEAD_R,16,12)), mat); shell.scale.set(0.96,1.0,1.12); headGroup.add(shell);
+  const facePlate = new THREE.Mesh(new THREE.CircleGeometry(0.25,20), new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true, opacity:0.20, side:THREE.DoubleSide, depthWrite:false }));
+  facePlate.position.set(0,0,-0.33); headGroup.add(facePlate);
+  const earGeo = new THREE.SphereGeometry(0.08,10,8);
+  const lEar = new THREE.LineSegments(new THREE.EdgesGeometry(earGeo), matD); lEar.position.set(-0.30,0.02,0); lEar.scale.set(0.55,1.0,0.85); headGroup.add(lEar);
+  const rEar = new THREE.LineSegments(new THREE.EdgesGeometry(earGeo), matD); rEar.position.set(0.30,0.02,0); rEar.scale.set(0.55,1.0,0.85); headGroup.add(rEar);
+  const noseGeo = new THREE.ConeGeometry(0.07,0.20,10); noseGeo.rotateX(-Math.PI/2); noseGeo.translate(0,-0.04,-0.42);
   headGroup.add(new THREE.LineSegments(new THREE.EdgesGeometry(noseGeo), mat));
+  const mouth = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.RingGeometry(0.07,0.12,16)), mat); mouth.position.set(0,-0.13,-0.40); headGroup.add(mouth);
+  const lEye = new THREE.Mesh(new THREE.SphereGeometry(0.04,8,6), new THREE.MeshBasicMaterial({ color:0x0a0e16 })); lEye.position.set(-0.11,0.07,-0.40); headGroup.add(lEye);
+  const rEye = new THREE.Mesh(new THREE.SphereGeometry(0.04,8,6), new THREE.MeshBasicMaterial({ color:0x0a0e16 })); rEye.position.set(0.11,0.07,-0.40); headGroup.add(rEye);
+  const coneMat = new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0, side:THREE.DoubleSide, depthWrite:false });
+  const coneGeom = new THREE.ConeGeometry(0.55,CONE_LENGTH,28,1,true); coneGeom.rotateX(Math.PI/2); coneGeom.translate(0,0,-CONE_LENGTH/2);
+  const coneMesh = new THREE.Mesh(coneGeom, coneMat); coneMesh.position.set(0,-0.13,-0.46); headGroup.add(coneMesh);
+  const coneEdges = new THREE.LineSegments(new THREE.EdgesGeometry(coneGeom), new THREE.LineBasicMaterial({ color, transparent:true, opacity:0 })); coneEdges.position.copy(coneMesh.position); headGroup.add(coneEdges);
+  group.add(headGroup); scene.add(group);
 
-  const mouth = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.RingGeometry(0.08, 0.13, 16)), mat);
-  mouth.position.set(0, -0.14, -0.34); headGroup.add(mouth);
-
-  const eyeGeo = new THREE.SphereGeometry(0.035, 8, 6);
-  const lEye = new THREE.LineSegments(new THREE.EdgesGeometry(eyeGeo), mat);
-  lEye.position.set(-0.11, 0.08, -0.30); headGroup.add(lEye);
-  const rEye = new THREE.LineSegments(new THREE.EdgesGeometry(eyeGeo), mat);
-  rEye.position.set(0.11, 0.08, -0.30);  headGroup.add(rEye);
-
-  const coneMat = new THREE.MeshBasicMaterial({
-    color, transparent:true, opacity:0, side:THREE.DoubleSide, depthWrite:false });
-  const coneGeom = new THREE.ConeGeometry(0.55, CONE_LENGTH, 28, 1, true);
-  coneGeom.rotateX(Math.PI/2); coneGeom.translate(0, 0, -CONE_LENGTH/2);
-  const coneMesh = new THREE.Mesh(coneGeom, coneMat);
-  coneMesh.position.set(0, -0.14, -0.42); headGroup.add(coneMesh);
-  const coneEdges = new THREE.LineSegments(
-    new THREE.EdgesGeometry(coneGeom),
-    new THREE.LineBasicMaterial({ color, transparent:true, opacity:0 }));
-  coneEdges.position.copy(coneMesh.position);
-  headGroup.add(coneEdges);
-
-  group.add(headGroup);
-  scene.add(group);
-
-  return {
-    name, group, bodyGroup, headGroup,
-    shell, mouth, coneMesh, coneEdges,
-    color,
-    speakStart: 0, speakEnd: 0, speakIntensity: 0,
-    // Audio nodes — filled in by ensureAudio()
-    audioInput: null, occGain: null, occFilter: null,
-    pannerNode: null, stereoPan: null, binauralGain: null, stereoGain: null,
-    analyser: null, fftData: null,
-    wetSend: null,
-    homeRoom: null,
-    voiceChar: null,
-    target: null,
-    currentLookYaw: 0,
-    labelEl: null,
-  };
+  return { name, group, bodyGroup, headGroup, shell, mouth, coneMesh, coneEdges, color,
+    speakStart:0, speakEnd:0, speakIntensity:0,
+    audioInput:null, toneFilter:null, levelGain:null, pannerNode:null, stereoPan:null, binauralGain:null, stereoGain:null,
+    analyser:null, fftData:null, wetSend:null, spaceSend:null, homeRoom:null,
+    voiceChar:null, target:null, currentLookYaw:0, fixedFacing:null, labelEl:null };
 }
 
-// ─── Voice characters (extra ones for room speakers + player) ───────────
 const VOICE_CHARACTERS = [
-  { baseFreq: 145, detune: 1.012, fSweep: [320, 1100], q: 6.0 },  // A
-  { baseFreq: 200, detune: 1.009, fSweep: [480, 1500], q: 5.5 },  // B
-  { baseFreq: 115, detune: 1.014, fSweep: [260,  820], q: 7.0 },  // C
-  { baseFreq: 175, detune: 1.011, fSweep: [380, 1250], q: 6.2 },  // Room 1
-  { baseFreq: 240, detune: 1.008, fSweep: [560, 1700], q: 5.0 },  // Room 2
-  { baseFreq: 100, detune: 1.016, fSweep: [230,  720], q: 7.5 },  // Room 3
-  { baseFreq: 160, detune: 1.013, fSweep: [340, 1180], q: 6.5 },  // Player
+  { baseFreq:145, detune:1.012, fSweep:[320,1100], q:6.0 }, { baseFreq:200, detune:1.009, fSweep:[480,1500], q:5.5 },
+  { baseFreq:115, detune:1.014, fSweep:[260,820], q:7.0 },  { baseFreq:175, detune:1.011, fSweep:[380,1250], q:6.2 },
+  { baseFreq:240, detune:1.008, fSweep:[560,1700], q:5.0 }, { baseFreq:100, detune:1.016, fSweep:[230,720], q:7.5 },
+  { baseFreq:160, detune:1.013, fSweep:[340,1180], q:6.5 }, { baseFreq:130, detune:1.012, fSweep:[300,1000], q:6.8 },
+  { baseFreq:215, detune:1.010, fSweep:[520,1620], q:5.2 }, { baseFreq:185, detune:1.011, fSweep:[400,1300], q:6.0 },
 ];
 
-// ─── Layout: listener + salon speakers + rooms ───────────────────────────
-const listener = makePerson('you', 0x6ec6ff, 0, 2.5);
+// ─── Player (declared early so audio chain can reference it) ─────────────
+const player = {
+  name:'me', group:new THREE.Group(), voiceChar:VOICE_CHARACTERS[6],
+  audioInput:null, toneFilter:null, levelGain:null, pannerNode:null, stereoPan:null, binauralGain:null, stereoGain:null,
+  analyser:null, fftData:null, wetSend:null, dryToMaster:null, speakStart:0, speakEnd:0, speakIntensity:0, homeRoom:null,
+};
 
+// ─── Layout ──────────────────────────────────────────────────────────────
+const listener = makePerson('you', 0x6ec6ff, 0, 3);
+player.group.position.copy(listener.group.position);
 function polarFromListener(angleDeg, dist) {
-  const t = angleDeg * Math.PI / 180;
-  return {
-    x: listener.group.position.x + -Math.sin(t) * dist,
-    z: listener.group.position.z + -Math.cos(t) * dist,
-  };
+  const t = angleDeg*Math.PI/180;
+  return { x: listener.group.position.x + -Math.sin(t)*dist, z: listener.group.position.z + -Math.cos(t)*dist };
 }
-const posA = polarFromListener( 60,  2.5);
-const posB = polarFromListener(-130, 3.6);
-const posC = polarFromListener(-30,  5.0);
-const salon = [
-  makePerson('A', 0xff8a6a, posA.x, posA.z),
-  makePerson('B', 0xffd07a, posB.x, posB.z),
-  makePerson('C', 0xa0e060, posC.x, posC.z),
-];
+const pA=polarFromListener(60,2.5), pB=polarFromListener(-130,3.6), pC=polarFromListener(-30,5.0);
+const salon = [ makePerson('A',0xff8a6a,pA.x,pA.z), makePerson('B',0xffd07a,pB.x,pB.z), makePerson('C',0xa0e060,pC.x,pC.z) ];
+listener.group.add(makeStandingMarker(0x6ec6ff));
+scene.add(makeCenterMarker(0,0));
 
-const standMarker = makeStandingMarker(0x6ec6ff);
-listener.group.add(standMarker);
-
-const centerMarker = makeCenterMarker(0, 0);
-scene.add(centerMarker);
-
-// Rooms — wireframe boxes, each with a speaker inside.
-// Each room exposes: name, x, z (center), w, d, h, color, convolver (audio).
 function makeRoomBox(opts) {
-  const { x, z, w, d, h, color, name, doorSide } = opts;
+  const { x,z,w,d,h,color,name,tex } = opts;
   const grp = new THREE.Group();
-  const m  = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.7 });
-  const md = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.32 });
-
-  // Floor outline (heavier)
-  grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(-w/2, 0.015, -d/2),
-    new THREE.Vector3( w/2, 0.015, -d/2),
-    new THREE.Vector3( w/2, 0.015,  d/2),
-    new THREE.Vector3(-w/2, 0.015,  d/2),
-    new THREE.Vector3(-w/2, 0.015, -d/2),
-  ]), m));
-
-  // Ceiling outline (lighter)
-  grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(-w/2, h, -d/2),
-    new THREE.Vector3( w/2, h, -d/2),
-    new THREE.Vector3( w/2, h,  d/2),
-    new THREE.Vector3(-w/2, h,  d/2),
-    new THREE.Vector3(-w/2, h, -d/2),
-  ]), md));
-
-  // Vertical edges
-  for (const [cx, cz] of [[-w/2,-d/2], [w/2,-d/2], [w/2,d/2], [-w/2,d/2]]) {
-    grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(
-      [new THREE.Vector3(cx, 0, cz), new THREE.Vector3(cx, h, cz)]), md));
-  }
-
-  // "Wall lines" at mid height, with a gap on the doorSide
-  const DOOR_W = 1.0;
-  function wallLine(p1, p2, hasDoor) {
-    // p1, p2 in XZ; draw at mid-height and at h*0.7
-    const ys = [h * 0.35, h * 0.7];
-    for (const y of ys) {
-      if (!hasDoor) {
-        grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(
-          [new THREE.Vector3(p1.x, y, p1.z), new THREE.Vector3(p2.x, y, p2.z)]), md));
-      } else {
-        // Compute midpoint and break with DOOR_W gap
-        const mx = (p1.x + p2.x) / 2, mz = (p1.z + p2.z) / 2;
-        const dx = p2.x - p1.x, dz = p2.z - p1.z;
-        const len = Math.hypot(dx, dz);
-        const ux = dx/len, uz = dz/len;
-        const gap = Math.min(DOOR_W, len * 0.5);
-        const a = { x: mx - ux*gap/2, z: mz - uz*gap/2 };
-        const b = { x: mx + ux*gap/2, z: mz + uz*gap/2 };
-        grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(
-          [new THREE.Vector3(p1.x, y, p1.z), new THREE.Vector3(a.x, y, a.z)]), md));
-        grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(
-          [new THREE.Vector3(b.x, y, b.z), new THREE.Vector3(p2.x, y, p2.z)]), md));
-      }
-    }
-  }
-  // Four walls (corners NW, NE, SE, SW); doorSide enums: 'N','S','E','W'
-  const NW = { x: -w/2, z: -d/2 };
-  const NE = { x:  w/2, z: -d/2 };
-  const SE = { x:  w/2, z:  d/2 };
-  const SW = { x: -w/2, z:  d/2 };
-  wallLine(NW, NE, doorSide === 'N');
-  wallLine(NE, SE, doorSide === 'E');
-  wallLine(SE, SW, doorSide === 'S');
-  wallLine(SW, NW, doorSide === 'W');
-
-  grp.position.set(x, 0, z);
-  scene.add(grp);
-
-  const room = {
-    name, x, z, w, d, h, color,
-    convolver: null,        // assigned in ensureAudio()
-    wetGain: null,
-    contains(px, pz) {
-      return (px >= x - w/2 && px <= x + w/2 && pz >= z - d/2 && pz <= z + d/2);
-    },
-  };
-  return room;
+  const edge = new THREE.LineBasicMaterial({ color, transparent:true, opacity:0.7 });
+  const edgeD = new THREE.LineBasicMaterial({ color, transparent:true, opacity:0.3 });
+  grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-w/2,0.02,-d/2),new THREE.Vector3(w/2,0.02,-d/2),new THREE.Vector3(w/2,0.02,d/2),new THREE.Vector3(-w/2,0.02,d/2),new THREE.Vector3(-w/2,0.02,-d/2)]), edge));
+  grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-w/2,h,-d/2),new THREE.Vector3(w/2,h,-d/2),new THREE.Vector3(w/2,h,d/2),new THREE.Vector3(-w/2,h,d/2),new THREE.Vector3(-w/2,h,-d/2)]), edgeD));
+  for (const [cx,cz] of [[-w/2,-d/2],[w/2,-d/2],[w/2,d/2],[-w/2,d/2]])
+    grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(cx,0,cz),new THREE.Vector3(cx,h,cz)]), edgeD));
+  const tN = tex.clone(); tN.repeat.set(Math.max(1,w/2),Math.max(1,h/2)); tN.needsUpdate=true;
+  const tE = tex.clone(); tE.repeat.set(Math.max(1,d/2),Math.max(1,h/2)); tE.needsUpdate=true;
+  const tW = tex.clone(); tW.repeat.set(Math.max(1,d/2),Math.max(1,h/2)); tW.needsUpdate=true;
+  const wN = new THREE.Mesh(new THREE.PlaneGeometry(w,h), new THREE.MeshLambertMaterial({ map:tN, transparent:true, opacity:0.92, side:THREE.DoubleSide })); wN.position.set(0,h/2,-d/2); grp.add(wN);
+  const wE = new THREE.Mesh(new THREE.PlaneGeometry(d,h), new THREE.MeshLambertMaterial({ map:tE, transparent:true, opacity:0.92, side:THREE.DoubleSide })); wE.position.set(w/2,h/2,0); wE.rotation.y=-Math.PI/2; grp.add(wE);
+  const wW = new THREE.Mesh(new THREE.PlaneGeometry(d,h), new THREE.MeshLambertMaterial({ map:tW, transparent:true, opacity:0.92, side:THREE.DoubleSide })); wW.position.set(-w/2,h/2,0); wW.rotation.y=Math.PI/2; grp.add(wW);
+  grp.position.set(x,0,z); scene.add(grp);
+  return { name,x,z,w,d,h,color, irDur:opts.irDur, irDecay:opts.irDecay, irBright:opts.irBright, convolver:null, wetReturn:null,
+    contains(px,pz){ return px>=x-w/2&&px<=x+w/2&&pz>=z-d/2&&pz<=z+d/2; } };
 }
-
 const rooms = [
-  makeRoomBox({ name:'Brick', x:-7.5, z:-2.5, w:3.4, d:3.0, h:2.6, color: 0xff8a6a, doorSide:'S',
-                irDur:2.4, irDecay:1.8, irBright:0.85 }),
-  makeRoomBox({ name:'Soft',  x: 7.5, z:-2.5, w:3.4, d:3.0, h:2.6, color: 0x80c0ff, doorSide:'S',
-                irDur:0.5, irDecay:3.8, irBright:0.25 }),
-  makeRoomBox({ name:'Dry',   x: 0,   z:-7.5, w:3.4, d:3.0, h:2.4, color: 0xa0e060, doorSide:'S',
-                irDur:0.12,irDecay:2.0, irBright:0.55 }),
+  makeRoomBox({ name:'Brick', x:-12,z:-6, w:5.5,d:4.8,h:3.6, color:0xff8a6a, tex:TEX.brick,  irDur:2.4, irDecay:1.8, irBright:0.85 }),
+  makeRoomBox({ name:'Soft',  x: 12,z:-6, w:4.0,d:3.5,h:2.8, color:0xb0a0ff, tex:TEX.padded, irDur:0.55,irDecay:3.8, irBright:0.22 }),
+  makeRoomBox({ name:'Dry',   x: 0, z:-13,w:2.8,d:2.6,h:2.3, color:0xa0e060, tex:TEX.panel,  irDur:0.12,irDecay:2.0, irBright:0.55 }),
 ];
+const roomSpeakers = rooms.map((r,i) => { const cs=[0xff8a6a,0xb0a0ff,0xa0e060]; const s=makePerson(r.name,cs[i],r.x,r.z); s.homeRoom=r; return s; });
 
-// Place a speaker inside each room
-const roomSpeakers = rooms.map((r, i) => {
-  const colors = [0xff8a6a, 0x80c0ff, 0xa0e060];
-  const s = makePerson(r.name + '·R', colors[i], r.x, r.z);
-  s.homeRoom = r;
-  return s;
-});
-
-// Combined list of all "non-listener" people
-const allSpeakers = [...salon, ...roomSpeakers];
-
-// ─── Floating labels ─────────────────────────────────────────────────────
-const labelsEl = document.createElement('div');
-labelsEl.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:5;';
-document.body.appendChild(labelsEl);
-
-function makeLabel(text, color) {
-  const el = document.createElement('div');
-  el.textContent = text;
-  el.style.cssText = `
-    position:absolute; transform:translate(-50%,-50%);
-    font-family:'Inter',sans-serif; font-weight:400; font-size:.68rem;
-    letter-spacing:.16em; text-transform:lowercase;
-    color: ${color}; opacity:.78;
-    text-shadow:0 0 8px rgba(10,20,36,0.95);
-    padding: 0 4px; white-space:nowrap;
-  `;
-  labelsEl.appendChild(el);
-  return el;
+function wallEndpoints(wx,wz,angle,width){ const half=width/2, dx=Math.cos(angle)*half, dz=Math.sin(angle)*half; return [{x:wx-dx,z:wz-dz},{x:wx+dx,z:wz+dz}]; }
+function makeFreeWall(opts) {
+  const { x,z,angle,width,height,material,name } = opts;
+  const [p1,p2] = wallEndpoints(x,z,angle,width);
+  let mesh;
+  if (material==='glass') {
+    mesh = new THREE.Mesh(new THREE.PlaneGeometry(width,height), new THREE.MeshBasicMaterial({ color:0x8fd0ff, transparent:true, opacity:0.16, side:THREE.DoubleSide }));
+    mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(width,height)), new THREE.LineBasicMaterial({ color:0xbfe8ff, transparent:true, opacity:0.8 })));
+  } else {
+    const tex = (material==='solid'?TEX.metal:TEX.concrete).clone(); tex.repeat.set(Math.max(1,width/2.5),Math.max(1,height/2.5)); tex.needsUpdate=true;
+    mesh = new THREE.Mesh(new THREE.PlaneGeometry(width,height), new THREE.MeshLambertMaterial({ map:tex, transparent:true, opacity:0.95, side:THREE.DoubleSide }));
+  }
+  mesh.position.set(x,height/2,z); mesh.rotation.y=-angle; scene.add(mesh);
+  let transGain, transCutoff;
+  if (material==='solid'){ transGain=0.025; transCutoff=320; }
+  else if (material==='glass'){ transGain=0.55; transCutoff=2200; }
+  else { transGain=0.10; transCutoff=550; }
+  return { name, material, x, z, angle, width, height, p1, p2, transGain, transCutoff };
 }
-listener.labelEl = makeLabel(listener.name, '#6ec6ff');
-for (const s of allSpeakers) {
-  s.labelEl = makeLabel(s.name, '#' + s.color.toString(16).padStart(6,'0'));
-}
-// Room labels
-const roomLabels = rooms.map(r => {
-  const el = document.createElement('div');
-  el.textContent = r.name;
-  el.style.cssText = `
-    position:absolute; transform:translate(-50%,-50%);
-    font-family:'Inter',sans-serif; font-weight:300; font-size:.62rem;
-    letter-spacing:.32em; text-transform:uppercase;
-    color: #${r.color.toString(16).padStart(6,'0')}; opacity:.55;
-    text-shadow:0 0 8px rgba(10,20,36,0.95);
-    padding: 0 4px; white-space:nowrap;
-  `;
-  labelsEl.appendChild(el);
-  return { el, room: r };
-});
+const walls = [
+  makeFreeWall({ name:'Solid', material:'solid', x:-5,z:0, angle:Math.PI/2, width:5, height:3.0 }),
+  makeFreeWall({ name:'Glass', material:'glass', x:5, z:0, angle:Math.PI/2, width:5, height:3.0 }),
+  makeFreeWall({ name:'Distant', material:'concrete', x:0, z:-20, angle:0, width:30, height:5.0 }),
+];
+const wallS = makePerson('hidden', 0xff8a6a, -9, 0);
+const wallG = makePerson('glassed', 0x8fd0ff, 9, 0);
+const openSp = makePerson('open', 0xffd07a, 0, 14);
+const extraSpeakers = [wallS, wallG, openSp];
+const allSpeakers = [...salon, ...roomSpeakers, ...extraSpeakers];
 
-function projectToScreen(vec3) {
-  const v = vec3.clone().project(activeCam);
-  return {
-    x: (v.x * 0.5 + 0.5) * innerWidth,
-    y: (1 - (v.y * 0.5 + 0.5)) * innerHeight,
-    z: v.z,
-  };
-}
+// ─── Labels ──────────────────────────────────────────────────────────────
+const labelsEl = document.createElement('div'); labelsEl.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:5;'; document.body.appendChild(labelsEl);
+function makeLabel(text,color,size=0.66,alpha=0.78){ const el=document.createElement('div'); el.textContent=text;
+  el.style.cssText=`position:absolute;transform:translate(-50%,-50%);font-family:'Inter',sans-serif;font-weight:400;font-size:${size}rem;letter-spacing:.16em;text-transform:lowercase;color:${color};opacity:${alpha};text-shadow:0 0 8px rgba(10,20,36,0.95);padding:0 4px;white-space:nowrap;`;
+  labelsEl.appendChild(el); return el; }
+listener.labelEl = makeLabel(listener.name,'#6ec6ff');
+for (const s of allSpeakers) s.labelEl = makeLabel(s.name,'#'+s.color.toString(16).padStart(6,'0'));
+const roomLabels = rooms.map(r => ({ el:makeLabel(r.name,'#'+r.color.toString(16).padStart(6,'0'),0.6,0.55), room:r }));
+const wallLabels = walls.map(w => ({ el:makeLabel(w.name, w.material==='glass'?'#8fd0ff':(w.material==='solid'?'#9aa4ae':'#9a9a9e'),0.55,0.5), wall:w }));
+function projectToScreen(v3){ const v=v3.clone().project(activeCam); return { x:(v.x*0.5+0.5)*innerWidth, y:(1-(v.y*0.5+0.5))*innerHeight, z:v.z }; }
 function updateLabels() {
-  function place(person, yOffset) {
-    const world = new THREE.Vector3();
-    person.headGroup.getWorldPosition(world);
-    world.y += yOffset;
-    const p = projectToScreen(world);
-    if (p.z > 1 || (person === listener && cameraMode === 'firstperson')) {
-      person.labelEl.style.opacity = '0';
-    } else {
-      person.labelEl.style.opacity = '0.78';
-      person.labelEl.style.left = p.x + 'px';
-      person.labelEl.style.top  = p.y + 'px';
-    }
-  }
-  place(listener, 0.55);
-  for (const s of allSpeakers) place(s, 0.55);
-  // Room labels — float above each room
-  for (const rl of roomLabels) {
-    const p = projectToScreen(new THREE.Vector3(rl.room.x, rl.room.h + 0.6, rl.room.z));
-    if (p.z > 1) rl.el.style.opacity = '0';
-    else {
-      rl.el.style.opacity = '0.55';
-      rl.el.style.left = p.x + 'px';
-      rl.el.style.top  = p.y + 'px';
-    }
-  }
+  const place=(person,yOff)=>{ const w=new THREE.Vector3(); person.headGroup.getWorldPosition(w); w.y+=yOff; const p=projectToScreen(w);
+    if (p.z>1 || (person===listener && cameraMode==='firstperson')) person.labelEl.style.opacity='0';
+    else { person.labelEl.style.opacity='0.78'; person.labelEl.style.left=p.x+'px'; person.labelEl.style.top=p.y+'px'; } };
+  place(listener,0.55); for (const s of allSpeakers) place(s,0.55);
+  for (const rl of roomLabels){ const p=projectToScreen(new THREE.Vector3(rl.room.x,rl.room.h+0.6,rl.room.z)); rl.el.style.opacity=p.z>1?'0':'0.55'; rl.el.style.left=p.x+'px'; rl.el.style.top=p.y+'px'; }
+  for (const wl of wallLabels){ const p=projectToScreen(new THREE.Vector3(wl.wall.x,wl.wall.height+0.5,wl.wall.z)); wl.el.style.opacity=p.z>1?'0':'0.5'; wl.el.style.left=p.x+'px'; wl.el.style.top=p.y+'px'; }
 }
 
 // ─── Listener orientation ────────────────────────────────────────────────
-let yaw = 0, pitch = 0, roll = 0;
-const PITCH_LIMIT = Math.PI * 0.45;
-const ROLL_LIMIT  = Math.PI * 0.35;
-
-function applyListenerOrientation() {
-  listener.bodyGroup.rotation.set(0, yaw, 0);
-  listener.headGroup.rotation.order = 'YXZ';
-  listener.headGroup.rotation.set(pitch, yaw, roll);
-}
+let yaw=0, pitch=0, roll=0; const PITCH_LIMIT=Math.PI*0.45, ROLL_LIMIT=Math.PI*0.35;
+function applyListenerOrientation(){ listener.bodyGroup.rotation.set(0,yaw,0); listener.headGroup.rotation.order='YXZ'; listener.headGroup.rotation.set(pitch,yaw,roll); }
 applyListenerOrientation();
-
-let dragging = false;
-let lastX = 0, lastY = 0;
-const DRAG_SENS = 0.005;
-container.addEventListener('pointerdown', e => {
-  unlockAudio();
-  if (orientEnabled) return;
-  // Don't drag if pointer started on the joystick or talk button
-  if (e.target && (e.target.closest('#joystick') || e.target.closest('#talk-btn'))) return;
-  dragging = true;
-  lastX = e.clientX; lastY = e.clientY;
-  container.classList.add('dragging');
-  container.setPointerCapture?.(e.pointerId);
-});
-container.addEventListener('pointermove', e => {
-  if (!dragging) return;
-  const dx = e.clientX - lastX, dy = e.clientY - lastY;
-  yaw   -= dx * DRAG_SENS;
-  pitch -= dy * DRAG_SENS;
-  pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, pitch));
-  applyListenerOrientation();
-  lastX = e.clientX; lastY = e.clientY;
-});
-container.addEventListener('pointerup',     () => { dragging = false; container.classList.remove('dragging'); });
-container.addEventListener('pointercancel', () => { dragging = false; container.classList.remove('dragging'); });
-
-function resetFacing() {
-  const dx = 0 - listener.group.position.x;
-  const dz = 0 - listener.group.position.z;
-  yaw = Math.atan2(-dx, -dz);
-  pitch = 0; roll = 0;
-  if (orientEnabled) orientCal = null;
-  applyListenerOrientation();
-}
+let dragging=false, lastX=0, lastY=0; const DRAG_SENS=0.005;
+container.addEventListener('pointerdown', e=>{ unlockAudio(); if (orientEnabled) return; if (e.target&&(e.target.closest('#joystick')||e.target.closest('#talk-btn'))) return;
+  dragging=true; lastX=e.clientX; lastY=e.clientY; container.classList.add('dragging'); container.setPointerCapture?.(e.pointerId); });
+container.addEventListener('pointermove', e=>{ if (!dragging) return; yaw-=(e.clientX-lastX)*DRAG_SENS; pitch-=(e.clientY-lastY)*DRAG_SENS;
+  pitch=Math.max(-PITCH_LIMIT,Math.min(PITCH_LIMIT,pitch)); applyListenerOrientation(); lastX=e.clientX; lastY=e.clientY; });
+container.addEventListener('pointerup', ()=>{ dragging=false; container.classList.remove('dragging'); });
+container.addEventListener('pointercancel', ()=>{ dragging=false; container.classList.remove('dragging'); });
+function resetFacing(){ yaw=Math.atan2(-(0-listener.group.position.x),-(0-listener.group.position.z)); pitch=0; roll=0; if (orientEnabled) orientCal=null; applyListenerOrientation(); }
 container.addEventListener('dblclick', resetFacing);
-let lastTap = 0;
-container.addEventListener('touchend', e => {
-  const now = performance.now();
-  if (now - lastTap < 320) { resetFacing(); e.preventDefault(); }
-  lastTap = now;
-}, { passive: false });
+let lastTap=0; container.addEventListener('touchend', e=>{ const now=performance.now(); if (now-lastTap<320){ resetFacing(); e.preventDefault(); } lastTap=now; }, { passive:false });
 
 // ─── Device orientation ──────────────────────────────────────────────────
-let orientEnabled = false;
-let orientCal = null;
-const trackEnableBtn  = document.getElementById('track-enable');
-const trackRecalBtn   = document.getElementById('track-recal');
-const trackDisableBtn = document.getElementById('track-disable');
-const trackStatus     = document.getElementById('track-status');
-function normDeg180(d) { while (d>180) d-=360; while (d<-180) d+=360; return d; }
-function onOrientation(e) {
-  if (e.alpha == null || e.beta == null || e.gamma == null) return;
-  if (!orientCal) orientCal = { alpha:e.alpha, beta:e.beta, gamma:e.gamma };
-  const dAlpha = normDeg180(e.alpha - orientCal.alpha);
-  const dBeta  = e.beta  - orientCal.beta;
-  const dGamma = e.gamma - orientCal.gamma;
-  yaw   =  dAlpha * Math.PI/180;
-  pitch =  dBeta  * Math.PI/180;
-  roll  = -dGamma * Math.PI/180;
-  pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, pitch));
-  roll  = Math.max(-ROLL_LIMIT,  Math.min(ROLL_LIMIT,  roll));
-  applyListenerOrientation();
-  trackStatus.textContent =
-    `α ${e.alpha.toFixed(0)}°  β ${e.beta.toFixed(0)}°  γ ${e.gamma.toFixed(0)}°`;
-}
-function showTrackingUI(on) {
-  trackEnableBtn.style.display  = on ? 'none' : '';
-  trackRecalBtn.style.display   = on ? '' : 'none';
-  trackDisableBtn.style.display = on ? '' : 'none';
-  trackStatus.classList.toggle('visible', on);
-}
-async function enableHeadTracking() {
-  unlockAudio();
-  if (typeof DeviceOrientationEvent === 'undefined') {
-    trackEnableBtn.textContent = 'NOT SUPPORTED';
-    trackEnableBtn.classList.add('error'); return;
-  }
-  if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-    try {
-      const resp = await DeviceOrientationEvent.requestPermission();
-      if (resp !== 'granted') {
-        trackEnableBtn.textContent = 'PERMISSION DENIED';
-        trackEnableBtn.classList.add('error'); return;
-      }
-    } catch (err) {
-      trackEnableBtn.textContent = 'PERMISSION ERROR';
-      trackEnableBtn.classList.add('error'); return;
-    }
-  }
-  window.addEventListener('deviceorientation', onOrientation);
-  orientEnabled = true; orientCal = null;
-  showTrackingUI(true);
-}
-function disableHeadTracking() {
-  window.removeEventListener('deviceorientation', onOrientation);
-  orientEnabled = false; orientCal = null;
-  showTrackingUI(false);
-}
-trackEnableBtn .addEventListener('click', enableHeadTracking);
-trackRecalBtn  .addEventListener('click', () => { orientCal = null; });
+let orientEnabled=false, orientCal=null;
+const trackEnableBtn=document.getElementById('track-enable'), trackRecalBtn=document.getElementById('track-recal'), trackDisableBtn=document.getElementById('track-disable'), trackStatus=document.getElementById('track-status');
+function normDeg180(d){ while(d>180)d-=360; while(d<-180)d+=360; return d; }
+function onOrientation(e){ if (e.alpha==null||e.beta==null||e.gamma==null) return; if (!orientCal) orientCal={alpha:e.alpha,beta:e.beta,gamma:e.gamma};
+  const dA=normDeg180(e.alpha-orientCal.alpha), dB=e.beta-orientCal.beta, dG=e.gamma-orientCal.gamma;
+  yaw=dA*Math.PI/180; pitch=dB*Math.PI/180; roll=-dG*Math.PI/180; pitch=Math.max(-PITCH_LIMIT,Math.min(PITCH_LIMIT,pitch)); roll=Math.max(-ROLL_LIMIT,Math.min(ROLL_LIMIT,roll));
+  applyListenerOrientation(); trackStatus.textContent=`α ${e.alpha.toFixed(0)}°  β ${e.beta.toFixed(0)}°  γ ${e.gamma.toFixed(0)}°`; }
+function showTrackingUI(on){ trackEnableBtn.style.display=on?'none':''; trackRecalBtn.style.display=on?'':'none'; trackDisableBtn.style.display=on?'':'none'; trackStatus.classList.toggle('visible',on); }
+async function enableHeadTracking(){ unlockAudio();
+  if (typeof DeviceOrientationEvent==='undefined'){ trackEnableBtn.textContent='NOT SUPPORTED'; trackEnableBtn.classList.add('error'); return; }
+  if (typeof DeviceOrientationEvent.requestPermission==='function'){ try { const r=await DeviceOrientationEvent.requestPermission(); if (r!=='granted'){ trackEnableBtn.textContent='PERMISSION DENIED'; trackEnableBtn.classList.add('error'); return; } } catch(e){ trackEnableBtn.textContent='PERMISSION ERROR'; trackEnableBtn.classList.add('error'); return; } }
+  window.addEventListener('deviceorientation', onOrientation); orientEnabled=true; orientCal=null; showTrackingUI(true); }
+function disableHeadTracking(){ window.removeEventListener('deviceorientation', onOrientation); orientEnabled=false; orientCal=null; showTrackingUI(false); }
+trackEnableBtn.addEventListener('click', enableHeadTracking);
+trackRecalBtn.addEventListener('click', ()=>{ orientCal=null; });
 trackDisableBtn.addEventListener('click', disableHeadTracking);
 
-// ─── Camera modes ────────────────────────────────────────────────────────
-function setCameraMode(mode) {
-  cameraMode = mode;
-  document.querySelectorAll('.cam-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.mode === mode);
-  });
-  if (mode === 'firstperson') {
-    listener.headGroup.visible = false;
-    listener.bodyGroup.visible = false;
-  } else {
-    listener.headGroup.visible = true;
-    listener.bodyGroup.visible = true;
-  }
-}
-document.querySelectorAll('.cam-btn').forEach(btn => {
-  btn.addEventListener('click', () => { unlockAudio(); setCameraMode(btn.dataset.mode); });
-});
-
+// ─── Camera ──────────────────────────────────────────────────────────────
+function setCameraMode(mode){ cameraMode=mode; document.querySelectorAll('.cam-btn').forEach(b=>b.classList.toggle('active', b.dataset.mode===mode));
+  const hide=(mode==='firstperson'); listener.headGroup.visible=!hide; listener.bodyGroup.visible=!hide; }
+document.querySelectorAll('.cam-btn').forEach(b=>b.addEventListener('click', ()=>{ unlockAudio(); setCameraMode(b.dataset.mode); }));
 function updateCamera() {
-  if (cameraMode === 'topdown') {
-    activeCam = orthoCam;
-    // Camera follows listener so they don't walk off-screen.
-    const lp = listener.group.position;
-    orthoCam.position.set(lp.x + 6, 16, lp.z + 8);
-    orthoCam.lookAt(lp.x, 0.5, lp.z);
-  } else if (cameraMode === 'overshoulder') {
-    activeCam = perspCam;
-    const localCamPos = new THREE.Vector3(0.85, 0.95, 1.7);
-    const c = Math.cos(yaw), s = Math.sin(yaw);
-    const off = new THREE.Vector3(
-      localCamPos.x * c + localCamPos.z * s,
-      localCamPos.y,
-      -localCamPos.x * s + localCamPos.z * c
-    );
-    const headWorld = new THREE.Vector3();
-    listener.headGroup.getWorldPosition(headWorld);
-    perspCam.position.copy(headWorld).add(off);
-    const localTgt = new THREE.Vector3(-0.25, -0.25, -4);
-    const tgt = new THREE.Vector3(
-      localTgt.x * c + localTgt.z * s,
-      localTgt.y,
-      -localTgt.x * s + localTgt.z * c
-    );
-    perspCam.up.set(0, 1, 0);
-    perspCam.lookAt(headWorld.clone().add(tgt));
-  } else if (cameraMode === 'firstperson') {
-    activeCam = perspCam;
-    const headWorld = new THREE.Vector3();
-    listener.headGroup.getWorldPosition(headWorld);
-    perspCam.position.copy(headWorld);
-    perspCam.rotation.order = 'YXZ';
-    perspCam.rotation.set(pitch, yaw, roll);
-  }
+  if (cameraMode==='topdown'){ activeCam=orthoCam; const lp=listener.group.position; orthoCam.position.set(lp.x+7,18,lp.z+9); orthoCam.lookAt(lp.x,0.5,lp.z); }
+  else if (cameraMode==='overshoulder'){ activeCam=perspCam; const c=Math.cos(yaw),s=Math.sin(yaw); const lc=new THREE.Vector3(0.85,0.95,1.7);
+    const off=new THREE.Vector3(lc.x*c+lc.z*s,lc.y,-lc.x*s+lc.z*c); const hw=new THREE.Vector3(); listener.headGroup.getWorldPosition(hw);
+    perspCam.position.copy(hw).add(off); const lt=new THREE.Vector3(-0.25,-0.25,-4); const tg=new THREE.Vector3(lt.x*c+lt.z*s,lt.y,-lt.x*s+lt.z*c);
+    perspCam.up.set(0,1,0); perspCam.lookAt(hw.clone().add(tg)); }
+  else { activeCam=perspCam; const hw=new THREE.Vector3(); listener.headGroup.getWorldPosition(hw); perspCam.position.copy(hw); perspCam.rotation.order='YXZ'; perspCam.rotation.set(pitch,yaw,roll); }
 }
 
 // ============================================================
-// AUDIO ENGINE
+// AUDIO
 // ============================================================
-let audioCtx = null;
-let masterGain = null;
-let audioMuted = false;
-let audioUnlockBufferPlayed = false;
-let spatialMode = 'binaural'; // 'binaural' | 'stereo'
-let panSettings = { refDist: 1.5, rolloff: 1.0, maxDist: 80 };
-let masterVolume = 0.5;
+let audioCtx=null, masterGain=null, spaceConvolver=null, spaceReturn=null;
+let audioMuted=false, audioUnlockBufferPlayed=false, spatialMode='binaural';
+let panSettings={ refDist:1.5, rolloff:1.0, maxDist:90 }, masterVolume=0.5, directivityAmount=1.0;
 
-// Generate a synthetic impulse response (mono → stereo) with stereo decorrelation
-function generateIR(ctx, durationSec, decayExp, brightness) {
-  const sr = ctx.sampleRate;
-  const len = Math.max(1, Math.floor(sr * durationSec));
-  const buf = ctx.createBuffer(2, len, sr);
-  for (let c = 0; c < 2; c++) {
-    const d = buf.getChannelData(c);
-    let prev = 0;
-    // Brightness 0..1 → α 0.05..0.95
-    const alpha = 0.05 + brightness * 0.90;
-    for (let i = 0; i < len; i++) {
-      const t = i / len;
-      const env = Math.pow(1 - t, decayExp);
-      const noise = (Math.random() * 2 - 1) * env;
-      prev = prev + alpha * (noise - prev);  // 1-pole LPF for darkness control
-      d[i] = prev * 0.8;
-    }
-  }
-  return buf;
-}
+function generateIR(ctx,durSec,decayExp,brightness){ const sr=ctx.sampleRate,len=Math.max(1,Math.floor(sr*durSec)),buf=ctx.createBuffer(2,len,sr);
+  for (let c=0;c<2;c++){ const d=buf.getChannelData(c); let prev=0; const a=0.05+brightness*0.90;
+    for (let i=0;i<len;i++){ const t=i/len,env=Math.pow(1-t,decayExp),n=(Math.random()*2-1)*env; prev=prev+a*(n-prev); d[i]=prev*0.8; } } return buf; }
+function generateSpaceIR(ctx){ const sr=ctx.sampleRate,len=Math.floor(sr*0.42),buf=ctx.createBuffer(2,len,sr);
+  const taps=[{t:0.011,g:0.45},{t:0.021,g:0.38},{t:0.034,g:0.34},{t:0.052,g:0.30},{t:0.077,g:0.24},{t:0.128,g:0.55},{t:0.166,g:0.30},{t:0.205,g:0.18}];
+  for (let c=0;c<2;c++){ const d=buf.getChannelData(c);
+    for (const tp of taps){ const idx=Math.floor((tp.t+c*0.0008)*sr); if (idx<len) d[idx]+=tp.g*(0.8+Math.random()*0.4)*(c?-1:1); }
+    for (let i=0;i<len;i++){ const env=Math.pow(1-i/len,3.2); d[i]+=(Math.random()*2-1)*env*0.035; } } return buf; }
 
 function ensureAudio() {
   if (audioCtx) return audioCtx;
-  try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
-  catch(e) { return null; }
+  try { audioCtx = new (window.AudioContext||window.webkitAudioContext)(); } catch(e){ return null; }
+  masterGain = audioCtx.createGain(); masterGain.gain.value = audioMuted?0:masterVolume; masterGain.connect(audioCtx.destination);
+  rooms.forEach(r => { const conv=audioCtx.createConvolver(); conv.buffer=generateIR(audioCtx,r.irDur,r.irDecay,r.irBright); r.convolver=conv;
+    r.wetReturn=audioCtx.createGain(); r.wetReturn.gain.value=0.5; conv.connect(r.wetReturn).connect(masterGain); });
+  spaceConvolver=audioCtx.createConvolver(); spaceConvolver.buffer=generateSpaceIR(audioCtx);
+  spaceReturn=audioCtx.createGain(); spaceReturn.gain.value=0.5; spaceConvolver.connect(spaceReturn).connect(masterGain);
 
-  masterGain = audioCtx.createGain();
-  masterGain.gain.value = audioMuted ? 0 : masterVolume;
-  masterGain.connect(audioCtx.destination);
-
-  // Build per-room convolvers
-  const ROOM_IRS = [
-    { dur: 2.4, decay: 1.8, bright: 0.85 },  // Brick
-    { dur: 0.5, decay: 3.8, bright: 0.25 },  // Soft
-    { dur: 0.12,decay: 2.0, bright: 0.55 },  // Dry
-  ];
-  rooms.forEach((r, i) => {
-    const conv = audioCtx.createConvolver();
-    conv.buffer = generateIR(audioCtx, ROOM_IRS[i].dur, ROOM_IRS[i].decay, ROOM_IRS[i].bright);
-    r.convolver = conv;
-    r.wetReturn = audioCtx.createGain();
-    r.wetReturn.gain.value = 0.45;
-    conv.connect(r.wetReturn).connect(masterGain);
-  });
-
-  // Build per-person audio chains
   function buildChain(person, voiceIdx, homeRoom) {
     person.voiceChar = VOICE_CHARACTERS[voiceIdx % VOICE_CHARACTERS.length];
     person.audioInput = audioCtx.createGain();
-    // Occlusion stage (dry path only)
-    person.occGain   = audioCtx.createGain();   person.occGain.gain.value = 1.0;
-    person.occFilter = audioCtx.createBiquadFilter();
-    person.occFilter.type = 'lowpass'; person.occFilter.frequency.value = 18000;
-    // Parallel spatial paths — crossfade between them via gains
-    person.pannerNode = audioCtx.createPanner();
-    person.pannerNode.panningModel = 'HRTF';
-    person.pannerNode.distanceModel = 'inverse';
-    person.pannerNode.refDistance = panSettings.refDist;
-    person.pannerNode.rolloffFactor = panSettings.rolloff;
-    person.pannerNode.maxDistance = panSettings.maxDist;
-    person.binauralGain = audioCtx.createGain();
-    person.binauralGain.gain.value = (spatialMode === 'binaural') ? 1 : 0;
-
-    person.stereoPan = audioCtx.createStereoPanner();
-    person.stereoGain = audioCtx.createGain();
-    person.stereoGain.gain.value = (spatialMode === 'stereo') ? 1 : 0;
-
-    person.analyser = audioCtx.createAnalyser();
-    person.analyser.fftSize = 128;
-    person.analyser.smoothingTimeConstant = 0.55;
-    person.fftData = new Uint8Array(person.analyser.frequencyBinCount);
-
-    // Routing: audioInput → occFilter → occGain → [pannerNode | stereoPan] → analyser → master
-    person.audioInput.connect(person.occFilter);
-    person.occFilter.connect(person.occGain);
-    person.occGain.connect(person.pannerNode);
-    person.pannerNode.connect(person.binauralGain);
-    person.occGain.connect(person.stereoPan);
-    person.stereoPan.connect(person.stereoGain);
-    person.binauralGain.connect(person.analyser);
-    person.stereoGain.connect(person.analyser);
-    person.analyser.connect(masterGain);
-
-    // Wet send → home room's convolver (if any)
-    if (homeRoom) {
-      person.wetSend = audioCtx.createGain();
-      person.wetSend.gain.value = 0.6;
-      person.audioInput.connect(person.wetSend);
-      person.wetSend.connect(homeRoom.convolver);
-      person.homeRoom = homeRoom;
-    }
+    person.toneFilter = audioCtx.createBiquadFilter(); person.toneFilter.type='lowpass'; person.toneFilter.frequency.value=18000;
+    person.levelGain = audioCtx.createGain(); person.levelGain.gain.value=1.0;
+    person.pannerNode = audioCtx.createPanner(); person.pannerNode.panningModel='HRTF'; person.pannerNode.distanceModel='inverse';
+    person.pannerNode.refDistance=panSettings.refDist; person.pannerNode.rolloffFactor=panSettings.rolloff; person.pannerNode.maxDistance=panSettings.maxDist;
+    person.binauralGain = audioCtx.createGain(); person.binauralGain.gain.value = spatialMode==='binaural'?1:0;
+    person.stereoPan = audioCtx.createStereoPanner(); person.stereoGain = audioCtx.createGain(); person.stereoGain.gain.value = spatialMode==='stereo'?1:0;
+    person.analyser = audioCtx.createAnalyser(); person.analyser.fftSize=128; person.analyser.smoothingTimeConstant=0.55; person.fftData=new Uint8Array(person.analyser.frequencyBinCount);
+    person.audioInput.connect(person.toneFilter); person.toneFilter.connect(person.levelGain);
+    person.levelGain.connect(person.pannerNode); person.pannerNode.connect(person.binauralGain);
+    person.levelGain.connect(person.stereoPan); person.stereoPan.connect(person.stereoGain);
+    person.binauralGain.connect(person.analyser); person.stereoGain.connect(person.analyser); person.analyser.connect(masterGain);
+    if (homeRoom){ person.wetSend=audioCtx.createGain(); person.wetSend.gain.value=0.6; person.levelGain.connect(person.wetSend); person.wetSend.connect(homeRoom.convolver); }
+    person.spaceSend=audioCtx.createGain(); person.spaceSend.gain.value=0.16; person.levelGain.connect(person.spaceSend); person.spaceSend.connect(spaceConvolver);
   }
-  salon.forEach((s, i)        => buildChain(s, i, null));
-  roomSpeakers.forEach((s, i) => buildChain(s, 3 + i, rooms[i]));
-
-  // Player chain (own talking) — voice index 6
-  buildChain(player, 6, null);
-  // Player's wet send is dynamic (changes room as you walk)
-  player.wetSend = audioCtx.createGain();
-  player.wetSend.gain.value = 0.55;
-  player.audioInput.connect(player.wetSend);
-  player.currentRoomConv = null;
-  // (wetSend will be connected/disconnected to current room's convolver each frame)
-
-  // Bypass spatialization for player's own voice (it comes from their own head).
-  // We do this by overriding the routing for player: skip occlusion, mute the binaural
-  // path, but allow stereoPan at center so they hear themselves. Actually easiest:
-  // also route player.audioInput directly to masterGain (with reduced gain).
-  player.dryToMaster = audioCtx.createGain();
-  player.dryToMaster.gain.value = 0.7;
-  player.audioInput.connect(player.dryToMaster).connect(masterGain);
-  // Mute the panner path for player so we don't double-hear them
-  player.binauralGain.gain.value = 0;
-  player.stereoGain.gain.value   = 0;
-
+  salon.forEach((s,i)=>buildChain(s,i,null));
+  roomSpeakers.forEach((s,i)=>buildChain(s,3+i,rooms[i]));
+  buildChain(wallS,7,null); buildChain(wallG,8,null); buildChain(openSp,9,null);
+  buildChain(player,6,null);
+  player.dryToMaster=audioCtx.createGain(); player.dryToMaster.gain.value=0.7; player.audioInput.connect(player.dryToMaster).connect(masterGain);
+  player.binauralGain.gain.value=0; player.stereoGain.gain.value=0;
+  player.wetSend=audioCtx.createGain(); player.wetSend.gain.value=0.55; player.audioInput.connect(player.wetSend);
   return audioCtx;
 }
-
 function unlockAudio() {
-  const ctx = ensureAudio();
-  if (!ctx) return;
-  if (ctx.state === 'suspended') ctx.resume();
-  // iOS silent-buffer trick — must be called from a user gesture
-  if (!audioUnlockBufferPlayed) {
-    try {
-      const b = ctx.createBuffer(1, 1, 22050);
-      const src = ctx.createBufferSource();
-      src.buffer = b; src.connect(ctx.destination); src.start(0);
-      audioUnlockBufferPlayed = true;
-      // iOS reminder banner (silent-switch caveat)
-      if (isIOS) {
-        const r = document.getElementById('ios-reminder');
-        r.classList.add('visible');
-        setTimeout(() => r.classList.remove('visible'), 4500);
-      }
-    } catch(e) {}
-  }
+  const ctx=ensureAudio(); if (!ctx) return; if (ctx.state==='suspended') ctx.resume();
+  if (!audioUnlockBufferPlayed){ try { const b=ctx.createBuffer(1,1,22050); const s=ctx.createBufferSource(); s.buffer=b; s.connect(ctx.destination); s.start(0); audioUnlockBufferPlayed=true;
+    if (isIOS){ const r=document.getElementById('ios-reminder'); r.classList.add('visible'); setTimeout(()=>r.classList.remove('visible'),4500); } } catch(e){} }
 }
 
-// ─── Voice synth (per-word) ─────────────────────────────────────────────
 function playWord(speaker, ws, wd, pitchMult) {
-  if (!audioCtx || audioMuted || wd < 0.04 || !speaker.audioInput) return;
-  const v = speaker.voiceChar;
-  const f0 = Math.max(45, v.baseFreq * pitchMult);
-
-  const osc1 = audioCtx.createOscillator();
-  osc1.type = 'sawtooth';
-  osc1.frequency.setValueAtTime(f0, ws);
-  osc1.frequency.linearRampToValueAtTime(f0 * (0.65 + Math.random() * 0.70), ws + wd * 0.55);
-  osc1.frequency.linearRampToValueAtTime(f0 * 0.70, ws + wd);
-
-  const osc2 = audioCtx.createOscillator();
-  osc2.type = 'sawtooth';
-  osc2.frequency.setValueAtTime(f0 * v.detune, ws);
-  osc2.frequency.linearRampToValueAtTime(f0 * v.detune * (0.65 + Math.random() * 0.70), ws + wd * 0.55);
-  osc2.frequency.linearRampToValueAtTime(f0 * v.detune * 0.70, ws + wd);
-
-  const f1 = audioCtx.createBiquadFilter();
-  f1.type = 'bandpass'; f1.Q.value = v.q;
-  const fA = v.fSweep[0] * (0.65 + Math.random() * 0.70);
-  const fB = v.fSweep[1] * (0.65 + Math.random() * 0.70);
-  f1.frequency.setValueAtTime(fA, ws);
-  f1.frequency.linearRampToValueAtTime(fB, ws + wd * 0.55);
-  f1.frequency.linearRampToValueAtTime(fA * 0.7, ws + wd);
-
-  const f2 = audioCtx.createBiquadFilter();
-  f2.type = 'bandpass'; f2.Q.value = 3.5;
-  f2.frequency.setValueAtTime(fA * 2.2, ws);
-  f2.frequency.linearRampToValueAtTime(fB * 1.9, ws + wd * 0.55);
-  f2.frequency.linearRampToValueAtTime(fA * 1.6, ws + wd);
-
-  const env = audioCtx.createGain();
-  env.gain.setValueAtTime(0, ws);
-  env.gain.linearRampToValueAtTime(0.32, ws + Math.min(0.04, wd * 0.15));
-  env.gain.linearRampToValueAtTime(0.28, ws + wd * 0.85);
-  env.gain.linearRampToValueAtTime(0, ws + wd);
-
-  osc1.connect(f1);
-  osc2.connect(f1);
-  f1.connect(f2).connect(env).connect(speaker.audioInput);
-  osc1.start(ws); osc1.stop(ws + wd + 0.04);
-  osc2.start(ws); osc2.stop(ws + wd + 0.04);
+  if (!audioCtx||audioMuted||wd<0.04||!speaker.audioInput) return;
+  const v=speaker.voiceChar, f0=Math.max(45,v.baseFreq*pitchMult);
+  const o1=audioCtx.createOscillator(); o1.type='sawtooth'; o1.frequency.setValueAtTime(f0,ws);
+  o1.frequency.linearRampToValueAtTime(f0*(0.65+Math.random()*0.70),ws+wd*0.55); o1.frequency.linearRampToValueAtTime(f0*0.70,ws+wd);
+  const o2=audioCtx.createOscillator(); o2.type='sawtooth'; o2.frequency.setValueAtTime(f0*v.detune,ws);
+  o2.frequency.linearRampToValueAtTime(f0*v.detune*(0.65+Math.random()*0.70),ws+wd*0.55); o2.frequency.linearRampToValueAtTime(f0*v.detune*0.70,ws+wd);
+  const f1=audioCtx.createBiquadFilter(); f1.type='bandpass'; f1.Q.value=v.q; const fA=v.fSweep[0]*(0.65+Math.random()*0.70), fB=v.fSweep[1]*(0.65+Math.random()*0.70);
+  f1.frequency.setValueAtTime(fA,ws); f1.frequency.linearRampToValueAtTime(fB,ws+wd*0.55); f1.frequency.linearRampToValueAtTime(fA*0.7,ws+wd);
+  const f2=audioCtx.createBiquadFilter(); f2.type='bandpass'; f2.Q.value=3.5; f2.frequency.setValueAtTime(fA*2.2,ws);
+  f2.frequency.linearRampToValueAtTime(fB*1.9,ws+wd*0.55); f2.frequency.linearRampToValueAtTime(fA*1.6,ws+wd);
+  const env=audioCtx.createGain(); env.gain.setValueAtTime(0,ws); env.gain.linearRampToValueAtTime(0.32,ws+Math.min(0.04,wd*0.15));
+  env.gain.linearRampToValueAtTime(0.28,ws+wd*0.85); env.gain.linearRampToValueAtTime(0,ws+wd);
+  o1.connect(f1); o2.connect(f1); f1.connect(f2).connect(env).connect(speaker.audioInput);
+  o1.start(ws); o1.stop(ws+wd+0.04); o2.start(ws); o2.stop(ws+wd+0.04);
 }
-
-// Wider variety: speed factor 0.45..1.8, pitch spread 0.4..1.8, trend ±0.6.
 function playUtterance(speaker, t0, durSec) {
-  if (!audioCtx || audioMuted) return;
-  const speedFactor = 0.45 + Math.random() * 1.35;
-  const pitchTrend  = (Math.random() - 0.5) * 1.2;
-  const pitchSpread = 0.4 + Math.random() * 1.4;
-  const avgWordDur  = 0.30 / speedFactor;
-  const wordCount   = Math.max(1, Math.round(durSec / avgWordDur));
-
-  let t = t0;
-  for (let w = 0; w < wordCount; w++) {
-    const wd = avgWordDur * (0.5 + Math.random() * 1.0);
-    if (t + wd > t0 + durSec) break;
-    const trendOffset = (w / Math.max(1, wordCount - 1)) * pitchTrend;
-    const pitchMult = 0.4 + Math.random() * pitchSpread + trendOffset;
-    playWord(speaker, t, wd * 0.88, pitchMult);
-    t += wd;
-    if (Math.random() < 0.25) t += 0.05 + Math.random() * 0.22;
-  }
+  if (!audioCtx||audioMuted) return;
+  const speed=0.45+Math.random()*1.35, trend=(Math.random()-0.5)*1.2, spread=0.4+Math.random()*1.4, avg=0.30/speed, count=Math.max(1,Math.round(durSec/avg));
+  let t=t0; for (let w=0;w<count;w++){ const wd=avg*(0.5+Math.random()*1.0); if (t+wd>t0+durSec) break;
+    const off=(w/Math.max(1,count-1))*trend; playWord(speaker,t,wd*0.88,0.4+Math.random()*spread+off); t+=wd; if (Math.random()<0.25) t+=0.05+Math.random()*0.22; }
 }
-
-// ─── Spatial mode switching ─────────────────────────────────────────────
 function setSpatialMode(mode) {
-  spatialMode = mode;
-  document.getElementById('mode-stereo').classList.toggle('active', mode === 'stereo');
-  document.getElementById('mode-binaural').classList.toggle('active', mode === 'binaural');
-  if (!audioCtx) return;
-  const t = audioCtx.currentTime;
-  for (const p of [...salon, ...roomSpeakers]) {
-    if (!p.binauralGain || !p.stereoGain) continue;
-    p.binauralGain.gain.setTargetAtTime(mode === 'binaural' ? 1 : 0, t, 0.03);
-    p.stereoGain.gain  .setTargetAtTime(mode === 'stereo'   ? 1 : 0, t, 0.03);
-  }
+  spatialMode=mode; document.getElementById('mode-stereo').classList.toggle('active',mode==='stereo'); document.getElementById('mode-binaural').classList.toggle('active',mode==='binaural');
+  if (!audioCtx) return; const t=audioCtx.currentTime;
+  for (const p of [...salon,...roomSpeakers,...extraSpeakers]){ if (!p.binauralGain) continue; p.binauralGain.gain.setTargetAtTime(mode==='binaural'?1:0,t,0.03); p.stereoGain.gain.setTargetAtTime(mode==='stereo'?1:0,t,0.03); }
 }
+function segIntersect(a,b,c,d){ const d1x=b.x-a.x,d1z=b.z-a.z,d2x=d.x-c.x,d2z=d.z-c.z,den=d1x*d2z-d1z*d2x; if (Math.abs(den)<1e-9) return false;
+  const t=((c.x-a.x)*d2z-(c.z-a.z)*d2x)/den, u=((c.x-a.x)*d1z-(c.z-a.z)*d1x)/den; return t>0&&t<1&&u>0&&u<1; }
+function listenerRoom(){ for (const r of rooms) if (r.contains(listener.group.position.x,listener.group.position.z)) return r; return null; }
 
-// ─── Per-frame audio updates (pan, listener, occlusion, player room) ────
+function updateSpeakerAudio(speaker) {
+  if (!audioCtx||!speaker.levelGain) return; const t=audioCtx.currentTime; const sp=speaker.group.position, lp=listener.group.position;
+  if (speaker.pannerNode.positionX){ speaker.pannerNode.positionX.setTargetAtTime(sp.x,t,0.02); speaker.pannerNode.positionY.setTargetAtTime(HEAD_Y,t,0.02); speaker.pannerNode.positionZ.setTargetAtTime(sp.z,t,0.02); }
+  else speaker.pannerNode.setPosition(sp.x,HEAD_Y,sp.z);
+  const dx=sp.x-lp.x, dz=sp.z-lp.z, dist=Math.max(0.3,Math.hypot(dx,dz));
+  const rightDot=dx*Math.cos(yaw)+dz*(-Math.sin(yaw)); speaker.stereoPan.pan.setTargetAtTime(Math.max(-1,Math.min(1,rightDot/dist)),t,0.06);
+  // Directivity
+  const fwx=-Math.sin(speaker.currentLookYaw), fwz=-Math.cos(speaker.currentLookYaw), s2lx=-dx/dist, s2lz=-dz/dist;
+  const cosA=fwx*s2lx+fwz*s2lz, facing=Math.max(0,0.5+0.5*cosA);
+  const dirGainFull=0.10+0.90*Math.pow(facing,1.4); const dirGain=1-directivityAmount*(1-dirGainFull);
+  const dirCutFull=800+(18000-800)*facing; const dirCutoff=18000-directivityAmount*(18000-dirCutFull);
+  // Air absorption
+  const airCutoff=18000*Math.pow(0.5,dist/15);
+  // Wall occlusion
+  let occGain=1, occCutoff=20000;
+  for (const w of walls){ if (segIntersect({x:sp.x,z:sp.z},{x:lp.x,z:lp.z},w.p1,w.p2)){ occGain*=w.transGain; occCutoff=Math.min(occCutoff,w.transCutoff); } }
+  const lr=listenerRoom(), sr=speaker.homeRoom||null; if (lr!==sr){ occGain*=0.32; occCutoff=Math.min(occCutoff,1100); }
+  speaker.levelGain.gain.setTargetAtTime(dirGain*occGain,t,0.05);
+  speaker.toneFilter.frequency.setTargetAtTime(Math.max(180,Math.min(airCutoff,dirCutoff,occCutoff)),t,0.05);
+}
 function updateAudioListener() {
-  if (!audioCtx) return;
-  const L = audioCtx.listener;
-  const lp = listener.group.position;
-  // Forward in three.js convention with our yaw (rotates -Z toward -X for positive yaw)
-  const fx = -Math.sin(yaw) * Math.cos(pitch);
-  const fy = -Math.sin(pitch);
-  const fz = -Math.cos(yaw) * Math.cos(pitch);
-  // Up vector — assume world up tilts a bit with roll (simplified, ignores pitch coupling)
-  const ux = Math.sin(roll) * Math.cos(yaw);
-  const uy = Math.cos(roll) * Math.cos(pitch);
-  const uz = Math.sin(roll) * Math.sin(yaw);
-  if (L.positionX) {
-    L.positionX.setTargetAtTime(lp.x, audioCtx.currentTime, 0.02);
-    L.positionY.setTargetAtTime(HEAD_Y, audioCtx.currentTime, 0.02);
-    L.positionZ.setTargetAtTime(lp.z, audioCtx.currentTime, 0.02);
-    L.forwardX.setTargetAtTime(fx, audioCtx.currentTime, 0.02);
-    L.forwardY.setTargetAtTime(fy, audioCtx.currentTime, 0.02);
-    L.forwardZ.setTargetAtTime(fz, audioCtx.currentTime, 0.02);
-    L.upX.setTargetAtTime(ux, audioCtx.currentTime, 0.02);
-    L.upY.setTargetAtTime(uy, audioCtx.currentTime, 0.02);
-    L.upZ.setTargetAtTime(uz, audioCtx.currentTime, 0.02);
-  } else if (L.setPosition) {
-    L.setPosition(lp.x, HEAD_Y, lp.z);
-    L.setOrientation(fx, fy, fz, ux, uy, uz);
-  }
+  if (!audioCtx) return; const L=audioCtx.listener, lp=listener.group.position;
+  const fx=-Math.sin(yaw)*Math.cos(pitch), fy=-Math.sin(pitch), fz=-Math.cos(yaw)*Math.cos(pitch);
+  const ux=Math.sin(roll)*Math.cos(yaw), uy=Math.cos(roll)*Math.cos(pitch), uz=Math.sin(roll)*Math.sin(yaw);
+  if (L.positionX){ L.positionX.setTargetAtTime(lp.x,audioCtx.currentTime,0.02); L.positionY.setTargetAtTime(HEAD_Y,audioCtx.currentTime,0.02); L.positionZ.setTargetAtTime(lp.z,audioCtx.currentTime,0.02);
+    L.forwardX.setTargetAtTime(fx,audioCtx.currentTime,0.02); L.forwardY.setTargetAtTime(fy,audioCtx.currentTime,0.02); L.forwardZ.setTargetAtTime(fz,audioCtx.currentTime,0.02);
+    L.upX.setTargetAtTime(ux,audioCtx.currentTime,0.02); L.upY.setTargetAtTime(uy,audioCtx.currentTime,0.02); L.upZ.setTargetAtTime(uz,audioCtx.currentTime,0.02); }
+  else if (L.setPosition){ L.setPosition(lp.x,HEAD_Y,lp.z); L.setOrientation(fx,fy,fz,ux,uy,uz); }
 }
-
-function updateSpeakerPanAndPos(speaker) {
-  if (!audioCtx || !speaker.pannerNode) return;
-  // PannerNode position
-  const sp = speaker.group.position;
-  if (speaker.pannerNode.positionX) {
-    speaker.pannerNode.positionX.setTargetAtTime(sp.x, audioCtx.currentTime, 0.02);
-    speaker.pannerNode.positionY.setTargetAtTime(HEAD_Y, audioCtx.currentTime, 0.02);
-    speaker.pannerNode.positionZ.setTargetAtTime(sp.z, audioCtx.currentTime, 0.02);
-  } else if (speaker.pannerNode.setPosition) {
-    speaker.pannerNode.setPosition(sp.x, HEAD_Y, sp.z);
-  }
-  // StereoPan from listener-relative right vector
-  const dx = sp.x - listener.group.position.x;
-  const dz = sp.z - listener.group.position.z;
-  const rightDot = dx * Math.cos(yaw) + dz * (-Math.sin(yaw));
-  const dist = Math.max(1, Math.sqrt(dx*dx + dz*dz));
-  const pan = Math.max(-1, Math.min(1, rightDot / dist));
-  speaker.stereoPan.pan.setTargetAtTime(pan, audioCtx.currentTime, 0.06);
-}
-
-// Occlusion — if listener and speaker are not in the same "acoustic zone"
-// (= same room OR both outside), apply lowpass + gain reduction.
-function listenerRoom() {
-  for (const r of rooms) if (r.contains(listener.group.position.x, listener.group.position.z)) return r;
-  return null;
-}
-function updateOcclusion(speaker) {
-  if (!audioCtx || !speaker.occGain) return;
-  const lr = listenerRoom();
-  const sr = speaker.homeRoom; // null for salon speakers
-  const sameZone = (lr === sr); // null===null fine for salon speakers + listener in salon
-  const t = audioCtx.currentTime;
-  if (sameZone) {
-    speaker.occGain.gain.setTargetAtTime(1.0, t, 0.05);
-    speaker.occFilter.frequency.setTargetAtTime(18000, t, 0.05);
-  } else {
-    speaker.occGain.gain.setTargetAtTime(0.30, t, 0.05);
-    speaker.occFilter.frequency.setTargetAtTime(1100, t, 0.05);
-  }
-}
-
-// Player room routing — connect player.wetSend to whichever room contains them
-let lastPlayerRoom = null;
+let lastPlayerRoom=null;
 function updatePlayerRoomRouting() {
-  if (!audioCtx || !player.wetSend) return;
-  const lr = listenerRoom();
-  if (lr === lastPlayerRoom) return;
-  // Disconnect from previous
-  if (lastPlayerRoom && lastPlayerRoom.convolver) {
-    try { player.wetSend.disconnect(lastPlayerRoom.convolver); } catch(e) {}
-  }
-  if (lr && lr.convolver) {
-    player.wetSend.connect(lr.convolver);
-  }
-  lastPlayerRoom = lr;
+  if (!audioCtx||!player.wetSend) return; const lr=listenerRoom(); if (lr===lastPlayerRoom) return;
+  if (lastPlayerRoom&&lastPlayerRoom.convolver){ try{ player.wetSend.disconnect(lastPlayerRoom.convolver); }catch(e){} }
+  if (lr&&lr.convolver) player.wetSend.connect(lr.convolver); lastPlayerRoom=lr;
 }
-
 function updateSpeakerCone(speaker) {
-  let amp = 0, low = 0, mid = 0, high = 0;
-  if (speaker.analyser && !audioMuted) {
-    speaker.analyser.getByteFrequencyData(speaker.fftData);
-    let sum = 0;
-    for (let i = 0; i < speaker.fftData.length; i++) sum += speaker.fftData[i];
-    amp = (sum / speaker.fftData.length) / 255;
-    const n = speaker.fftData.length;
-    low  = speaker.fftData[Math.floor(n * 0.08)] / 255;
-    mid  = speaker.fftData[Math.floor(n * 0.28)] / 255;
-    high = speaker.fftData[Math.floor(n * 0.55)] / 255;
-  } else if (audioMuted) {
-    const t = performance.now() * 0.001;
-    amp  = speaker.speakIntensity * 0.7;
-    low  = speaker.speakIntensity * (0.4 + 0.3 * Math.sin(t*6.0 + speaker.color));
-    mid  = speaker.speakIntensity * (0.4 + 0.3 * Math.cos(t*4.5 + speaker.color));
-    high = speaker.speakIntensity * 0.25;
-  }
-  const lenScale = 0.5 + amp*0.9 + speaker.speakIntensity*0.25;
-  const widthX   = 0.55 + low*0.6 + high*0.15;
-  const widthY   = 0.55 + mid*0.6 + high*0.15;
-  speaker.coneMesh.scale.set(widthX, widthY, lenScale);
-  speaker.coneEdges.scale.set(widthX, widthY, lenScale);
-  speaker.coneMesh.material.opacity  = amp*0.32 + speaker.speakIntensity*0.08;
-  speaker.coneEdges.material.opacity = amp*0.70 + speaker.speakIntensity*0.15;
-  speaker.mouth.material.opacity     = 0.55 + amp*0.35 + speaker.speakIntensity*0.10;
+  let amp=0,low=0,mid=0,high=0;
+  if (speaker.analyser&&!audioMuted){ speaker.analyser.getByteFrequencyData(speaker.fftData); let sum=0; for (let i=0;i<speaker.fftData.length;i++) sum+=speaker.fftData[i];
+    amp=(sum/speaker.fftData.length)/255; const n=speaker.fftData.length; low=speaker.fftData[Math.floor(n*0.08)]/255; mid=speaker.fftData[Math.floor(n*0.28)]/255; high=speaker.fftData[Math.floor(n*0.55)]/255; }
+  else if (audioMuted){ const tt=performance.now()*0.001; amp=speaker.speakIntensity*0.7; low=speaker.speakIntensity*(0.4+0.3*Math.sin(tt*6+speaker.color)); mid=speaker.speakIntensity*(0.4+0.3*Math.cos(tt*4.5+speaker.color)); high=speaker.speakIntensity*0.25; }
+  const len=0.5+amp*0.9+speaker.speakIntensity*0.25, wx=0.55+low*0.6+high*0.15, wy=0.55+mid*0.6+high*0.15;
+  speaker.coneMesh.scale.set(wx,wy,len); speaker.coneEdges.scale.set(wx,wy,len);
+  speaker.coneMesh.material.opacity=amp*0.32+speaker.speakIntensity*0.08; speaker.coneEdges.material.opacity=amp*0.70+speaker.speakIntensity*0.15;
+  speaker.mouth.material.opacity=0.55+amp*0.35+speaker.speakIntensity*0.10;
 }
 
 // ─── Conversation manager ───────────────────────────────────────────────
-function pickTarget(speaker) {
-  const r = Math.random();
-  if (r < 0.55) return { type:'one', who: listener };
-  if (r < 0.82) {
-    const others = allSpeakers.filter(s => s !== speaker);
-    return { type:'one', who: others[Math.floor(Math.random() * others.length)] };
-  }
-  return { type:'all' };
-}
-function pickNextSpeaker(prev) {
-  const candidates = prev ? allSpeakers.filter(s => s !== prev) : allSpeakers;
-  if (Math.random() < 0.85) return candidates[Math.floor(Math.random() * candidates.length)];
-  return allSpeakers[Math.floor(Math.random() * allSpeakers.length)];
-}
-
-let conversationCurrent = null;
-let conversationPaused = false;
-
-function startUtterance(speaker, prev) {
-  speaker.target = pickTarget(speaker);
-  // Wider duration range
-  const durMs = 400 + Math.random() * 4000;
-  speaker.speakStart = performance.now();
-  speaker.speakEnd   = speaker.speakStart + durMs;
-  conversationCurrent = speaker;
-  if (audioCtx && !audioMuted) {
-    playUtterance(speaker, audioCtx.currentTime + 0.03, durMs / 1000);
-  }
-  setTimeout(() => {
-    if (conversationCurrent === speaker) conversationCurrent = null;
-    speaker.target = null;
-    scheduleNextUtterance(speaker);
-  }, durMs);
-}
-
-function scheduleNextUtterance(prev) {
-  if (conversationPaused) return;
-  const r = Math.random();
-  let delay;
-  if (r < 0.10) {
-    // INTERRUPT — fires while prev is (likely) still talking
-    delay = 50 + Math.random() * 250;
-  } else if (r < 0.25) {
-    // OVERLAP — small overlap with prev tail
-    delay = 200 + Math.random() * 700;
-  } else {
-    // Normal pause between turns
-    delay = 500 + Math.random() * 2400;
-  }
-  setTimeout(() => {
-    if (conversationPaused) return;
-    const next = pickNextSpeaker(prev);
-    if (!next) return;
-    startUtterance(next, prev);
-  }, delay);
-}
+function pickTarget(speaker){ const r=Math.random(); if (r<0.55) return {type:'one',who:listener};
+  if (r<0.82){ const o=allSpeakers.filter(s=>s!==speaker); return {type:'one',who:o[Math.floor(Math.random()*o.length)]}; } return {type:'all'}; }
+function pickNextSpeaker(prev){ const c=prev?allSpeakers.filter(s=>s!==prev):allSpeakers; if (Math.random()<0.85) return c[Math.floor(Math.random()*c.length)]; return allSpeakers[Math.floor(Math.random()*allSpeakers.length)]; }
+let conversationCurrent=null, conversationPaused=false;
+function startUtterance(speaker, prev){ speaker.target=pickTarget(speaker); const durMs=400+Math.random()*4000; speaker.speakStart=performance.now(); speaker.speakEnd=speaker.speakStart+durMs; conversationCurrent=speaker;
+  if (audioCtx&&!audioMuted) playUtterance(speaker,audioCtx.currentTime+0.03,durMs/1000);
+  setTimeout(()=>{ if (conversationCurrent===speaker) conversationCurrent=null; speaker.target=null; scheduleNextUtterance(speaker); }, durMs); }
+function scheduleNextUtterance(prev){ if (conversationPaused) return; const r=Math.random();
+  const delay=r<0.10?(50+Math.random()*250):(r<0.25?(200+Math.random()*700):(500+Math.random()*2400));
+  setTimeout(()=>{ if (conversationPaused) return; const n=pickNextSpeaker(prev); if (n) startUtterance(n,prev); }, delay); }
 scheduleNextUtterance(null);
 
-// Smooth eye-contact / facing
 function updateSpeakerFacing(speaker, now) {
-  let lookAtPos = listener.group.position;
-  if (speaker === conversationCurrent && speaker.target && now < speaker.speakEnd) {
-    if (speaker.target.type === 'one' && speaker.target.who) {
-      lookAtPos = speaker.target.who.group.position;
-    } else if (speaker.target.type === 'all') {
-      const everyone = [listener, ...allSpeakers.filter(s => s !== speaker)];
-      const utterDur = Math.max(0.3, (speaker.speakEnd - speaker.speakStart) / 1000);
-      const cycleLen = Math.max(0.6, utterDur / everyone.length);
-      const elapsed = (now - speaker.speakStart) / 1000;
-      const idx = Math.floor(elapsed / cycleLen) % everyone.length;
-      lookAtPos = everyone[idx].group.position;
-    }
-  } else if (conversationCurrent && conversationCurrent !== speaker) {
-    if ((Math.floor(now / 1800) + speaker.color) % 2 === 0) {
-      lookAtPos = conversationCurrent.group.position;
-    }
-  }
-  const dx = lookAtPos.x - speaker.group.position.x;
-  const dz = lookAtPos.z - speaker.group.position.z;
-  const desired = Math.atan2(-dx, -dz);
-  let diff = desired - speaker.currentLookYaw;
-  while (diff >  Math.PI) diff -= Math.PI * 2;
-  while (diff < -Math.PI) diff += Math.PI * 2;
-  speaker.currentLookYaw += diff * 0.10;
-  speaker.bodyGroup.rotation.set(0, speaker.currentLookYaw, 0);
-  speaker.headGroup.rotation.set(0, speaker.currentLookYaw, 0);
+  if (speaker.fixedFacing != null) { speaker.currentLookYaw=speaker.fixedFacing; speaker.bodyGroup.rotation.set(0,speaker.currentLookYaw,0); speaker.headGroup.rotation.set(0,speaker.currentLookYaw,0); return; }
+  let look=listener.group.position;
+  if (speaker===conversationCurrent && speaker.target && now<speaker.speakEnd) {
+    if (speaker.target.type==='one'&&speaker.target.who) look=speaker.target.who.group.position;
+    else if (speaker.target.type==='all'){ const every=[listener,...allSpeakers.filter(s=>s!==speaker)]; const dur=Math.max(0.3,(speaker.speakEnd-speaker.speakStart)/1000); const cyc=Math.max(0.6,dur/every.length); look=every[Math.floor(((now-speaker.speakStart)/1000)/cyc)%every.length].group.position; }
+  } else if (conversationCurrent && conversationCurrent!==speaker){ if ((Math.floor(now/1800)+speaker.color)%2===0) look=conversationCurrent.group.position; }
+  const dx=look.x-speaker.group.position.x, dz=look.z-speaker.group.position.z, desired=Math.atan2(-dx,-dz);
+  let diff=desired-speaker.currentLookYaw; while (diff>Math.PI) diff-=Math.PI*2; while (diff<-Math.PI) diff+=Math.PI*2;
+  speaker.currentLookYaw+=diff*0.10; speaker.bodyGroup.rotation.set(0,speaker.currentLookYaw,0); speaker.headGroup.rotation.set(0,speaker.currentLookYaw,0);
 }
+for (const s of allSpeakers){ const dx=listener.group.position.x-s.group.position.x, dz=listener.group.position.z-s.group.position.z; s.currentLookYaw=Math.atan2(-dx,-dz); s.bodyGroup.rotation.set(0,s.currentLookYaw,0); s.headGroup.rotation.set(0,s.currentLookYaw,0); }
+let openSweep=0;
 
-for (const s of allSpeakers) {
-  const dx = listener.group.position.x - s.group.position.x;
-  const dz = listener.group.position.z - s.group.position.z;
-  s.currentLookYaw = Math.atan2(-dx, -dz);
-  s.bodyGroup.rotation.set(0, s.currentLookYaw, 0);
-  s.headGroup.rotation.set(0, s.currentLookYaw, 0);
-}
+// ─── Player TALK ────────────────────────────────────────────────────────
+let playerTalking=false, playerWordTimer=null;
+function playerSpeakOneWord(){ if (!audioCtx||audioMuted||!player.audioInput) return 0.2; const wd=0.12+Math.random()*0.32; playWord(player,audioCtx.currentTime+0.01,wd*0.88,0.5+Math.random()*1.4); return wd; }
+function startPlayerTalking(){ unlockAudio(); if (playerTalking) return; playerTalking=true; document.getElementById('talk-btn').classList.add('active');
+  const first=playerSpeakOneWord(); const tick=()=>{ if (!playerTalking) return; const wd=playerSpeakOneWord(); playerWordTimer=setTimeout(tick,wd*1000*(0.8+Math.random()*0.7)); }; playerWordTimer=setTimeout(tick,first*1000*(0.8+Math.random()*0.6)); }
+function stopPlayerTalking(){ if (!playerTalking) return; playerTalking=false; document.getElementById('talk-btn').classList.remove('active'); if (playerWordTimer){ clearTimeout(playerWordTimer); playerWordTimer=null; } }
+document.addEventListener('keydown', e=>{ if (e.code==='Space'&&!e.repeat){ e.preventDefault(); startPlayerTalking(); } });
+document.addEventListener('keyup',   e=>{ if (e.code==='Space'){ e.preventDefault(); stopPlayerTalking(); } });
+const talkBtn=document.getElementById('talk-btn');
+talkBtn.addEventListener('pointerdown', e=>{ e.preventDefault(); startPlayerTalking(); });
+talkBtn.addEventListener('pointerup',   e=>{ e.preventDefault(); stopPlayerTalking(); });
+talkBtn.addEventListener('pointercancel', stopPlayerTalking); talkBtn.addEventListener('pointerleave', stopPlayerTalking);
 
-// ─── Player object (uses the listener's position; has its own audio chain) ─
-// We treat the player as a "speaker" for audio purposes, but their visual
-// IS the listener. Player.group.position should be kept in sync with listener.
-const player = {
-  name: 'me',
-  // Use a virtual group whose position we sync to the listener each frame.
-  // This lets the audio chain pretend the player is a normal speaker.
-  group: new THREE.Group(),
-  voiceChar: VOICE_CHARACTERS[6],
-  audioInput: null,
-  // unused visual fields (we don't render the player separately)
-  coneMesh: null, coneEdges: null, mouth: null,
-  shell: null, bodyGroup: null, headGroup: null,
-  occGain: null, occFilter: null,
-  pannerNode: null, stereoPan: null, binauralGain: null, stereoGain: null,
-  analyser: null, fftData: null,
-  wetSend: null, dryToMaster: null,
-  speakStart: 0, speakEnd: 0, speakIntensity: 0,
-  homeRoom: null,
-};
-player.group.position.copy(listener.group.position);
-
-// ─── Player TALK control (spacebar + button) ────────────────────────────
-let playerTalking = false;
-let playerWordTimer = null;
-
-function playerSpeakOneWord() {
-  if (!audioCtx || audioMuted || !player.audioInput) return;
-  const t0 = audioCtx.currentTime + 0.01;
-  const wd = 0.12 + Math.random() * 0.32;
-  const pitchMult = 0.5 + Math.random() * 1.4;
-  playWord(player, t0, wd * 0.88, pitchMult);
-  return wd;
-}
-
-function startPlayerTalking() {
-  unlockAudio();
-  if (playerTalking) return;
-  playerTalking = true;
-  document.getElementById('talk-btn').classList.add('active');
-  // Speak one word immediately
-  const firstWd = playerSpeakOneWord() || 0.2;
-  // Schedule subsequent words at variable intervals while held
-  const tick = () => {
-    if (!playerTalking) return;
-    const wd = playerSpeakOneWord() || 0.2;
-    const gap = wd * 1000 * (0.8 + Math.random() * 0.7);
-    playerWordTimer = setTimeout(tick, gap);
-  };
-  playerWordTimer = setTimeout(tick, firstWd * 1000 * (0.8 + Math.random() * 0.6));
-}
-
-function stopPlayerTalking() {
-  if (!playerTalking) return;
-  playerTalking = false;
-  document.getElementById('talk-btn').classList.remove('active');
-  if (playerWordTimer) { clearTimeout(playerWordTimer); playerWordTimer = null; }
-}
-
-document.addEventListener('keydown', e => {
-  if (e.code === 'Space' && !e.repeat) { e.preventDefault(); startPlayerTalking(); }
-});
-document.addEventListener('keyup', e => {
-  if (e.code === 'Space') { e.preventDefault(); stopPlayerTalking(); }
-});
-
-const talkBtn = document.getElementById('talk-btn');
-talkBtn.addEventListener('pointerdown', e => { e.preventDefault(); startPlayerTalking(); });
-talkBtn.addEventListener('pointerup',   e => { e.preventDefault(); stopPlayerTalking(); });
-talkBtn.addEventListener('pointercancel', stopPlayerTalking);
-talkBtn.addEventListener('pointerleave',  stopPlayerTalking);
-
-// ─── Navigation: WASD + virtual joystick ─────────────────────────────────
-const moveInput = { forward: 0, right: 0 };
-const MOVE_SPEED = 0.045;  // world units per frame at 60fps
-
-const keys = { w:false, a:false, s:false, d:false };
-document.addEventListener('keydown', e => {
-  const k = e.key.toLowerCase();
-  if (k === 'w' || k === 'a' || k === 's' || k === 'd') {
-    keys[k] = true; e.preventDefault();
-  }
-});
-document.addEventListener('keyup', e => {
-  const k = e.key.toLowerCase();
-  if (k === 'w' || k === 'a' || k === 's' || k === 'd') {
-    keys[k] = false; e.preventDefault();
-  }
-});
-
-function readKeyboardInput() {
-  let f = 0, r = 0;
-  if (keys.w) f += 1;
-  if (keys.s) f -= 1;
-  if (keys.d) r += 1;
-  if (keys.a) r -= 1;
-  return { f, r };
-}
-
-// Joystick
-const joy = document.getElementById('joystick');
-const knob = document.getElementById('joystick-knob');
-const JOY_R = 48, KNOB_R = 15;
-let joyActive = false;
-let joyCenter = { x: 0, y: 0 };
-joy.addEventListener('pointerdown', e => {
-  unlockAudio();
-  joyActive = true;
-  joy.setPointerCapture?.(e.pointerId);
-  const r = joy.getBoundingClientRect();
-  joyCenter = { x: r.left + r.width/2, y: r.top + r.height/2 };
-  updateJoy(e);
-  e.preventDefault();
-});
-window.addEventListener('pointermove', e => { if (joyActive) updateJoy(e); });
-window.addEventListener('pointerup',   () => { if (!joyActive) return; joyActive = false; resetJoy(); });
-window.addEventListener('pointercancel', () => { joyActive = false; resetJoy(); });
-function updateJoy(e) {
-  let dx = e.clientX - joyCenter.x;
-  let dy = e.clientY - joyCenter.y;
-  const mag = Math.hypot(dx, dy);
-  const max = JOY_R;
-  if (mag > max) { dx *= max/mag; dy *= max/mag; }
-  knob.style.left = (JOY_R - KNOB_R + dx) + 'px';
-  knob.style.top  = (JOY_R - KNOB_R + dy) + 'px';
-  moveInput.right    = dx / max;
-  moveInput.forward  = -dy / max;
-}
-function resetJoy() {
-  knob.style.left = (JOY_R - KNOB_R) + 'px';
-  knob.style.top  = (JOY_R - KNOB_R) + 'px';
-  moveInput.forward = 0; moveInput.right = 0;
-}
+// ─── Navigation ───────────────────────────────────────────────────────────
+const moveInput={forward:0,right:0}; const MOVE_SPEED=0.05; const keys={w:false,a:false,s:false,d:false};
+document.addEventListener('keydown', e=>{ const k=e.key.toLowerCase(); if (k in keys){ keys[k]=true; e.preventDefault(); } });
+document.addEventListener('keyup',   e=>{ const k=e.key.toLowerCase(); if (k in keys){ keys[k]=false; e.preventDefault(); } });
+function readKeys(){ let f=0,r=0; if (keys.w)f+=1; if (keys.s)f-=1; if (keys.d)r+=1; if (keys.a)r-=1; return {f,r}; }
+const joy=document.getElementById('joystick'), knob=document.getElementById('joystick-knob'); const JOY_R=48, KNOB_R=15; let joyActive=false, joyCenter={x:0,y:0};
+joy.addEventListener('pointerdown', e=>{ unlockAudio(); joyActive=true; joy.setPointerCapture?.(e.pointerId); const r=joy.getBoundingClientRect(); joyCenter={x:r.left+r.width/2,y:r.top+r.height/2}; updateJoy(e); e.preventDefault(); });
+window.addEventListener('pointermove', e=>{ if (joyActive) updateJoy(e); });
+window.addEventListener('pointerup', ()=>{ if (joyActive){ joyActive=false; resetJoy(); } });
+window.addEventListener('pointercancel', ()=>{ joyActive=false; resetJoy(); });
+function updateJoy(e){ let dx=e.clientX-joyCenter.x, dy=e.clientY-joyCenter.y; const mag=Math.hypot(dx,dy), max=JOY_R; if (mag>max){ dx*=max/mag; dy*=max/mag; }
+  knob.style.left=(JOY_R-KNOB_R+dx)+'px'; knob.style.top=(JOY_R-KNOB_R+dy)+'px'; moveInput.right=dx/max; moveInput.forward=-dy/max; }
+function resetJoy(){ knob.style.left=(JOY_R-KNOB_R)+'px'; knob.style.top=(JOY_R-KNOB_R)+'px'; moveInput.forward=0; moveInput.right=0; }
 resetJoy();
+function applyMovement(){ const kb=readKeys(); const f=Math.max(-1,Math.min(1,kb.f+moveInput.forward)), r=Math.max(-1,Math.min(1,kb.r+moveInput.right)); if (!f&&!r) return;
+  const fx=-Math.sin(yaw), fz=-Math.cos(yaw), rx=Math.cos(yaw), rz=-Math.sin(yaw);
+  listener.group.position.x=Math.max(-20,Math.min(20,listener.group.position.x+(fx*f+rx*r)*MOVE_SPEED));
+  listener.group.position.z=Math.max(-20,Math.min(20,listener.group.position.z+(fz*f+rz*r)*MOVE_SPEED)); player.group.position.copy(listener.group.position); }
 
-function applyMovement() {
-  const kb = readKeyboardInput();
-  // Combine keyboard + joystick (clamped)
-  const f = Math.max(-1, Math.min(1, kb.f + moveInput.forward));
-  const r = Math.max(-1, Math.min(1, kb.r + moveInput.right));
-  if (!f && !r) return;
-  // Forward in listener's local frame (forward = -Z rotated by yaw)
-  // forward vector = (-sin yaw, 0, -cos yaw); right = (cos yaw, 0, -sin yaw)
-  const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
-  const rx =  Math.cos(yaw), rz = -Math.sin(yaw);
-  const dx = (fx * f + rx * r) * MOVE_SPEED;
-  const dz = (fz * f + rz * r) * MOVE_SPEED;
-  listener.group.position.x += dx;
-  listener.group.position.z += dz;
-  // Clamp to world bounds
-  listener.group.position.x = Math.max(-14, Math.min(14, listener.group.position.x));
-  listener.group.position.z = Math.max(-14, Math.min(14, listener.group.position.z));
-  // Sync player.group to listener
-  player.group.position.copy(listener.group.position);
-}
-
-// ─── AUDIO SETTINGS panel ────────────────────────────────────────────────
-const apBtn   = document.getElementById('audio-settings-btn');
-const apPanel = document.getElementById('audio-panel');
-apBtn.addEventListener('click', () => {
-  unlockAudio();
-  apPanel.classList.toggle('visible');
-});
-document.addEventListener('pointerdown', e => {
-  // Click-outside to close
-  if (!apPanel.classList.contains('visible')) return;
-  if (e.target.closest('#audio-panel') || e.target.closest('#audio-settings-btn')) return;
-  apPanel.classList.remove('visible');
-});
-
-document.getElementById('mute-on').addEventListener('click', () => setMute(false));
-document.getElementById('mute-off').addEventListener('click', () => setMute(true));
-function setMute(m) {
-  audioMuted = m;
-  document.getElementById('mute-on').classList.toggle('active', !m);
-  document.getElementById('mute-off').classList.toggle('active', m);
-  apBtn.classList.toggle('muted', m);
-  if (audioCtx && masterGain) {
-    masterGain.gain.setTargetAtTime(m ? 0 : masterVolume, audioCtx.currentTime, 0.02);
-  }
-}
-
-document.getElementById('mode-stereo').addEventListener('click', () => setSpatialMode('stereo'));
-document.getElementById('mode-binaural').addEventListener('click', () => setSpatialMode('binaural'));
-
-document.getElementById('ref-dist').addEventListener('input', e => {
-  panSettings.refDist = parseFloat(e.target.value);
-  document.getElementById('ref-dist-v').textContent = panSettings.refDist.toFixed(1);
-  if (audioCtx) {
-    for (const p of [...salon, ...roomSpeakers]) {
-      if (p.pannerNode) p.pannerNode.refDistance = panSettings.refDist;
-    }
-  }
-});
-document.getElementById('rolloff').addEventListener('input', e => {
-  panSettings.rolloff = parseFloat(e.target.value);
-  document.getElementById('rolloff-v').textContent = panSettings.rolloff.toFixed(1);
-  if (audioCtx) {
-    for (const p of [...salon, ...roomSpeakers]) {
-      if (p.pannerNode) p.pannerNode.rolloffFactor = panSettings.rolloff;
-    }
-  }
-});
-document.getElementById('master-vol').addEventListener('input', e => {
-  masterVolume = parseFloat(e.target.value);
-  document.getElementById('master-vol-v').textContent = masterVolume.toFixed(2);
-  if (audioCtx && masterGain && !audioMuted) {
-    masterGain.gain.setTargetAtTime(masterVolume, audioCtx.currentTime, 0.02);
-  }
-});
+// ─── Audio settings panel ──────────────────────────────────────────────────
+const apBtn=document.getElementById('audio-settings-btn'), apPanel=document.getElementById('audio-panel');
+apBtn.addEventListener('click', ()=>{ unlockAudio(); apPanel.classList.toggle('visible'); });
+document.addEventListener('pointerdown', e=>{ if (!apPanel.classList.contains('visible')) return; if (e.target.closest('#audio-panel')||e.target.closest('#audio-settings-btn')) return; apPanel.classList.remove('visible'); });
+document.getElementById('mute-on').addEventListener('click', ()=>setMute(false));
+document.getElementById('mute-off').addEventListener('click', ()=>setMute(true));
+function setMute(m){ audioMuted=m; document.getElementById('mute-on').classList.toggle('active',!m); document.getElementById('mute-off').classList.toggle('active',m); apBtn.classList.toggle('muted',m); if (audioCtx&&masterGain) masterGain.gain.setTargetAtTime(m?0:masterVolume,audioCtx.currentTime,0.02); }
+document.getElementById('mode-stereo').addEventListener('click', ()=>setSpatialMode('stereo'));
+document.getElementById('mode-binaural').addEventListener('click', ()=>setSpatialMode('binaural'));
+document.getElementById('ref-dist').addEventListener('input', e=>{ panSettings.refDist=parseFloat(e.target.value); document.getElementById('ref-dist-v').textContent=panSettings.refDist.toFixed(1); if (audioCtx) for (const p of [...salon,...roomSpeakers,...extraSpeakers]) if (p.pannerNode) p.pannerNode.refDistance=panSettings.refDist; });
+document.getElementById('rolloff').addEventListener('input', e=>{ panSettings.rolloff=parseFloat(e.target.value); document.getElementById('rolloff-v').textContent=panSettings.rolloff.toFixed(1); if (audioCtx) for (const p of [...salon,...roomSpeakers,...extraSpeakers]) if (p.pannerNode) p.pannerNode.rolloffFactor=panSettings.rolloff; });
+document.getElementById('directivity').addEventListener('input', e=>{ directivityAmount=parseFloat(e.target.value); document.getElementById('directivity-v').textContent=directivityAmount.toFixed(2); });
+document.getElementById('master-vol').addEventListener('input', e=>{ masterVolume=parseFloat(e.target.value); document.getElementById('master-vol-v').textContent=masterVolume.toFixed(2); if (audioCtx&&masterGain&&!audioMuted) masterGain.gain.setTargetAtTime(masterVolume,audioCtx.currentTime,0.02); });
 
 // ─── Frame loop ─────────────────────────────────────────────────────────
 function frame() {
-  requestAnimationFrame(frame);
-  const now = performance.now();
-
-  applyMovement();
-  if (audioCtx) {
-    updateAudioListener();
-    updatePlayerRoomRouting();
-  }
-
-  // Player envelope (drives their own cone-stand-in if we ever add one)
-  if (playerTalking) {
-    player.speakIntensity = Math.min(1, player.speakIntensity + 0.08);
-  } else {
-    player.speakIntensity *= 0.9;
-  }
-
+  requestAnimationFrame(frame); const now=performance.now();
+  applyMovement(); if (audioCtx){ updateAudioListener(); updatePlayerRoomRouting(); }
+  openSweep += 0.004; openSp.fixedFacing = openSweep;
+  if (playerTalking) player.speakIntensity=Math.min(1,player.speakIntensity+0.08); else player.speakIntensity*=0.9;
   for (const s of allSpeakers) {
     updateSpeakerFacing(s, now);
-    if (s.speakStart && now < s.speakEnd) {
-      const t = now - s.speakStart;
-      const atk = Math.min(1, t / 80);
-      const rel = Math.min(1, (s.speakEnd - now) / 200);
-      const env = Math.min(atk, rel);
-      const flutter = 0.88 + 0.12 * Math.sin(now * 0.012 + s.color);
-      s.speakIntensity = env * flutter;
-    } else {
-      s.speakIntensity *= 0.92;
-    }
-    if (audioCtx) { updateSpeakerPanAndPos(s); updateOcclusion(s); }
-    updateSpeakerCone(s);
+    if (s.speakStart && now<s.speakEnd){ const t=now-s.speakStart, atk=Math.min(1,t/80), rel=Math.min(1,(s.speakEnd-now)/200); s.speakIntensity=Math.min(atk,rel)*(0.88+0.12*Math.sin(now*0.012+s.color)); }
+    else s.speakIntensity*=0.92;
+    if (audioCtx) updateSpeakerAudio(s); updateSpeakerCone(s);
   }
-
-  updateCamera();
-  updateLabels();
-  renderer.render(scene, activeCam);
+  updateCamera(); updateLabels(); renderer.render(scene, activeCam);
 }
 frame();
 
-// ─── Resize ─────────────────────────────────────────────────────────────
 window.addEventListener('resize', () => {
-  orthoCam.left   = -frustumWidth()/2;
-  orthoCam.right  =  frustumWidth()/2;
-  orthoCam.top    =  FRUSTUM_H/2;
-  orthoCam.bottom = -FRUSTUM_H/2;
-  orthoCam.updateProjectionMatrix();
-  perspCam.aspect = innerWidth / innerHeight;
-  perspCam.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
+  orthoCam.left=-frustumWidth()/2; orthoCam.right=frustumWidth()/2; orthoCam.top=FRUSTUM_H/2; orthoCam.bottom=-FRUSTUM_H/2; orthoCam.updateProjectionMatrix();
+  perspCam.aspect=innerWidth/innerHeight; perspCam.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);
 });
-
 setCameraMode('topdown');
 </script>
 </body>
