@@ -62,18 +62,8 @@ RewriteCond %{REQUEST_URI} !^/Sandbox
 RewriteRule ^sandbox(/.*)?$ /Sandbox$1 [NC,L]
 </IfModule>
 
-# BEGIN WordPress
-# The directives (lines) between "BEGIN WordPress" and "END WordPress" are
-# dynamically generated, and should only be modified via WordPress filters.
-# Any changes to the directives between these markers will be overwritten.
-<IfModule mod_rewrite.c>
-RewriteEngine On
-RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
-RewriteBase /
-RewriteRule ^index\.php$ - [L]
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule . /index.php [L]
-</IfModule>
-
-# END WordPress
+# (WordPress removed 2026-05-22 via the Dreamhost panel. The old
+#  "# BEGIN WordPress" catch-all that routed every miss to /index.php was
+#  deleted with it — index.php is gone, so missing paths now return a clean
+#  404 instead of the WP front controller. The root → /glitchpage/ redirect
+#  at the top of this file is what serves the entrance.)
