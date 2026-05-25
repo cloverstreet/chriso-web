@@ -947,7 +947,8 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
   // the sound field and the visible head. (Later this will be detachable —
   // free camera with ears left on the body — but not yet.)
   let lookYaw = 0, lookPitch = 0;
-  let camDist = 6.0;            // 3rd-person follow distance
+  let camDist = 6.0;            // 3rd-person observer distance
+  let camOrbit = 0.6;           // 3rd-person observer azimuth (independent of gaze)
   let idleSec = 0, autoBlend = 1;
   const IDLE_BEFORE_AUTO = 3.0;
   const viewMode = () => VIEW_MODES[viewModeIdx];
@@ -996,10 +997,13 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
     const dy = e.touches[0].clientY - e.touches[1].clientY;
     return Math.hypot(dx, dy);
   }
-  // Drag always turns the unified gaze (head + ears + camera together).
+  // Drag turns the PLAYER's gaze — head, ears (listener), and the bound
+  // camera in 1st/2nd. In 3rd person the observer camera is independent,
+  // so drag visibly turns the avatar's head + the sound field rather than
+  // just swinging the camera. (+dx so drag-right looks right.)
   function applyDrag(dx, dy) {
     bumpIdle();
-    lookYaw   -= dx * DRAG_SENS;
+    lookYaw   += dx * DRAG_SENS;
     lookPitch += dy * DRAG_SENS;
     lookPitch = Math.max(-0.55, Math.min(0.55, lookPitch));
   }
@@ -1136,11 +1140,13 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
     // drifts in 3rd person, the gaze drifts in over/first. Interaction snaps
     // autoBlend back to 0 (full manual).
     if (idleSec > IDLE_BEFORE_AUTO) autoBlend = Math.min(1, autoBlend + dt * 0.2);
-    // Idle drift: the gaze slowly pans — you "turn your head," and since
-    // the ears + camera follow the gaze, the room (and its sound field)
-    // drifts around you. Recreates the original ambient rotate inside the
-    // unified 1st-person-listener model.
-    if (autoBlend > 0) lookYaw += dt * 0.10 * autoBlend;
+    // Idle auto-motion: in 3rd person the third-party observer camera orbits
+    // (you watch yourself from shifting angles, gaze held); in 1st/2nd the
+    // gaze itself slowly pans. Eases back in after a few idle seconds.
+    if (autoBlend > 0) {
+      if (viewMode() === 'third') camOrbit += dt * 0.08 * autoBlend;
+      else                        lookYaw  += dt * 0.06 * autoBlend;
+    }
 
     // ── Movement (WASD + joystick), relative to the gaze ───
     let mvF = 0, mvR = 0, mvU = 0;
@@ -1179,11 +1185,18 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
       avHead.visible = true; avNose.visible = true;
       camTarget = eye.clone().addScaledVector(fwdFlat, -1.6); camTarget.y += 0.4;
       lookAtP = eye.clone().add(fwd.clone().multiplyScalar(3));
-    } else {                          // third — follow behind the gaze
+    } else {  // third — INDEPENDENT third-party observer. The camera orbits
+              // on its own (idle); drag turns the player's gaze, which you
+              // SEE because the camera isn't glued to it — the avatar
+              // visibly looks around and the sound field turns with the head.
       avHead.visible = true; avNose.visible = true;
-      camTarget = eye.clone().addScaledVector(fwdFlat, -camDist);
-      camTarget.y += camDist * 0.35 + 0.5;
-      lookAtP = eye.clone().add(fwd.clone().multiplyScalar(1.5));
+      const ox = Math.sin(camOrbit), oz = Math.cos(camOrbit);
+      camTarget = new THREE.Vector3(
+        eye.x + ox * camDist,
+        eye.y + camDist * 0.4 + 0.6,
+        eye.z + oz * camDist
+      );
+      lookAtP = eye.clone();   // keep the avatar centered, watch it turn
     }
     camera.position.lerp(camTarget, vm === 'first' ? 0.5 : 0.2);
     camera.lookAt(lookAtP);
