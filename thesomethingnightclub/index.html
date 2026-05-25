@@ -282,6 +282,24 @@
   }
   .nav-hint.show { opacity: 1; }
   #scene { touch-action: none; }   /* claim touch for camera, not page scroll */
+
+  /* On-screen joystick (touch). Hidden by default; JS reveals on coarse
+     pointers. Bottom-left thumb pad for translation. */
+  .joystick {
+    display: none;
+    position: fixed; bottom: 2.2rem; left: 1.6rem; z-index: 12;
+    width: 108px; height: 108px; border-radius: 50%;
+    border: 1px solid rgba(196,168,120,0.35);
+    background: rgba(196,168,120,0.05);
+    touch-action: none;
+  }
+  .joy-thumb {
+    position: absolute; left: 50%; top: 50%;
+    width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%;
+    background: rgba(196,168,120,0.28);
+    border: 1px solid rgba(196,168,120,0.6);
+    transition: transform 0.05s linear;
+  }
 </style>
 </head>
 <body>
@@ -307,6 +325,10 @@
 <!-- Navigation hint — text adapts to device (touch vs pointer). Fades after
      first interaction. -->
 <div class="nav-hint" id="navHint"></div>
+
+<!-- On-screen movement joystick (touch only; shown via JS on coarse pointers).
+     Left thumb drives translation; drag anywhere else looks around. -->
+<div class="joystick" id="joystick"><div class="joy-thumb" id="joyThumb"></div></div>
 <div class="tab-panel" id="audioPanel">
   <div class="tab-row">
     <span class="tab-label">listening on</span>
@@ -918,11 +940,22 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
   const VIEW_MODES  = ['third', 'over', 'first'];
   const VIEW_LABELS = { third: '3rd', over: '2nd', first: '1st' };
   let viewModeIdx = 0;          // entrance = 3rd person
-  let camYaw = 0.7, camPitch = 0.38, camDist = 7.0;   // 3rd-person orbit
-  let avatarYaw = 0, avatarPitch = 0;                  // body facing / 1st-person gaze
+  // UNIFIED GAZE — for now we're always a 1st-person listener: the ears
+  // stay attached to the avatar (body model) and the gaze (lookYaw/lookPitch)
+  // drives the avatar head rotation, the listener orientation, AND the
+  // camera, in every view mode. Rotating the view therefore rotates both
+  // the sound field and the visible head. (Later this will be detachable —
+  // free camera with ears left on the body — but not yet.)
+  let lookYaw = 0, lookPitch = 0;
+  let camDist = 6.0;            // 3rd-person follow distance
   let idleSec = 0, autoBlend = 1;
   const IDLE_BEFORE_AUTO = 3.0;
   const viewMode = () => VIEW_MODES[viewModeIdx];
+
+  // Movement state — WASD / R-F (fly) on desktop, on-screen joystick on touch
+  const moveKeys = { w:false, a:false, s:false, d:false, up:false, down:false };
+  const joy = { active:false, x:0, y:0 };   // -1..1 ; +y is "pull back"
+  const MOVE_SPEED = 3.4;                    // world units / second
 
   function fwdVec(yaw, pitch) {
     return new THREE.Vector3(
@@ -933,13 +966,14 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
   }
   function faceRoom() {
     const c = new THREE.Vector3(-1.2, AVATAR_EYE, -2);
-    const d = new THREE.Vector3().subVectors(c, AVATAR_POS);
-    avatarYaw = Math.atan2(d.x, -d.z);
+    const d = new THREE.Vector3().subVectors(c, avatar.position);
+    lookYaw = Math.atan2(d.x, -d.z);
   }
   faceRoom();
   function recenterView() {
+    avatar.position.copy(AVATAR_POS);
     faceRoom();
-    avatarPitch = 0; camYaw = 0.7; camPitch = 0.38; camDist = 7.0;
+    lookPitch = 0; camDist = 6.0;
     idleSec = 0; autoBlend = 0;
   }
 
@@ -947,8 +981,8 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
   const isTouch = window.matchMedia('(pointer: coarse)').matches || ('ontouchstart' in window);
   const navHintEl = document.getElementById('navHint');
   navHintEl.textContent = isTouch
-    ? 'drag to look · pinch to zoom · double-tap to recenter'
-    : 'drag to look · scroll to zoom · double-click to recenter';
+    ? 'left thumb-stick to move · drag to look · pinch to zoom · double-tap to recenter'
+    : 'wasd to move · r/f up·down · drag to look · scroll to zoom · double-click to recenter';
 
   const sceneEl = renderer.domElement;
   let dragging = false, lastPX = 0, lastPY = 0;
@@ -962,19 +996,12 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
     const dy = e.touches[0].clientY - e.touches[1].clientY;
     return Math.hypot(dx, dy);
   }
+  // Drag always turns the unified gaze (head + ears + camera together).
   function applyDrag(dx, dy) {
     bumpIdle();
-    if (viewMode() === 'third') {
-      camYaw   -= dx * DRAG_SENS;
-      camPitch += dy * DRAG_SENS;
-      camPitch = Math.max(-0.15, Math.min(1.30, camPitch));
-    } else {
-      avatarYaw -= dx * DRAG_SENS;             // turn the body
-      if (viewMode() === 'first') {
-        avatarPitch += dy * DRAG_SENS;
-        avatarPitch = Math.max(-0.6, Math.min(0.6, avatarPitch));
-      }
-    }
+    lookYaw   -= dx * DRAG_SENS;
+    lookPitch += dy * DRAG_SENS;
+    lookPitch = Math.max(-0.55, Math.min(0.55, lookPitch));
   }
 
   // Mouse / pen
@@ -997,7 +1024,9 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
   }, { passive: false });
   sceneEl.addEventListener('dblclick', recenterView);
 
-  // Touch — 1-finger drag, 2-finger pinch, double-tap recenter
+  // Touch — 1-finger drag = look, 2-finger pinch = zoom, double-tap recenter.
+  // (The joystick is a separate element with its own handlers; touches that
+  // land on it never reach the canvas.)
   sceneEl.addEventListener('touchstart', e => {
     if (e.touches.length === 1) {
       dragging = true; lastPX = e.touches[0].clientX; lastPY = e.touches[0].clientY; bumpIdle();
@@ -1024,6 +1053,66 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
     }
   });
 
+  // ── WASD / fly keys ──────────────────────────────────
+  const MOVE_KEYCODES = new Set(['w','a','s','d','r','f',' ','arrowup','arrowdown','arrowleft','arrowright']);
+  window.addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    if (k === 'w' || k === 'arrowup')    moveKeys.w = true;
+    else if (k === 's' || k === 'arrowdown')  moveKeys.s = true;
+    else if (k === 'a' || k === 'arrowleft')  moveKeys.a = true;
+    else if (k === 'd' || k === 'arrowright') moveKeys.d = true;
+    else if (k === 'r' || k === ' ')     moveKeys.up = true;
+    else if (k === 'f')                  moveKeys.down = true;
+    if (MOVE_KEYCODES.has(k)) { bumpIdle(); e.preventDefault(); }
+  });
+  window.addEventListener('keyup', e => {
+    const k = e.key.toLowerCase();
+    if (k === 'w' || k === 'arrowup')    moveKeys.w = false;
+    else if (k === 's' || k === 'arrowdown')  moveKeys.s = false;
+    else if (k === 'a' || k === 'arrowleft')  moveKeys.a = false;
+    else if (k === 'd' || k === 'arrowright') moveKeys.d = false;
+    else if (k === 'r' || k === ' ')     moveKeys.up = false;
+    else if (k === 'f')                  moveKeys.down = false;
+  });
+
+  // ── On-screen joystick (touch) ───────────────────────
+  const joyEl = document.getElementById('joystick');
+  const joyThumb = document.getElementById('joyThumb');
+  if (isTouch) joyEl.style.display = 'block';
+  let joyId = null;
+  function joyGeom() {
+    const r = joyEl.getBoundingClientRect();
+    return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, rad: r.width / 2 };
+  }
+  function updateJoy(touch) {
+    const g = joyGeom();
+    let dx = touch.clientX - g.cx, dy = touch.clientY - g.cy;
+    const dist = Math.hypot(dx, dy);
+    if (dist > g.rad) { dx = dx / dist * g.rad; dy = dy / dist * g.rad; }
+    joy.x = dx / g.rad; joy.y = dy / g.rad;
+    joyThumb.style.transform = `translate(${dx}px, ${dy}px)`;
+    bumpIdle();
+  }
+  joyEl.addEventListener('touchstart', e => {
+    e.preventDefault();
+    joy.active = true; joyId = e.changedTouches[0].identifier;
+    updateJoy(e.changedTouches[0]);
+  }, { passive: false });
+  joyEl.addEventListener('touchmove', e => {
+    e.preventDefault();
+    for (const tch of e.changedTouches) if (tch.identifier === joyId) updateJoy(tch);
+  }, { passive: false });
+  function endJoy(e) {
+    for (const tch of e.changedTouches) {
+      if (tch.identifier === joyId) {
+        joy.active = false; joy.x = 0; joy.y = 0; joyId = null;
+        joyThumb.style.transform = 'translate(0,0)';
+      }
+    }
+  }
+  joyEl.addEventListener('touchend', endJoy);
+  joyEl.addEventListener('touchcancel', endJoy);
+
   // View-mode toggle button (cycles 3rd → 2nd → 1st)
   const viewTabBtn = document.getElementById('viewTab');
   viewTabBtn.addEventListener('click', () => {
@@ -1047,52 +1136,71 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
     // drifts in 3rd person, the gaze drifts in over/first. Interaction snaps
     // autoBlend back to 0 (full manual).
     if (idleSec > IDLE_BEFORE_AUTO) autoBlend = Math.min(1, autoBlend + dt * 0.2);
-    if (autoBlend > 0) {
-      if (viewMode() === 'third') camYaw   += dt * 0.12 * autoBlend;
-      else                        avatarYaw += dt * 0.05 * autoBlend;
+    // Idle drift: the gaze slowly pans — you "turn your head," and since
+    // the ears + camera follow the gaze, the room (and its sound field)
+    // drifts around you. Recreates the original ambient rotate inside the
+    // unified 1st-person-listener model.
+    if (autoBlend > 0) lookYaw += dt * 0.10 * autoBlend;
+
+    // ── Movement (WASD + joystick), relative to the gaze ───
+    let mvF = 0, mvR = 0, mvU = 0;
+    if (moveKeys.w) mvF += 1;
+    if (moveKeys.s) mvF -= 1;
+    if (moveKeys.d) mvR += 1;
+    if (moveKeys.a) mvR -= 1;
+    if (moveKeys.up) mvU += 1;
+    if (moveKeys.down) mvU -= 1;
+    if (joy.active) { mvR += joy.x; mvF -= joy.y; }   // +joy.y is pull-back
+    if (mvF || mvR || mvU) {
+      bumpIdle();
+      const step = MOVE_SPEED * dt;
+      const fF = new THREE.Vector3(Math.sin(lookYaw), 0, -Math.cos(lookYaw));  // ground forward
+      const rF = new THREE.Vector3(Math.cos(lookYaw), 0,  Math.sin(lookYaw));  // ground right
+      avatar.position.addScaledVector(fF, mvF * step);
+      avatar.position.addScaledVector(rF, mvR * step);
+      avatar.position.y = Math.max(0, Math.min(6, avatar.position.y + mvU * step));
+      avatar.position.x = Math.max(-12, Math.min(12, avatar.position.x));
+      avatar.position.z = Math.max(-12, Math.min(12, avatar.position.z));
     }
-    avatar.rotation.y = avatarYaw;
-    const eye = new THREE.Vector3(avatar.position.x, avatar.position.y + AVATAR_EYE, avatar.position.z);
+
+    // ── Gaze drives head + camera + listener ───────────
+    avatar.rotation.y = lookYaw;   // visible head turns with the gaze
+    const eye  = new THREE.Vector3(avatar.position.x, avatar.position.y + AVATAR_EYE, avatar.position.z);
+    const fwd  = fwdVec(lookYaw, lookPitch);
+    const fwdFlat = fwdVec(lookYaw, 0);
 
     let camTarget, lookAtP;
     const vm = viewMode();
     if (vm === 'first') {
       avHead.visible = false; avNose.visible = false;
       camTarget = eye.clone();
-      lookAtP = eye.clone().add(fwdVec(avatarYaw, avatarPitch));
-    } else if (vm === 'over') {
+      lookAtP = eye.clone().add(fwd);
+    } else if (vm === 'over') {       // over-the-shoulder, behind the gaze
       avHead.visible = true; avNose.visible = true;
-      const back = fwdVec(avatarYaw, 0).multiplyScalar(-1.9);
-      camTarget = eye.clone().add(back); camTarget.y += 0.45;
-      lookAtP = eye.clone().add(fwdVec(avatarYaw, 0).multiplyScalar(3));
-    } else { // third — free orbit around the avatar
+      camTarget = eye.clone().addScaledVector(fwdFlat, -1.6); camTarget.y += 0.4;
+      lookAtP = eye.clone().add(fwd.clone().multiplyScalar(3));
+    } else {                          // third — follow behind the gaze
       avHead.visible = true; avNose.visible = true;
-      const ox = Math.sin(camYaw) * Math.cos(camPitch);
-      const oz = Math.cos(camYaw) * Math.cos(camPitch);
-      const oy = Math.sin(camPitch);
-      camTarget = new THREE.Vector3(
-        eye.x + ox * camDist,
-        eye.y + oy * camDist + 1.0,
-        eye.z + oz * camDist
-      );
-      lookAtP = eye.clone();
+      camTarget = eye.clone().addScaledVector(fwdFlat, -camDist);
+      camTarget.y += camDist * 0.35 + 0.5;
+      lookAtP = eye.clone().add(fwd.clone().multiplyScalar(1.5));
     }
-    camera.position.lerp(camTarget, vm === 'first' ? 0.5 : 0.18);
+    camera.position.lerp(camTarget, vm === 'first' ? 0.5 : 0.2);
     camera.lookAt(lookAtP);
     lookTarget.copy(lookAtP);
 
-    // Couple AudioContext.listener to the AVATAR (its eye + facing), not the
-    // free camera. Lazy until audioCtx exists.
+    // Listener: ears stay ON the avatar (eye position), oriented along the
+    // gaze. So rotating the view rotates the binaural field — the sound
+    // turns with the head, as it should for a 1st-person listener.
     if (audioCtx) {
       const l = audioCtx.listener;
-      const lf = fwdVec(avatarYaw, vm === 'first' ? avatarPitch : 0);
       if (l.positionX) {
         l.positionX.value = eye.x; l.positionY.value = eye.y; l.positionZ.value = eye.z;
-        l.forwardX.value = lf.x; l.forwardY.value = lf.y; l.forwardZ.value = lf.z;
+        l.forwardX.value = fwd.x; l.forwardY.value = fwd.y; l.forwardZ.value = fwd.z;
         l.upX.value = 0; l.upY.value = 1; l.upZ.value = 0;
       } else {
         l.setPosition(eye.x, eye.y, eye.z);
-        l.setOrientation(lf.x, lf.y, lf.z, 0, 1, 0);
+        l.setOrientation(fwd.x, fwd.y, fwd.z, 0, 1, 0);
       }
     }
 
