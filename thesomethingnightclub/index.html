@@ -294,6 +294,7 @@
 </div>
 
 <a class="back" href="../">← back to the fuecher</a>
+<a class="back" href="/" style="left:auto; right:2.4rem;">↞ home</a>
 <div class="note">est. unknown<br>ow. sypvefafvy</div>
 <div class="enter-hint" id="enterHint">tap or press a key to bring up the audio</div>
 
@@ -1256,8 +1257,33 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
     master.gain.value = 0;
     // Quieter overall — was 0.55, dropped to 0.42. Sub is meant to be
     // background atmosphere, not an event you notice.
-    master.gain.setTargetAtTime(0.42, now, 6);
+    const MASTER_LEVEL = 0.42;
+    master.gain.setTargetAtTime(MASTER_LEVEL, now, 6);
     master.connect(audioCtx.destination);
+
+    // ── Fade + suspend when this "frontpage" goes to the background ──────
+    // Standard for ambient frontpages (NOT instruments / not TelloFoam):
+    // when the tab is hidden, fade the master to silence and suspend the
+    // context; when it returns, resume + fade back. On desktop the audio
+    // WOULD keep playing in a background tab — this is a deliberate UX
+    // choice. On mobile the OS suspends the context for us anyway; this
+    // handler also drives the resume + fade-back-in on return (mobile
+    // can't smoothly fade OUT because the page is frozen the instant it
+    // backgrounds, but it fades back IN cleanly).
+    document.addEventListener('visibilitychange', () => {
+      if (!audioCtx) return;
+      if (document.hidden) {
+        try { master.gain.setTargetAtTime(0, audioCtx.currentTime, 0.25); } catch (e) {}
+        // Suspend slightly after the fade so the tail isn't chopped on desktop.
+        setTimeout(() => { if (document.hidden && audioCtx.state === 'running') audioCtx.suspend(); }, 400);
+      } else {
+        const resume = () => {
+          master.gain.setTargetAtTime(MASTER_LEVEL, audioCtx.currentTime, 0.6);
+        };
+        if (audioCtx.state === 'suspended') audioCtx.resume().then(resume).catch(resume);
+        else resume();
+      }
+    });
 
     // Helper: every panner created here picks up the current live binaural
     // params + panning mode at construction. After creation the panner is

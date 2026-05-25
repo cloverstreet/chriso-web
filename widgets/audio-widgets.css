@@ -94,6 +94,17 @@ select:focus, input[type=text]:focus { border-color: var(--amber); }
 select option { background: var(--bg-module); color: var(--text-2nd); }
 select:disabled { color: var(--text-faint); border-color: var(--border-mute); }
 
+/* Standard "back to home" link — fixed top-left, points at the site root
+   (currently redirects to /glitchpage/, but pointing at / future-proofs
+   it for whenever the front page changes). */
+.home-link {
+  position: fixed; top: 12px; left: 14px; z-index: 50;
+  font-family: 'Courier New', monospace; font-size: .6rem;
+  letter-spacing: .14em; text-transform: lowercase;
+  color: var(--text-muted); text-decoration: none;
+}
+.home-link:hover { color: var(--amber); }
+
 /* horizontal range slider (for non-canonical gain controls) */
 input[type=range] {
   -webkit-appearance: none; appearance: none;
