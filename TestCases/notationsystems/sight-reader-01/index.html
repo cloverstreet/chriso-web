@@ -57,6 +57,19 @@
         border-radius:0 0 4px 4px; z-index:2; display:flex; flex-direction:column;
         justify-content:flex-end; align-items:center; padding-bottom:5px; }
   .bk b { color:#fff; font-size:12px; } .bk span { color:#bbb; font-size:9px; }
+  /* superpowers panel (top-right, above the finale layers) */
+  #powers { position:fixed; top:14px; right:14px; z-index:60; width:238px; background:rgba(21,23,28,0.93);
+            border:1px solid #2f343d; border-radius:10px; padding:9px 11px; font-size:12px; color:#b6bcc6; }
+  #powers .ptitle { font-weight:600; color:#e6e8ec; margin-bottom:5px; }
+  #powers .ptitle .rounds { color:#8b909a; font-weight:400; font-size:11px; }
+  #powers .prow { display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:3px 0; border-top:1px solid #23262d; }
+  #powers .prow.locked { opacity:0.45; }
+  #powers .pname { color:#e6e8ec; }
+  #powers .ptag { color:#7a7f88; font-size:10.5px; }
+  #powers .plock { color:#c9a24a; font-size:11px; }
+  #powers .pen { display:flex; align-items:center; gap:3px; color:#8b909a; cursor:pointer; }
+  #powers .iv { width:78px; }
+  #powers .ivv { font-variant-numeric:tabular-nums; color:#9aa1ad; }
 </style>
 </head>
 <body>
@@ -79,9 +92,10 @@
     <div class="keymap" id="keymap"></div>
   </div>
 
+  <div id="powers"></div>
   <canvas id="fx"></canvas>
   <canvas id="guy"></canvas>
-  <div id="fxhint">move the mouse to mold the notes · Esc to return</div>
+  <div id="fxhint">notes roam on their own — toggle superpowers (top-right) · Esc to return</div>
 
 <script>
 const VF = Vex.Flow;
@@ -255,7 +269,7 @@ function finish() {
   running = false;
   if (raf) cancelAnimationFrame(raf);
   paint();
-  if (missed === 0) { runFinale(); N += 5; }   // reward grows by 5 notes next round
+  if (missed === 0) { rounds++; localStorage.setItem("sr.rounds", rounds); refreshPowers(); runFinale(); N += 5; }   // a perfect round: progress + reward grows
   else { elMsg.textContent = `${N - missed} / ${N}`; elMsg.style.display = "flex"; }
 }
 
@@ -323,12 +337,55 @@ let fx = null, hideTimer = null;
 function midiOf(key) { return Tunings.nameToMidi(key.replace("/", "")); }
 function runFinale() { try { startPlayground(); } catch (e) {} }
 
-const CRUISE_MAX = 3.4, SEEK = 14.0, EAT_DIST = 0.05, MOLD_R = 0.34, MOLD_PULL = 20.0, DIGEST = 0.22;
-const EJECT_VEL = 1.6;     // a digested note is pooped out hard, shooting far
-const CATCH_VMAX = 0.6;    // Marge only catches a note slower than this (moving ones slip past)
-const SEP_R = 0.11, SEP_K = 7.0;   // inter-note repulsion (anti-glob), scaled by mouse speed
-const TRANSPOSE = 3;       // Marge digests every note up a minor third (a "transformer")
+const CRUISE = 1.15, CRUISE_HOMING = 3.3, SEEK = 9.0, SEEK_HOMING = 16.0;
+const EAT_DIST = 0.05, CATCH_VMAX = 0.6, DIGEST = 0.22, EJECT_VEL = 1.6;
+const SEP_R = 0.12, SEP_K = 6.0, VACUUM_R = 0.45, VACUUM_PULL = 5.0;
 function midiToName(m){ const N=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]; m=Math.round(m); return N[((m%12)+12)%12]+(Math.floor(m/12)-1); }
+
+// ── superpowers (progression: earn perfect rounds, unlock abilities) ──────
+let rounds = +(localStorage.getItem("sr.rounds") || 0);
+const POWERS = [
+  { id:"transpose", name:"Pitch Transposer", impl:true,  unlock:3, on:false, interval:3, blurb:"Digested notes come out shifted by an interval." },
+  { id:"vacuum",    name:"Vacuum Mode",       impl:true,  unlock:1, on:false, blurb:"Marge's mouth becomes an attractor, pulling notes in." },
+  { id:"homing",    name:"Homing Beak",       impl:true,  unlock:2, on:false, blurb:"Auto-find — she flies straight to notes, fast." },
+  { id:"repeat",    name:"Note Repeater",     impl:false, unlock:4, on:false, blurb:"Each digested note repeats N times on the grid." },
+  { id:"swing",     name:"Swing",             impl:false, unlock:5, on:false, blurb:"Adjustable swing feel on the grid." },
+  { id:"chord",     name:"Chord Swallow",     impl:false, unlock:6, on:false, blurb:"Eat overlapping notes together as a chord." },
+  { id:"warp",      name:"Time Warp",         impl:false, unlock:7, on:false, blurb:"Speed the whole playground up or down." },
+  { id:"fx",        name:"FX Processor",      impl:false, unlock:8, on:false, blurb:"Run digested notes through audio effects." },
+  { id:"fling",     name:"Note Flinger",      impl:false, unlock:9, on:false, blurb:"Click / tap a note to fling it around." },
+  { id:"three_d",   name:"3D Mode",           impl:false, unlock:10, on:false, blurb:"Tilt the field into three dimensions." },
+];
+const pow = id => POWERS.find(p => p.id === id);
+const powOn = id => { const p = pow(id); return !!(p && p.impl && rounds >= p.unlock && p.on); };
+
+function buildPowers() {
+  const el = document.getElementById("powers");
+  el.innerHTML = `<div class="ptitle">Superpowers <span class="rounds"></span></div>`;
+  POWERS.forEach(p => { const r = document.createElement("div"); r.className = "prow"; r.dataset.id = p.id; r.title = p.blurb; el.appendChild(r); });
+  const onChange = (e) => {
+    const row = e.target.closest(".prow"); if (!row) return; const p = pow(row.dataset.id);
+    if (e.target.classList.contains("en")) p.on = e.target.checked;
+    if (e.target.classList.contains("iv")) { p.interval = +e.target.value; const v = row.querySelector(".ivv"); if (v) v.textContent = (p.interval > 0 ? "+" : "") + p.interval + " st"; }
+  };
+  el.addEventListener("input", onChange); el.addEventListener("change", onChange);
+  refreshPowers();
+}
+function refreshPowers() {
+  const rd = document.querySelector("#powers .rounds"); if (rd) rd.textContent = "· " + rounds + (rounds === 1 ? " round" : " rounds");
+  POWERS.forEach(p => {
+    const row = document.querySelector(`#powers .prow[data-id="${p.id}"]`); if (!row) return;
+    const unlocked = rounds >= p.unlock;
+    let html = `<span class="pname">${p.name}</span>`;
+    if (!p.impl) html += ` <span class="ptag">(not implemented)</span>`;
+    if (!unlocked) html += ` <span class="plock">🔒 ${p.unlock}</span>`;
+    else if (p.impl) {
+      html += ` <label class="pen"><input type="checkbox" class="en" ${p.on ? "checked" : ""}> on</label>`;
+      if (p.id === "transpose") html += `<input type="range" class="iv" min="-12" max="12" value="${p.interval}"><span class="ivv">${p.interval > 0 ? "+" : ""}${p.interval} st</span>`;
+    }
+    row.innerHTML = html; row.classList.toggle("locked", !unlocked || !p.impl);
+  });
+}
 
 const FRAG = `
 precision highp float;
@@ -345,7 +402,7 @@ void main(){
     float ph = float(i)*1.7;
     c += 0.015*vec2(sin(uTime*0.9+ph), cos(uTime*0.7+ph*1.3));
     float r = dot(p-c,p-c);
-    float w = uScale[i]*0.0018/(r+0.0009);
+    float w = uScale[i]*0.0034/(r+0.0012);
     field += w; col += hue(uPitch[i])*w;
   }
   col /= max(field,0.0001);
@@ -374,14 +431,12 @@ function startPlayground() {
     vx: 0, vy: 0, midi: mids[i], pitch: (mids[i] - lo) / Math.max(1, hi - lo),
     scale: 1, state: "free", tEat: 0,   // state: "free" | "inside" (being digested)
   }));
-  const guy = { x: 0.5, y: 0.5, vx: 0, vy: 0, cruise: CRUISE_MAX, mouth: 0, face: 0, sitting: false, head: 1, butt: 1 };
-  const mouse = { x: 0.5, y: 0.5, px: 0.5, py: 0.5, sp: 0 };
+  const guy = { x: 0.5, y: 0.5, vx: 0, vy: 0, cruise: CRUISE, mouth: 0, face: 0, head: 1, butt: 1 };
   const parts = [];
 
   function size() { cv.width = gc.width = innerWidth; cv.height = gc.height = innerHeight; gl.viewport(0, 0, cv.width, cv.height); }
   size();
-  const onMove = (ev) => { mouse.x = ev.clientX / innerWidth; mouse.y = 1 - ev.clientY / innerHeight; };
-  window.addEventListener("pointermove", onMove); window.addEventListener("resize", size);
+  window.addEventListener("resize", size);
 
   const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
   const prog = gl.createProgram();
@@ -396,13 +451,13 @@ function startPlayground() {
 
   function eat(b) {
     b.state = "inside"; b.tEat = (performance.now() - t0) / 1000;
-    const wild = Math.min(1, guy.cruise / CRUISE_MAX);     // fast = wilder (like the opening flurry)
-    const oct = (Math.random() < 0.3 * wild) ? (Math.random() < 0.5 ? -12 : 12) : 0;
-    const cents = (Math.random() - 0.5) * (8 + 60 * wild);
+    const wild = Math.min(1, guy.cruise / CRUISE_HOMING);  // faster = wilder (flurry character)
+    const oct = (Math.random() < 0.25 * wild) ? (Math.random() < 0.5 ? -12 : 12) : 0;
+    const cents = (Math.random() - 0.5) * (8 + 50 * wild);
     const hz = 440 * Math.pow(2, (b.midi + oct - 69) / 12 + cents / 1200);
     const tim = ["gamelan", "mallet", "sine"][(Math.random() * 3) | 0];
     Synth.playFreq(hz, { timbre: tim, decay: 0.5 + Math.random() * 1.1, gain: 0.1, when: Synth.now() + 0.001 });
-    guy.cruise *= 0.85; guy.mouth = 0.55; guy.head = 1.8;   // head swells, mouth gapes while ingesting
+    guy.mouth = 0.55; guy.head = 1.8;   // head swells, mouth gapes while ingesting
   }
 
   let t0 = performance.now(), prevT = t0, alive = true;
@@ -411,22 +466,21 @@ function startPlayground() {
     const now = performance.now(); let dt = (now - prevT) / 1000; prevT = now; if (dt > 0.05) dt = 0.05;
     const tt = (now - t0) / 1000;
 
-    // mouse speed (units/sec), smoothed
-    const msp = Math.hypot(mouse.x - mouse.px, mouse.y - mouse.py) / Math.max(dt, 1e-3);
-    mouse.sp += (msp - mouse.sp) * 0.25; mouse.px = mouse.x; mouse.py = mouse.y;
-
-    // anchor points on the guy (mouth front / used for digesting)
-    const mx = guy.x + Math.cos(guy.face) * 0.012, my = guy.y + Math.sin(guy.face) * 0.012;
+    // active superpowers this frame
+    const homing = powOn("homing"), vacuum = powOn("vacuum");
+    const xpose = powOn("transpose") ? pow("transpose").interval : 0;
+    // anchor at Marge's mouth (front)
+    const mx = guy.x + Math.cos(guy.face) * 0.02, my = guy.y + Math.sin(guy.face) * 0.02;
 
     // blobs: a swallowed one shrinks into the mouth, then is EJECTED INTACT out the
-    // rear (never destroyed); free ones are molded by the mouse + lightly separate.
+    // rear (never destroyed). Notes don't respond to the mouse anymore.
     for (const b of blobs) {
       if (b.state === "inside") {
         b.x += (mx - b.x) * Math.min(1, dt * 16); b.y += (my - b.y) * Math.min(1, dt * 16);
         b.scale += (0 - b.scale) * Math.min(1, dt * 16);
         if (tt - b.tEat > DIGEST) {
           b.state = "free";                                  // poop it out the rear, shooting far
-          b.midi += TRANSPOSE; if (b.midi > 93) b.midi -= 24; // digested -> up a minor third (Marge's transform)
+          b.midi += xpose; while (b.midi > 96) b.midi -= 12; while (b.midi < 36) b.midi += 12;  // Pitch Transposer
           b.x = guy.x - Math.cos(guy.face) * 0.06; b.y = guy.y - Math.sin(guy.face) * 0.06;
           b.vx = -Math.cos(guy.face) * EJECT_VEL + (Math.random() - 0.5) * 0.2;
           b.vy = -Math.sin(guy.face) * EJECT_VEL + (Math.random() - 0.5) * 0.2;
@@ -436,54 +490,50 @@ function startPlayground() {
         continue;
       }
       b.scale += (1 - b.scale) * Math.min(1, dt * 7);
-      // mouse molds: attract toward the cursor, but a close-range repel makes a
-      // fast incomer swing past instead of collapsing onto a single point.
-      const dx = mouse.x - b.x, dy = mouse.y - b.y, d = Math.hypot(dx, dy) || 1e-3;
-      if (d < MOLD_R) { const f = (1 - d / MOLD_R) * MOLD_PULL * dt; b.vx += dx * f; b.vy += dy * f; }
-      if (d < 0.07) { const r = (1 - d / 0.07) * MOLD_PULL * 1.1 * dt; b.vx -= (dx / d) * r * 0.07; b.vy -= (dy / d) * r * 0.07; }
+      // Vacuum Mode: Marge's mouth attracts free notes
+      if (vacuum) {
+        const dx = mx - b.x, dy = my - b.y, d = Math.hypot(dx, dy) || 1e-3;
+        if (d < VACUUM_R) { const f = (1 - d / VACUUM_R) * VACUUM_PULL * dt; b.vx += dx * f; b.vy += dy * f; }
+      }
     }
-    // inter-note repulsion (anti-glob): firmer when the mouse moves fast (scatter),
-    // gentle when slow so notes can still glob together.
-    const sepK = SEP_K * (0.35 + mouse.sp * 2.2);
+    // inter-note repulsion (anti-glob)
     for (let i = 0; i < blobs.length; i++) for (let j = i + 1; j < blobs.length; j++) {
       const a = blobs[i], c = blobs[j]; if (a.state !== "free" || c.state !== "free") continue;
       const dx = c.x - a.x, dy = c.y - a.y, d = Math.hypot(dx, dy) || 1e-3;
-      if (d < SEP_R) { const f = (1 - d / SEP_R) * sepK * dt / d; a.vx -= dx * f; a.vy -= dy * f; c.vx += dx * f; c.vy += dy * f; }
+      if (d < SEP_R) { const f = (1 - d / SEP_R) * SEP_K * dt / d; a.vx -= dx * f; a.vy -= dy * f; c.vx += dx * f; c.vy += dy * f; }
     }
     for (const b of blobs) {
       if (b.state !== "free") continue;
-      b.vx *= 0.92; b.vy *= 0.92; b.x += b.vx * dt; b.y += b.vy * dt;
+      b.vx *= 0.93; b.vy *= 0.93; b.x += b.vx * dt; b.y += b.vy * dt;
       b.x = Math.max(0.05, Math.min(0.95, b.x)); b.y = Math.max(0.12, Math.min(0.9, b.y));
     }
 
-    // guy cruise: a big OPENING BURST (the fast flurry), then slews toward how fast
-    // you're moving the mouse; each eat knocks it down a notch.
-    const openBoost = Math.max(0, 1 - tt / 2.6) * CRUISE_MAX * 0.8;
-    const cruiseTarget = Math.min(CRUISE_MAX, 0.05 + mouse.sp * 1.4 + openBoost);
-    guy.cruise += (cruiseTarget - guy.cruise) * Math.min(1, dt * 1.3);
-    guy.sitting = guy.cruise < 0.12;                          // mouse still long enough -> he rests
+    // Marge roams autonomously: an OPENING BURST, then a steady cruise; Homing Beak
+    // makes her fast + targeted.
+    const openBoost = Math.max(0, 1 - tt / 2.6) * 2.0;
+    const baseCruise = homing ? CRUISE_HOMING : CRUISE, seek = homing ? SEEK_HOMING : SEEK;
+    guy.cruise += ((baseCruise + openBoost) - guy.cruise) * Math.min(1, dt * 1.5);
     let tgt = null, best = 1e9;
     for (const b of blobs) { if (b.state !== "free") continue; const d = Math.hypot(b.x - guy.x, b.y - guy.y); if (d < best) { best = d; tgt = b; } }
-    if (tgt && !guy.sitting) { guy.vx += (tgt.x - guy.x) * SEEK * dt; guy.vy += (tgt.y - guy.y) * SEEK * dt; }
-    const wob = guy.sitting ? 0.05 : 1;                       // organic wander (multi-sine, not one LFO)
-    guy.vx += wob * 0.6 * (Math.sin(tt * 1.7) + 0.6 * Math.sin(tt * 0.53 + 1.3)) * dt;
-    guy.vy += wob * 0.6 * (Math.cos(tt * 1.31) + 0.6 * Math.sin(tt * 0.91 + 2.1)) * dt;
+    if (tgt) { guy.vx += (tgt.x - guy.x) * seek * dt; guy.vy += (tgt.y - guy.y) * seek * dt; }
+    const wob = homing ? 0.15 : 0.6;                          // less wander when homing (more direct)
+    guy.vx += wob * (Math.sin(tt * 1.7) + 0.6 * Math.sin(tt * 0.53 + 1.3)) * dt;
+    guy.vy += wob * (Math.cos(tt * 1.31) + 0.6 * Math.sin(tt * 0.91 + 2.1)) * dt;
     guy.vx *= 0.9; guy.vy *= 0.9;
     const sp = Math.hypot(guy.vx, guy.vy);
     if (sp > guy.cruise && sp > 1e-4) { guy.vx *= guy.cruise / sp; guy.vy *= guy.cruise / sp; }
-    if (guy.sitting && tgt) { guy.vx *= 0.5; guy.vy *= 0.5; }  // settle onto the glob
     guy.x += guy.vx * dt; guy.y += guy.vy * dt;
     if (guy.x < 0.04 || guy.x > 0.96) guy.vx *= -0.6; if (guy.y < 0.08 || guy.y > 0.92) guy.vy *= -0.6;
     guy.x = Math.max(0.04, Math.min(0.96, guy.x)); guy.y = Math.max(0.08, Math.min(0.92, guy.y));
     if (sp > 1e-3) guy.face = Math.atan2(guy.vy, guy.vx);
     guy.mouth = Math.max(0, guy.mouth - dt);
 
-    // only catches a (nearly) still note — moving ones slip past her
+    // catches a (nearly) still note — moving ones slip past (vacuum/homing help)
     if (tgt && best < EAT_DIST && tgt.state === "free" && Math.hypot(tgt.vx, tgt.vy) < CATCH_VMAX) eat(tgt);
-    guy.head += (1 - guy.head) * Math.min(1, dt * 4);    // head/rear relax back to normal
+    guy.head += (1 - guy.head) * Math.min(1, dt * 4);
     guy.butt += (1 - guy.butt) * Math.min(1, dt * 5);
 
-    // shader uniforms (uPitch refreshed: hue tracks the climbing pitch)
+    // shader uniforms (uPitch refreshed: hue tracks the pitch)
     const pos = new Float32Array(64), scl = new Float32Array(32);
     blobs.forEach((b, i) => { if (i < 32) { pos[i*2] = b.x; pos[i*2+1] = b.y; scl[i] = b.scale; pit[i] = (b.midi - lo) / Math.max(1, hi - lo); } });
     gl.uniform2f(U("uRes"), cv.width, cv.height); gl.uniform1f(U("uTime"), tt);
@@ -492,26 +542,26 @@ function startPlayground() {
 
     // 2D overlay: faint MOLD ring at the cursor, ejected-blob puffs, then the hero
     g2.clearRect(0, 0, gc.width, gc.height);
-    g2.strokeStyle = "rgba(255,255,255,0.12)"; g2.lineWidth = 2;
-    g2.beginPath(); g2.arc(mouse.x * gc.width, (1 - mouse.y) * gc.height, MOLD_R * gc.height, 0, 7); g2.stroke();
     for (let i = parts.length - 1; i >= 0; i--) {
       const p = parts[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt * 1.4;
       if (p.life <= 0) { parts.splice(i, 1); continue; }
       g2.globalAlpha = Math.max(0, p.life); g2.beginPath(); g2.arc(p.x * gc.width, (1 - p.y) * gc.height, 6, 0, 7);
       g2.fillStyle = "hsl(" + (p.hue * 300) + ",80%,65%)"; g2.fill();
     }
-    // note label inside each free blob (e.g. C4, E2)
-    g2.font = "11px -apple-system, system-ui, sans-serif"; g2.textAlign = "center"; g2.textBaseline = "middle";
+    g2.globalAlpha = 1;
+    // note label inside each free blob (e.g. C4) — bold + dark outline for contrast
+    g2.font = "bold 16px -apple-system, system-ui, sans-serif"; g2.textAlign = "center"; g2.textBaseline = "middle";
+    g2.lineWidth = 3.5; g2.lineJoin = "round";
     for (const b of blobs) {
       if (b.state !== "free" || b.scale < 0.4) continue;
-      g2.fillStyle = "rgba(255,255,255,0.9)";
-      g2.fillText(midiToName(b.midi), b.x * gc.width, (1 - b.y) * gc.height);
+      const px = b.x * gc.width, py = (1 - b.y) * gc.height, nm = midiToName(b.midi);
+      g2.strokeStyle = "rgba(0,0,0,0.78)"; g2.strokeText(nm, px, py);
+      g2.fillStyle = "#fff"; g2.fillText(nm, px, py);
     }
-    g2.globalAlpha = 1;
     drawGuy(g2, guy.x * gc.width, (1 - guy.y) * gc.height, guy.face, guy.mouth, sp, guy.head, guy.butt);
     fx.r = requestAnimationFrame(frame);
   }
-  fx = { stop() { alive = false; if (fx.r) cancelAnimationFrame(fx.r); window.removeEventListener("pointermove", onMove); window.removeEventListener("resize", size); } };
+  fx = { stop() { alive = false; if (fx.r) cancelAnimationFrame(fx.r); window.removeEventListener("resize", size); } };
   frame();
 }
 
@@ -567,7 +617,7 @@ function stopFinale() {
 }
 
 // boot
-renderKeymap();
+renderKeymap(); buildPowers();
 makeSequence(); renderStaff(); renderNotes(); notes.forEach(n => n.dot = null); paint(); updateStats();
 </script>
 </body>
