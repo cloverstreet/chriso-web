@@ -1003,9 +1003,12 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
   // just swinging the camera. (+dx so drag-right looks right.)
   function applyDrag(dx, dy) {
     bumpIdle();
-    lookYaw   += dx * DRAG_SENS;
+    // "Grab the world" on both axes: drag-right pans the view right (you
+    // turn left), drag-down looks up. Pitch range is wide and deliberately
+    // hyperreal — near ±83°, far past natural neck range.
+    lookYaw   -= dx * DRAG_SENS;
     lookPitch += dy * DRAG_SENS;
-    lookPitch = Math.max(-0.55, Math.min(0.55, lookPitch));
+    lookPitch = Math.max(-1.45, Math.min(1.45, lookPitch));
   }
 
   // Mouse / pen
@@ -1143,10 +1146,7 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
     // Idle auto-motion: in 3rd person the third-party observer camera orbits
     // (you watch yourself from shifting angles, gaze held); in 1st/2nd the
     // gaze itself slowly pans. Eases back in after a few idle seconds.
-    if (autoBlend > 0) {
-      if (viewMode() === 'third') camOrbit += dt * 0.08 * autoBlend;
-      else                        lookYaw  += dt * 0.06 * autoBlend;
-    }
+    if (autoBlend > 0) lookYaw += dt * 0.07 * autoBlend;
 
     // ── Movement (WASD + joystick), relative to the gaze ───
     let mvF = 0, mvR = 0, mvU = 0;
@@ -1185,20 +1185,16 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
       avHead.visible = true; avNose.visible = true;
       camTarget = eye.clone().addScaledVector(fwdFlat, -1.6); camTarget.y += 0.4;
       lookAtP = eye.clone().add(fwd.clone().multiplyScalar(3));
-    } else {  // third — INDEPENDENT third-party observer. The camera orbits
-              // on its own (idle); drag turns the player's gaze, which you
-              // SEE because the camera isn't glued to it — the avatar
-              // visibly looks around and the sound field turns with the head.
+    } else {  // third — follow camera BEHIND the gaze, lagging (slow lerp)
+              // so head-turns stay visible before the camera catches up.
+              // Movement (W) runs along the facing = into the screen, so
+              // "forward" is unambiguous; sound + head turn with the gaze.
       avHead.visible = true; avNose.visible = true;
-      const ox = Math.sin(camOrbit), oz = Math.cos(camOrbit);
-      camTarget = new THREE.Vector3(
-        eye.x + ox * camDist,
-        eye.y + camDist * 0.4 + 0.6,
-        eye.z + oz * camDist
-      );
-      lookAtP = eye.clone();   // keep the avatar centered, watch it turn
+      camTarget = eye.clone().addScaledVector(fwdFlat, -camDist);
+      camTarget.y += camDist * 0.32 + 0.6;
+      lookAtP = eye.clone().add(fwd.clone().multiplyScalar(1.8));
     }
-    camera.position.lerp(camTarget, vm === 'first' ? 0.5 : 0.2);
+    camera.position.lerp(camTarget, vm === 'first' ? 0.5 : (vm === 'over' ? 0.25 : 0.08));
     camera.lookAt(lookAtP);
     lookTarget.copy(lookAtP);
 
