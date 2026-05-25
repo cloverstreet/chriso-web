@@ -81,7 +81,7 @@
 
   <canvas id="fx"></canvas>
   <canvas id="guy"></canvas>
-  <div id="fxhint">move the mouse to stir the notes · Esc to return</div>
+  <div id="fxhint">move the mouse to mold the notes · Esc to return</div>
 
 <script>
 const VF = Vex.Flow;
@@ -104,7 +104,7 @@ const SPACING = 92;
 const FAILX = 58;
 const LEADIN = 4;
 const SVG_H = 240, STAVE_Y = 96;
-const NOTE_BEATS = 4;    // whole notes (switch to 2 for half-notes => double speed)
+const NOTE_BEATS = 2;    // half notes (2x the whole-note speed). gap between notes = 60*NOTE_BEATS/bpm
 
 // adaptive tempo (musical MM). time between notes crossing the line = 60*NOTE_BEATS/bpm.
 const BASE = 72, TMIN = 34, TMAX = 170;
@@ -164,8 +164,9 @@ function renderNotes() {
   const ctx = r.getContext();
   const stave = new VF.Stave(0, STAVE_Y, width);   // positioning only — not drawn
   stave.setContext(ctx);
-  const sn = notes.map(n => new VF.StaveNote({ keys: [n.key], duration: "w", clef: "treble" }));
-  const voice = new VF.Voice({ num_beats: N * 4, beat_value: 4 }).setStrict(false);
+  const dur = NOTE_BEATS >= 4 ? "w" : "h";
+  const sn = notes.map(n => new VF.StaveNote({ keys: [n.key], duration: dur, clef: "treble" }));
+  const voice = new VF.Voice({ num_beats: N * NOTE_BEATS, beat_value: 4 }).setStrict(false);
   voice.addTickables(sn);
   new VF.Formatter().joinVoices([voice]).format([voice], N * SPACING);
   voice.draw(ctx, stave);
@@ -322,7 +323,7 @@ let fx = null, hideTimer = null;
 function midiOf(key) { return Tunings.nameToMidi(key.replace("/", "")); }
 function runFinale() { try { startPlayground(); } catch (e) {} }
 
-const CRUISE_MAX = 1.15, SEEK = 7.0, EAT_DIST = 0.045, MOLD_R = 0.26, MOLD_PULL = 9.0;
+const CRUISE_MAX = 2.4, SEEK = 11.0, EAT_DIST = 0.055, MOLD_R = 0.34, MOLD_PULL = 22.0, DIGEST = 0.2;
 
 const FRAG = `
 precision highp float;
@@ -364,12 +365,12 @@ function startPlayground() {
   const blobs = notes.map((n, i) => ({
     x: 0.12 + 0.76 * (i / Math.max(1, notes.length - 1)) + (Math.random() - 0.5) * 0.04,
     y: 0.25 + 0.5 * ((mids[i] - lo) / Math.max(1, hi - lo)),
-    vx: 0, vy: 0, midi: mids[i], pitch: (mids[i] - lo) / Math.max(1, hi - lo), scale: 1, eaten: false,
+    vx: 0, vy: 0, midi: mids[i], pitch: (mids[i] - lo) / Math.max(1, hi - lo),
+    scale: 1, state: "free", tEat: 0,   // state: "free" | "inside" (being digested)
   }));
-  const guy = { x: 0.5, y: 0.5, vx: 0, vy: 0, cruise: CRUISE_MAX, mouth: 0, face: 0 };
+  const guy = { x: 0.5, y: 0.5, vx: 0, vy: 0, cruise: CRUISE_MAX, mouth: 0, face: 0, sitting: false };
   const mouse = { x: 0.5, y: 0.5, px: 0.5, py: 0.5, sp: 0 };
   const parts = [];
-  let regrow = -1;
 
   function size() { cv.width = gc.width = innerWidth; cv.height = gc.height = innerHeight; gl.viewport(0, 0, cv.width, cv.height); }
   size();
@@ -388,15 +389,14 @@ function startPlayground() {
   gl.uniform1fv(U("uPitch"), pit); gl.uniform1i(U("uCount"), Math.min(blobs.length, 32));
 
   function eat(b) {
-    b.eaten = true;
+    b.state = "inside"; b.tEat = (performance.now() - t0) / 1000;
     const wild = Math.min(1, guy.cruise / CRUISE_MAX);     // fast = wilder (like the opening flurry)
     const oct = (Math.random() < 0.3 * wild) ? (Math.random() < 0.5 ? -12 : 12) : 0;
     const cents = (Math.random() - 0.5) * (8 + 60 * wild);
     const hz = 440 * Math.pow(2, (b.midi + oct - 69) / 12 + cents / 1200);
     const tim = ["gamelan", "mallet", "sine"][(Math.random() * 3) | 0];
     Synth.playFreq(hz, { timbre: tim, decay: 0.5 + Math.random() * 1.1, gain: 0.1, when: Synth.now() + 0.001 });
-    parts.push({ x: guy.x, y: guy.y, vx: -Math.cos(guy.face) * 0.45, vy: -Math.sin(guy.face) * 0.45, life: 1, hue: b.pitch });
-    guy.cruise *= 0.7; guy.mouth = 0.16;                    // slows after digesting
+    guy.cruise *= 0.82; guy.mouth = 0.2;                    // slows after each digest
   }
 
   let t0 = performance.now(), prevT = t0, alive = true;
@@ -409,58 +409,79 @@ function startPlayground() {
     const msp = Math.hypot(mouse.x - mouse.px, mouse.y - mouse.py) / Math.max(dt, 1e-3);
     mouse.sp += (msp - mouse.sp) * 0.25; mouse.px = mouse.x; mouse.py = mouse.y;
 
-    // blob physics: mouse stirs/gathers, light mutual separation, damping
+    // anchor points on the guy (mouth front / used for digesting)
+    const mx = guy.x + Math.cos(guy.face) * 0.012, my = guy.y + Math.sin(guy.face) * 0.012;
+
+    // blobs: a swallowed one shrinks into the mouth, then is EJECTED INTACT out the
+    // rear (never destroyed); free ones are molded by the mouse + lightly separate.
     for (const b of blobs) {
-      if (b.eaten) { b.scale += (0 - b.scale) * Math.min(1, dt * 8); continue; }
-      b.scale += (1 - b.scale) * Math.min(1, dt * 6);
+      if (b.state === "inside") {
+        b.x += (mx - b.x) * Math.min(1, dt * 16); b.y += (my - b.y) * Math.min(1, dt * 16);
+        b.scale += (0 - b.scale) * Math.min(1, dt * 16);
+        if (tt - b.tEat > DIGEST) {
+          b.state = "free";                                  // poop it out, same as it went in
+          b.x = guy.x - Math.cos(guy.face) * 0.05; b.y = guy.y - Math.sin(guy.face) * 0.05;
+          b.vx = -Math.cos(guy.face) * 0.7 + (Math.random() - 0.5) * 0.15;
+          b.vy = -Math.sin(guy.face) * 0.7 + (Math.random() - 0.5) * 0.15;
+          b.scale = 0.2;
+          parts.push({ x: b.x, y: b.y, vx: b.vx * 0.4, vy: b.vy * 0.4, life: 0.5, hue: b.pitch });
+        }
+        continue;
+      }
+      b.scale += (1 - b.scale) * Math.min(1, dt * 7);
       const dx = mouse.x - b.x, dy = mouse.y - b.y, d = Math.hypot(dx, dy);
       if (d < MOLD_R) { const f = (1 - d / MOLD_R) * MOLD_PULL * dt; b.vx += dx * f; b.vy += dy * f; }
     }
     for (let i = 0; i < blobs.length; i++) for (let j = i + 1; j < blobs.length; j++) {
-      const a = blobs[i], c = blobs[j]; if (a.eaten || c.eaten) continue;
+      const a = blobs[i], c = blobs[j]; if (a.state !== "free" || c.state !== "free") continue;
       const dx = c.x - a.x, dy = c.y - a.y, d = Math.hypot(dx, dy) || 1e-3;
-      if (d < 0.07) { const f = (0.07 - d) * 2.0 * dt / d; a.vx -= dx * f; a.vy -= dy * f; c.vx += dx * f; c.vy += dy * f; }
+      if (d < 0.06) { const f = (0.06 - d) * 2.2 * dt / d; a.vx -= dx * f; a.vy -= dy * f; c.vx += dx * f; c.vy += dy * f; }
     }
     for (const b of blobs) {
+      if (b.state !== "free") continue;
       b.vx *= 0.9; b.vy *= 0.9; b.x += b.vx * dt; b.y += b.vy * dt;
       b.x = Math.max(0.05, Math.min(0.95, b.x)); b.y = Math.max(0.12, Math.min(0.9, b.y));
     }
 
-    // guy: cruise slews toward mouse activity; spring-seek nearest blob + organic wander
-    const cruiseTarget = 0.04 + Math.min(CRUISE_MAX, mouse.sp * 1.3);
-    guy.cruise += (cruiseTarget - guy.cruise) * Math.min(1, dt * 1.4);
+    // guy cruise: a big OPENING BURST (the fast flurry), then slews toward how fast
+    // you're moving the mouse; each eat knocks it down a notch.
+    const openBoost = Math.max(0, 1 - tt / 2.6) * CRUISE_MAX * 0.8;
+    const cruiseTarget = Math.min(CRUISE_MAX, 0.05 + mouse.sp * 1.4 + openBoost);
+    guy.cruise += (cruiseTarget - guy.cruise) * Math.min(1, dt * 1.3);
+    guy.sitting = guy.cruise < 0.12;                          // mouse still long enough -> he rests
     let tgt = null, best = 1e9;
-    for (const b of blobs) { if (b.eaten) continue; const d = Math.hypot(b.x - guy.x, b.y - guy.y); if (d < best) { best = d; tgt = b; } }
-    if (tgt) { guy.vx += (tgt.x - guy.x) * SEEK * dt; guy.vy += (tgt.y - guy.y) * SEEK * dt; }
-    guy.vx += 0.5 * (Math.sin(tt * 1.7) + 0.6 * Math.sin(tt * 0.53 + 1.3)) * dt;
-    guy.vy += 0.5 * (Math.cos(tt * 1.31) + 0.6 * Math.sin(tt * 0.91 + 2.1)) * dt;
+    for (const b of blobs) { if (b.state !== "free") continue; const d = Math.hypot(b.x - guy.x, b.y - guy.y); if (d < best) { best = d; tgt = b; } }
+    if (tgt && !guy.sitting) { guy.vx += (tgt.x - guy.x) * SEEK * dt; guy.vy += (tgt.y - guy.y) * SEEK * dt; }
+    const wob = guy.sitting ? 0.05 : 1;                       // organic wander (multi-sine, not one LFO)
+    guy.vx += wob * 0.6 * (Math.sin(tt * 1.7) + 0.6 * Math.sin(tt * 0.53 + 1.3)) * dt;
+    guy.vy += wob * 0.6 * (Math.cos(tt * 1.31) + 0.6 * Math.sin(tt * 0.91 + 2.1)) * dt;
     guy.vx *= 0.9; guy.vy *= 0.9;
     const sp = Math.hypot(guy.vx, guy.vy);
     if (sp > guy.cruise && sp > 1e-4) { guy.vx *= guy.cruise / sp; guy.vy *= guy.cruise / sp; }
+    if (guy.sitting && tgt) { guy.vx *= 0.5; guy.vy *= 0.5; }  // settle onto the glob
     guy.x += guy.vx * dt; guy.y += guy.vy * dt;
     if (guy.x < 0.04 || guy.x > 0.96) guy.vx *= -0.6; if (guy.y < 0.08 || guy.y > 0.92) guy.vy *= -0.6;
     guy.x = Math.max(0.04, Math.min(0.96, guy.x)); guy.y = Math.max(0.08, Math.min(0.92, guy.y));
     if (sp > 1e-3) guy.face = Math.atan2(guy.vy, guy.vx);
     guy.mouth = Math.max(0, guy.mouth - dt);
 
-    if (tgt && best < EAT_DIST) eat(tgt);
-    // when all eaten, regrow the field after a beat so play continues
-    if (blobs.every(b => b.eaten)) { if (regrow < 0) regrow = tt + 1.0; if (tt > regrow) { blobs.forEach(b => b.eaten = false); guy.cruise = CRUISE_MAX; regrow = -1; } }
+    if (tgt && best < EAT_DIST && tgt.state === "free") eat(tgt);
 
     // shader uniforms
     const pos = new Float32Array(64), scl = new Float32Array(32);
-    blobs.forEach((b, i) => { if (i < 32) { pos[i*2] = b.x; pos[i*2+1] = b.y; scl[i] = b.eaten ? b.scale : b.scale; } });
+    blobs.forEach((b, i) => { if (i < 32) { pos[i*2] = b.x; pos[i*2+1] = b.y; scl[i] = b.scale; } });
     gl.uniform2f(U("uRes"), cv.width, cv.height); gl.uniform1f(U("uTime"), tt);
     gl.uniform2fv(U("uPos"), pos); gl.uniform1fv(U("uScale"), scl);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
-    // 2D character + ejected particles
+    // 2D overlay: faint MOLD ring at the cursor, ejected-blob puffs, then the hero
     g2.clearRect(0, 0, gc.width, gc.height);
+    g2.strokeStyle = "rgba(255,255,255,0.12)"; g2.lineWidth = 2;
+    g2.beginPath(); g2.arc(mouse.x * gc.width, (1 - mouse.y) * gc.height, MOLD_R * gc.height, 0, 7); g2.stroke();
     for (let i = parts.length - 1; i >= 0; i--) {
-      const p = parts[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt * 0.9;
+      const p = parts[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt * 1.4;
       if (p.life <= 0) { parts.splice(i, 1); continue; }
-      const px = p.x * gc.width, py = (1 - p.y) * gc.height;
-      g2.globalAlpha = Math.max(0, p.life); g2.beginPath(); g2.arc(px, py, 7, 0, 7);
+      g2.globalAlpha = Math.max(0, p.life); g2.beginPath(); g2.arc(p.x * gc.width, (1 - p.y) * gc.height, 6, 0, 7);
       g2.fillStyle = "hsl(" + (p.hue * 300) + ",80%,65%)"; g2.fill();
     }
     g2.globalAlpha = 1;
