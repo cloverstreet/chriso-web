@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Notation Systems · chriso.org</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; font-family:-apple-system, system-ui, sans-serif;
+         background:#15171c; color:#e6e8ec; padding:32px 24px; }
+  h1 { font-size:22px; font-weight:600; margin:0 0 4px; }
+  .sub { color:#8b909a; font-size:13px; margin:0 0 26px; max-width:620px; line-height:1.5; }
+  .grid { display:flex; flex-direction:column; gap:12px; max-width:620px; }
+  a.card { display:block; text-decoration:none; color:inherit; background:#1c1f26;
+           border:1px solid #2f343d; border-radius:12px; padding:16px 18px; transition:border-color .15s, background .15s; }
+  a.card:hover { background:#222630; border-color:#4a5160; }
+  a.card .t { font-size:16px; font-weight:600; color:#e6e8ec; }
+  a.card .d { font-size:13px; color:#9aa1ad; margin-top:4px; line-height:1.45; }
+  a.card .arrow { float:right; color:#5a6170; }
+  .foot { color:#5a6170; font-size:12px; margin-top:26px; }
+</style>
+</head>
+<body>
+  <h1>Notation Systems</h1>
+  <p class="sub">Experiments in music notation as an interactive / improvisational and teaching medium — cell-based and
+  evolving forms, microtonal tunings, exact-Hz Web Audio. Pick one:</p>
+  <div class="grid" id="grid"></div>
+  <div class="foot" id="foot"></div>
+
+<script>
+// Curated list — add an entry when a new experiment lands in this folder.
+const EXPERIMENTS = [
+  { folder: "sight-reader-01", title: "Sight-Reading Trainer",
+    desc: "Self-paced note reading: scrolling whole notes on a fixed staff, letter or piano-key input, adaptive tempo, and a playful reward when you ace a run." },
+  { folder: "poly-cells-01", title: "Polymetric Looping Cells",
+    desc: "Three cells in different meters looping on one clock so they phase apart; pélog (7-tone) tuning, per-line eighth + phase offsets, gain/meter." },
+];
+
+const grid = document.getElementById("grid");
+EXPERIMENTS.forEach(e => {
+  const a = document.createElement("a");
+  a.className = "card";
+  a.href = "./" + e.folder + "/";
+  a.innerHTML = `<span class="arrow">→</span><div class="t">${e.title}</div><div class="d">${e.desc}</div>`;
+  grid.appendChild(a);
+});
+document.getElementById("foot").textContent = EXPERIMENTS.length + " experiment" + (EXPERIMENTS.length === 1 ? "" : "s");
+</script>
+</body>
+</html>
