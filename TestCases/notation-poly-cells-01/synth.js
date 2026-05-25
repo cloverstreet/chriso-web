@@ -67,25 +67,29 @@ window.Synth = (function () {
     gamelan: [[1, 1], [2.8, 0.55], [5.25, 0.32], [8.9, 0.16], [12.1, 0.08]],
   };
 
-  // Play a single frequency. opts: {duration, timbre, gain, when}
-  // `when` is an absolute AudioContext time; omit for "now".
+  // Play a single frequency. opts: {decay, timbre, gain, when}
+  // `decay` = exponential decay TIME CONSTANT in seconds: a struck-and-
+  // ringing tail (longer = rings longer), not a sustain plateau. `when` is
+  // an absolute AudioContext time; omit for "now".
   function playFreq(hz, opts) {
     opts = opts || {};
     const c = ensure();
     const t0 = (opts.when != null ? opts.when : c.currentTime) + 0.001;
-    const dur = opts.duration != null ? opts.duration : 0.6;
     const peak = opts.gain != null ? opts.gain : 0.25;
+    const decay = opts.decay != null ? opts.decay : 0.4;
+    const tail = decay * 6; // ring out to ~ -52 dB before we free the oscs
     const partials = TIMBRES[opts.timbre] || TIMBRES.mallet;
 
     const voice = c.createGain();
     voice.gain.value = 0;
     voice.connect(master);
 
-    // Percussive envelope: fast attack, exponential-ish decay.
-    const attack = 0.005;
+    // Struck envelope: near-instant attack, then a natural exponential
+    // ring-down governed by `decay` (no held sustain).
+    const attack = 0.004;
     voice.gain.setValueAtTime(0, t0);
     voice.gain.linearRampToValueAtTime(peak, t0 + attack);
-    voice.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    voice.gain.setTargetAtTime(0, t0 + attack, decay);
 
     const oscs = [];
     for (const [ratio, amp] of partials) {
@@ -96,7 +100,7 @@ window.Synth = (function () {
       g.gain.value = amp;
       o.connect(g).connect(voice);
       o.start(t0);
-      o.stop(t0 + dur + 0.05);
+      o.stop(t0 + attack + tail + 0.05);
       oscs.push(o);
     }
     return t0;
