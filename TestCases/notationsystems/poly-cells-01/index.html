@@ -20,15 +20,17 @@
   button:hover { background:#343a45; }
   button.mini { padding:2px 8px; font-size:13px; border-radius:6px; }
   label { font-size:13px; color:#b6bcc6; display:flex; gap:8px; align-items:center; }
-  input[type=range] { width:130px; }
+  .controls input[type=range] { width:130px; }   /* scoped so it doesn't hit the meter's vertical fader */
   #meter { margin:0 0 18px; }
 
   .cell { margin-bottom:14px; }
   .cellhead { display:flex; align-items:center; gap:14px; font-size:12.5px; color:#b6bcc6; margin-bottom:4px; flex-wrap:wrap; }
   .cellhead .tag { background:#2a2e37; border:1px solid #3a3f4a; border-radius:5px; padding:1px 8px; }
   .cellhead .off, .cellhead .phase { display:flex; align-items:center; gap:6px; }
-  .cellhead .offval { min-width:18px; text-align:center; font-variant-numeric:tabular-nums; }
+  .cellhead .offval { min-width:34px; text-align:center; font-variant-numeric:tabular-nums; }
   .cellhead input[type=range] { width:110px; }
+  .cellhead select { background:#2a2e37; color:#e6e8ec; border:1px solid #3a3f4a; border-radius:5px; font-size:12px; padding:1px 3px; }
+  .cellhead .len { color:#8b909a; }
   .stagewrap { position:relative; background:#fbfbf8; border-radius:10px; overflow:hidden; }
   .playhead { position:absolute; top:8px; bottom:8px; width:2px; background:rgba(220,90,40,0.9); z-index:5; }
 
@@ -65,7 +67,7 @@
         <button id="play">Play</button>
         <button id="stop">Stop</button>
         <label>Tempo <input id="bpm" type="range" min="40" max="200" value="96" /> <span id="bpmval">96</span> bpm</label>
-        <button id="mapbtn">Mapping&nbsp;▸</button>
+        <button id="mapbtn">Pitch mapping&nbsp;▸</button>
       </div>
 
       <div id="meter"></div>
@@ -76,16 +78,15 @@
       <p class="sub">notation test case 02 — three cells of different length and meter looping on one shared tempo clock,
       so they phase against each other. Pitch is a 7-tone <b>pélog</b> played at exact frequencies (microtonal, via Web Audio).</p>
       <div class="legend">
-        <div><b>Cells:</b> A = 2 bars of 4/4 (8 beats) · B = 1 bar of 5/4 (5 beats) · C = 1 bar of 3/4 (3 beats).
-        Beats line up vertically across the three. Common multiple LCM(8,5,3) = <code>120</code> beats before they realign.</div>
-        <div style="margin-top:8px"><b>Offsets (per line):</b> <b>⅛</b> shifts the <i>notation</i> by an eighth-note
-        (a quarter crossing the loop end splits into two tied eighths); <b>phase</b> slides the playhead 0–300% of a
-        quarter without renotating.</div>
+        <div><b>Cells:</b> three loops of different lengths on one shared clock, so they phase apart. Each cell's
+        length (in note-value beats) is shown in its header.</div>
+        <div style="margin-top:8px"><b>Offsets (per line):</b> <b>shift</b> rotates the notation left/right by the
+        chosen unit (1/16, 1/8, 1/4, 1/2) — a note crossing the loop end splits into tied pieces; <b>phase</b> slides
+        the playhead −100%…+100% of a quarter without renotating.</div>
         <div style="margin-top:8px"><b>Tuning — <span id="tuningname"></span>.</b>
-        Staff position on the cells (left) is an <i>indicative scaffold only</i> (the number is the scale degree;
-        the pitch you hear is exact). The table gives each degree's <i>approximate</i> Western notation using
-        <b>Stein-Zimmermann quarter-tone accidentals</b>; the cents column is how far the true pélog pitch sits
-        above (+) or below (−) that notated note.</div>
+        The cells are notated at their <i>nearest quarter-tone</i> with <b>Stein-Zimmermann accidentals</b> (the small
+        number is the pélog degree; the pitch you hear is exact). The table shows each degree's notation and how far
+        (cents) the true pélog pitch sits above (+) / below (−) that notated note.</div>
         <table class="tuning" id="tuningtable"></table>
       </div>
     </aside>
@@ -96,37 +97,55 @@ const VF = Vex.Flow;
 const SCALE = Tunings.PELOG;
 document.getElementById("tuningname").textContent = SCALE.name;
 
-// degree (1-7) -> staff slot, purely visual scaffolding
-const SLOT = { 1:"e/4", 2:"f/4", 3:"g/4", 4:"a/4", 5:"b/4", 6:"c/5", 7:"d/5" };
+// pélog degree (1..7, octave-wrapping via scaleFreq) -> microtonal notation,
+// rounded to the nearest quarter-tone (Stein-Zimmermann accidentals).
+const degCache = {};
+function degInfo(deg) {
+  if (!degCache[deg]) degCache[deg] = describe(Tunings.scaleFreq(SCALE, deg, 0));
+  return degCache[deg];
+}
 
+// cells = sequences of pélog-degree quarter notes (full note editor comes next)
 const CELLS = [
-  { name:"A", meter:[4,4], beats:8, seq:[1,2,3,5, 6,5,3,1] },
-  { name:"B", meter:[5,4], beats:5, seq:[5,6,7,6,5] },
-  { name:"C", meter:[3,4], beats:3, seq:[1,3,5] },
+  { name:"A", seq:[1,2,3,5, 6,5,3,1] },
+  { name:"B", seq:[5,6,7,6,5] },
+  { name:"C", seq:[1,3,5] },
 ];
 
-const PPB = 56;      // px per beat — fallback spacing for the playhead tail only
-CELLS.forEach(c => { c.eighthOffset = 0; c.phaseBeats = 0; c.muted = false; c.prevLB = 0; c.seek = true; });
+const PPB = 56;          // px per beat — fallback spacing for the playhead tail only
+const DUR = { 16:"w", 8:"h", 4:"q", 2:"8", 1:"16" };   // sixteenths -> VexFlow duration
+function decompose(len16) {                            // a length -> tied power-of-two pieces
+  const out = []; let r = len16;
+  for (const u of [16, 8, 4, 2, 1]) while (r >= u) { out.push(u); r -= u; }
+  return out.length ? out : [1];
+}
+function lengthLabel(cell) {
+  const total = cell.beats * 4, maxU = 4;              // source notes are quarters for now
+  let u = 1; for (const c of [16, 8, 4, 2, 1]) if (c <= maxU && total % c === 0) { u = c; break; }
+  const name = { 16:"whole", 8:"half", 4:"quarter", 2:"eighth", 1:"sixteenth" }[u], n = total / u;
+  return n + " " + name + "-note beat" + (n === 1 ? "" : "s");
+}
+CELLS.forEach(c => { c.beats = c.seq.length; c.shift16 = 0; c.shiftUnit = 2; c.phaseBeats = 0; c.muted = false; c.prevLB = 0; c.seek = true; });
 
 // --- content rotation (offset method 1) -----------------------------------
-// Returns events on the (rotated) eighth grid. A quarter that crosses the loop
-// boundary is split into two eighths; the wrapped tail is tied (no re-attack).
+// Rotate the cell on a 16th grid by cell.shift16 sixteenths. A note crossing
+// the loop boundary splits; the wrapped tail is tied (no re-attack).
 function rotatedEvents(cell) {
-  const E = cell.beats * 2;                       // total eighth slots
-  const shift = ((cell.eighthOffset % E) + E) % E;
+  const S = cell.beats * 4;                       // total sixteenth slots
+  const shift = ((cell.shift16 % S) + S) % S;
   const ev = [];
   cell.seq.forEach((deg, i) => {
-    const base = i * 2;                           // each seq note is a quarter = 2 eighths
-    const no = ((base - shift) % E + E) % E;
-    if (no + 2 <= E) ev.push({ on: no, len: 2, deg, attack: true });
+    const base = i * 4;                           // each seq note is a quarter = 4 sixteenths
+    const no = ((base - shift) % S + S) % S;
+    if (no + 4 <= S) ev.push({ on16: no, len16: 4, deg, attack: true });
     else {
-      const a = E - no;
-      ev.push({ on: no, len: a, deg, attack: true });        // head (the attack)
-      ev.push({ on: 0, len: 2 - a, deg, attack: false });    // wrapped tail, tied
+      const a = S - no;
+      ev.push({ on16: no, len16: a, deg, attack: true });    // head (the attack)
+      ev.push({ on16: 0, len16: 4 - a, deg, attack: false }); // wrapped tail, tied
     }
   });
-  ev.sort((x, y) => x.on - y.on);
-  return ev.map(e => ({ onsetBeat: e.on / 2, durBeats: e.len / 2, deg: e.deg, attack: e.attack }));
+  ev.sort((x, y) => x.on16 - y.on16);
+  return ev;
 }
 
 // --- per-cell DOM (built once) --------------------------------------------
@@ -137,11 +156,13 @@ function buildCell(cell, container) {
   const head = document.createElement("div");
   head.className = "cellhead";
   head.innerHTML =
-    `<span class="tag">Cell ${cell.name}</span> ${cell.meter[0]}/${cell.meter[1]} · ${cell.beats} beats` +
+    `<span class="tag">Cell ${cell.name}</span> <span class="len"></span>` +
     `<label><input type="checkbox" class="mute"> mute</label>` +
-    `<span class="off">⅛ <button class="mini" data-d="-1">◀</button>` +
-    `<span class="offval">0</span><button class="mini" data-d="1">▶</button></span>` +
-    `<label class="phase">phase <input type="range" class="ph" min="0" max="300" step="5" value="0">` +
+    `<span class="off">shift ` +
+    `<select class="unit"><option value="1">1/16</option><option value="2" selected>1/8</option>` +
+    `<option value="4">1/4</option><option value="8">1/2</option></select> ` +
+    `<button class="mini" data-d="-1">◀</button><span class="offval">0</span><button class="mini" data-d="1">▶</button></span>` +
+    `<label class="phase">phase <input type="range" class="ph" min="-100" max="100" step="5" value="0">` +
     `<span class="phval">0%</span></label>`;
   cellDiv.appendChild(head);
 
@@ -163,14 +184,20 @@ function buildCell(cell, container) {
   cell.playhead = playhead;
   cell.overlay = overlay;
   cell.offval = head.querySelector(".offval");
+  cell.lenEl = head.querySelector(".len");
 
   head.querySelector(".mute").onchange = (e) => { cell.muted = e.target.checked; };
+  head.querySelector(".unit").onchange = (e) => { cell.shiftUnit = +e.target.value; };
   head.querySelectorAll("button[data-d]").forEach(b => {
-    b.onclick = () => { cell.eighthOffset += (+b.dataset.d); cell.offval.textContent = cell.eighthOffset;
-                        drawNotation(cell); cell.seek = true; };
+    b.onclick = () => {
+      cell.shift16 += (+b.dataset.d) * cell.shiftUnit;
+      cell.offval.textContent = (cell.shift16 > 0 ? "+" : "") + cell.shift16 + "/16";
+      drawNotation(cell); cell.seek = true;
+    };
   });
   const ph = head.querySelector(".ph"), phval = head.querySelector(".phval");
-  ph.oninput = (e) => { cell.phaseBeats = (+e.target.value) / 100; phval.textContent = e.target.value + "%"; cell.seek = true; };
+  ph.oninput = (e) => { const v = +e.target.value; cell.phaseBeats = v / 100;
+    phval.textContent = (v > 0 ? "+" : "") + v + "%"; cell.seek = true; };
 
   drawNotation(cell);
 }
@@ -184,30 +211,37 @@ function drawNotation(cell) {
   renderer.resize(width, 120);
   const ctx = renderer.getContext();
   const stave = new VF.Stave(10, 14, width - 20);
-  stave.addClef("treble").addTimeSignature(`${cell.meter[0]}/${cell.meter[1]}`);
+  stave.addClef("treble");                       // no time signature — length shown in the header
   stave.setContext(ctx).draw();
 
-  const notes = cell.events.map(e => {
-    const sn = new VF.StaveNote({ keys: [SLOT[e.deg]], duration: e.durBeats >= 1 ? "q" : "8", clef: "treble" });
-    sn.addModifier(new VF.Annotation(String(e.deg))
-      .setVerticalJustification(VF.Annotation.VerticalJustify.BOTTOM)
-      .setFont("Arial", 11, "bold"), 0);
-    return sn;
+  // each event -> one or more tied power-of-two pieces, drawn at the degree's
+  // nearest-quarter-tone pitch with its microtonal accidental.
+  const notes = [];
+  cell.events.forEach(ev => {
+    ev.noteStart = notes.length;
+    const di = degInfo(ev.deg);
+    decompose(ev.len16).forEach((p, k) => {
+      const sn = new VF.StaveNote({ keys: [di.key], duration: DUR[p], clef: "treble" });
+      if (k === 0 && di.acc && di.acc !== "n") sn.addModifier(new VF.Accidental(di.acc), 0);
+      if (k === 0) sn.addModifier(new VF.Annotation(String(ev.deg))
+        .setVerticalJustification(VF.Annotation.VerticalJustify.BOTTOM).setFont("Arial", 10, ""), 0);
+      notes.push(sn);
+    });
   });
   const voice = new VF.Voice({ num_beats: cell.beats, beat_value: 4 }).setStrict(false);
   voice.addTickables(notes);
   new VF.Formatter().joinVoices([voice]).format([voice], width - 120);
   voice.draw(ctx, stave);
 
-  // Notes sit where VexFlow places them (normal engraving). Track their real
-  // x so the playhead and note-flashes follow the notes exactly.
-  cell.events.forEach((e, i) => { e.x = notes[i].getAbsoluteX(); });
-  const pts = cell.events.map(e => ({ beat: e.onsetBeat, x: e.x }));
+  // Track each event's real x (its first piece) so the playhead follows notes.
+  cell.events.forEach(ev => { ev.onsetBeat = ev.on16 / 4; ev.x = notes[ev.noteStart].getAbsoluteX(); });
+  const pts = cell.events.map(ev => ({ beat: ev.onsetBeat, x: ev.x }));
   const first = pts[0], last = pts[pts.length - 1];
   const pxBeat = last.beat > first.beat ? (last.x - first.x) / (last.beat - first.beat) : PPB;
   if (first.beat > 0) pts.unshift({ beat: 0, x: first.x - first.beat * pxBeat });
   pts.push({ beat: cell.beats, x: last.x + (cell.beats - last.beat) * pxBeat });
   cell.points = pts;
+  if (cell.lenEl) cell.lenEl.textContent = lengthLabel(cell);
 }
 
 // playhead position (px) for a fractional beat — interpolated across the notes'
@@ -342,7 +376,7 @@ document.getElementById("bpm").oninput = (e) => { bpmTarget = +e.target.value; d
 const mapbtn = document.getElementById("mapbtn"), app = document.getElementById("app");
 mapbtn.onclick = () => {
   const open = app.classList.toggle("mapopen");
-  mapbtn.innerHTML = open ? "Mapping&nbsp;◂" : "Mapping&nbsp;▸";
+  mapbtn.innerHTML = open ? "Pitch mapping&nbsp;◂" : "Pitch mapping&nbsp;▸";
 };
 </script>
 </body>
