@@ -958,10 +958,15 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
   const joy = { active:false, x:0, y:0 };   // -1..1 ; +y is "pull back"
   const MOVE_SPEED = 3.4;                    // world units / second
 
+  // MUST match Three.js avatar.rotation.y: rotating the avatar's local -Z
+  // forward by yaw gives (-sin yaw, 0, -cos yaw). Earlier this used +sin,
+  // so the body faced one way while it moved / heard / aimed the camera the
+  // mirror way — that was the root of "x backwards" + "walks toward camera
+  // not avatar."
   function fwdVec(yaw, pitch) {
     return new THREE.Vector3(
-      Math.sin(yaw) * Math.cos(pitch),
-      Math.sin(pitch),
+      -Math.sin(yaw) * Math.cos(pitch),
+       Math.sin(pitch),
       -Math.cos(yaw) * Math.cos(pitch)
     );
   }
@@ -1061,14 +1066,17 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
   });
 
   // ── WASD / fly keys ──────────────────────────────────
-  const MOVE_KEYCODES = new Set(['w','a','s','d','r','f',' ','arrowup','arrowdown','arrowleft','arrowright']);
+  // NOTE: space is deliberately NOT a movement key — pressing space is the
+  // natural "press a key to start the audio" gesture, and binding it to
+  // fly-up sent the avatar into the ceiling. R = up, F = down.
+  const MOVE_KEYCODES = new Set(['w','a','s','d','r','f','arrowup','arrowdown','arrowleft','arrowright']);
   window.addEventListener('keydown', e => {
     const k = e.key.toLowerCase();
     if (k === 'w' || k === 'arrowup')    moveKeys.w = true;
     else if (k === 's' || k === 'arrowdown')  moveKeys.s = true;
     else if (k === 'a' || k === 'arrowleft')  moveKeys.a = true;
     else if (k === 'd' || k === 'arrowright') moveKeys.d = true;
-    else if (k === 'r' || k === ' ')     moveKeys.up = true;
+    else if (k === 'r')                  moveKeys.up = true;
     else if (k === 'f')                  moveKeys.down = true;
     if (MOVE_KEYCODES.has(k)) { bumpIdle(); e.preventDefault(); }
   });
@@ -1078,7 +1086,7 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
     else if (k === 's' || k === 'arrowdown')  moveKeys.s = false;
     else if (k === 'a' || k === 'arrowleft')  moveKeys.a = false;
     else if (k === 'd' || k === 'arrowright') moveKeys.d = false;
-    else if (k === 'r' || k === ' ')     moveKeys.up = false;
+    else if (k === 'r')                  moveKeys.up = false;
     else if (k === 'f')                  moveKeys.down = false;
   });
 
@@ -1160,8 +1168,8 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
     if (mvF || mvR || mvU) {
       bumpIdle();
       const step = MOVE_SPEED * dt;
-      const fF = new THREE.Vector3(Math.sin(lookYaw), 0, -Math.cos(lookYaw));  // ground forward
-      const rF = new THREE.Vector3(Math.cos(lookYaw), 0,  Math.sin(lookYaw));  // ground right
+      const fF = new THREE.Vector3(-Math.sin(lookYaw), 0, -Math.cos(lookYaw));  // facing (matches avatar)
+      const rF = new THREE.Vector3( Math.cos(lookYaw), 0, -Math.sin(lookYaw));  // avatar's right = F × up
       avatar.position.addScaledVector(fF, mvF * step);
       avatar.position.addScaledVector(rF, mvR * step);
       avatar.position.y = Math.max(0, Math.min(6, avatar.position.y + mvU * step));
