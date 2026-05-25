@@ -105,8 +105,7 @@ const CELLS = [
   { name:"C", meter:[3,4], beats:3, seq:[1,3,5] },
 ];
 
-const PPB = 56;      // px per beat — shared across cells so beats align vertically
-const ORIGIN = 96;   // x of beat 0 — shared, clears the clef + time signature
+const PPB = 56;      // px per beat — fallback spacing for the playhead tail only
 CELLS.forEach(c => { c.eighthOffset = 0; c.phaseBeats = 0; c.muted = false; c.prevLB = 0; c.seek = true; });
 
 // --- content rotation (offset method 1) -----------------------------------
@@ -180,7 +179,7 @@ function buildCell(cell, container) {
 function drawNotation(cell) {
   cell.events = rotatedEvents(cell);
   cell.scroller.innerHTML = "";
-  const width = ORIGIN + cell.beats * PPB + 24;
+  const width = 90 + cell.beats * PPB + 30;
   const renderer = new VF.Renderer(cell.scroller, VF.Renderer.Backends.SVG);
   renderer.resize(width, 120);
   const ctx = renderer.getContext();
@@ -193,22 +192,42 @@ function drawNotation(cell) {
     sn.addModifier(new VF.Annotation(String(e.deg))
       .setVerticalJustification(VF.Annotation.VerticalJustify.BOTTOM)
       .setFont("Arial", 11, "bold"), 0);
-    sn._onset = e.onsetBeat;
     return sn;
   });
   const voice = new VF.Voice({ num_beats: cell.beats, beat_value: 4 }).setStrict(false);
   voice.addTickables(notes);
-  new VF.Formatter().joinVoices([voice]).format([voice], cell.beats * PPB);
-  // force exact beat alignment: every note at ORIGIN + onset*PPB
-  notes.forEach(sn => { sn.setXShift(ORIGIN + sn._onset * PPB - sn.getAbsoluteX()); });
+  new VF.Formatter().joinVoices([voice]).format([voice], width - 120);
   voice.draw(ctx, stave);
+
+  // Notes sit where VexFlow places them (normal engraving). Track their real
+  // x so the playhead and note-flashes follow the notes exactly.
+  cell.events.forEach((e, i) => { e.x = notes[i].getAbsoluteX(); });
+  const pts = cell.events.map(e => ({ beat: e.onsetBeat, x: e.x }));
+  const first = pts[0], last = pts[pts.length - 1];
+  const pxBeat = last.beat > first.beat ? (last.x - first.x) / (last.beat - first.beat) : PPB;
+  if (first.beat > 0) pts.unshift({ beat: 0, x: first.x - first.beat * pxBeat });
+  pts.push({ beat: cell.beats, x: last.x + (cell.beats - last.beat) * pxBeat });
+  cell.points = pts;
+}
+
+// playhead position (px) for a fractional beat — interpolated across the notes'
+// real positions, so it always tracks the notes regardless of engraving spacing.
+function xAtBeat(cell, b) {
+  const p = cell.points;
+  for (let i = 0; i < p.length - 1; i++) {
+    if (b >= p[i].beat && b <= p[i + 1].beat) {
+      const f = (b - p[i].beat) / ((p[i + 1].beat - p[i].beat) || 1);
+      return p[i].x + f * (p[i + 1].x - p[i].x);
+    }
+  }
+  return p[p.length - 1].x;
 }
 
 // --- transport / clock (smooth accumulator — tempo changes never jump) ----
 let bpm = 96, bpmTarget = 96, beatPos = 0, lastT = 0, running = false, raf = null;
 
 function trigger(cell, e) {
-  flash(cell, ORIGIN + e.onsetBeat * PPB);
+  flash(cell, e.x);
   if (cell.muted) return;
   Synth.playFreq(Tunings.scaleFreq(SCALE, e.deg, 0), { timbre: "gamelan", decay: 0.6, gain: 0.12 });
 }
@@ -233,7 +252,7 @@ function updateCell(cell) {
     else { fireBetween(cell, cell.prevLB, cb + 1e-6); fireBetween(cell, -1e-6, lb); }
     cell.prevLB = lb;
   }
-  cell.playhead.style.left = (ORIGIN + lb * PPB) + "px";
+  cell.playhead.style.left = xAtBeat(cell, lb) + "px";
 }
 
 function loop() {
