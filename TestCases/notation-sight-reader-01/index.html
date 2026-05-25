@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sight-Reading Trainer · notation test case 01</title>
+<script src="https://cdn.jsdelivr.net/npm/vexflow@4.2.2/build/cjs/vexflow.js"></script>
+<script src="./synth.js"></script>
+<script src="./tunings.js"></script>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; font-family: -apple-system, system-ui, sans-serif;
+    background: #15171c; color: #e6e8ec; padding: 24px;
+  }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 2px; }
+  .sub { color: #8b909a; font-size: 13px; margin: 0 0 18px; }
+  .controls { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+  button {
+    background: #2a2e37; color: #e6e8ec; border: 1px solid #3a3f4a;
+    padding: 8px 16px; border-radius: 8px; font-size: 14px; cursor: pointer;
+  }
+  button:hover { background: #343a45; }
+  label { font-size: 13px; color: #b6bcc6; display: flex; gap: 8px; align-items: center; }
+  input[type=range] { width: 140px; }
+  .score { font-variant-numeric: tabular-nums; font-size: 14px; }
+  .score b { color: #67d98b; } .score i { color: #f06a6a; font-style: normal; }
+  #stagewrap {
+    position: relative; background: #fbfbf8; border-radius: 10px;
+    overflow: hidden; height: 220px;
+  }
+  #scroller { position: absolute; top: 0; left: 0; will-change: transform; }
+  /* fixed "now" marker the notes scroll toward */
+  #marker {
+    position: absolute; top: 16px; bottom: 16px; left: 140px; width: 2px;
+    background: rgba(40,110,220,0.85); z-index: 5;
+  }
+  #marker::before {
+    content: ""; position: absolute; top: -10px; left: -7px;
+    border-left: 8px solid transparent; border-right: 8px solid transparent;
+    border-top: 10px solid rgba(40,110,220,0.85);
+  }
+  .hint { margin-top: 14px; color: #8b909a; font-size: 13px; line-height: 1.5; }
+  kbd { background: #2a2e37; border: 1px solid #3a3f4a; border-radius: 5px;
+        padding: 1px 7px; font-size: 12px; }
+</style>
+</head>
+<body>
+  <h1>Sight-Reading Trainer</h1>
+  <p class="sub">notation test case 01 — VexFlow + Web Audio. Notes scroll toward the marker; play each note's letter on its way past.</p>
+
+  <div class="controls">
+    <button id="start">Start</button>
+    <button id="reset">New sequence</button>
+    <label>Tempo <input id="bpm" type="range" min="30" max="160" value="70" /> <span id="bpmval">70</span> bpm</label>
+    <span class="score">Correct <b id="hits">0</b> · Missed <i id="miss">0</i></span>
+  </div>
+
+  <div id="stagewrap">
+    <div id="marker"></div>
+    <div id="scroller"></div>
+  </div>
+
+  <p class="hint">
+    Press <kbd>A</kbd>–<kbd>G</kbd> when a note reaches the marker.
+    Correct → the note sounds and turns <b style="color:#2ca35a">green</b>;
+    wrong or missed → <b style="color:#cc3b3b">red</b>.
+    This case is plain C-major in 12-TET (letter-name reading) — the microtonal engine lives in test case 02.
+  </p>
+
+<script>
+const VF = Vex.Flow;
+
+// ---- state ----------------------------------------------------------
+const NUM_NOTES = 28;
+const SPACING = 70;          // px between consecutive notes
+const START_X = 30;          // x of first note within the SVG
+const MARKER_X = 140;        // screen x of the "now" marker
+let notes = [];              // [{key, letter, x, state}]
+let running = false;
+let startTime = 0;
+let bpm = 70;
+let raf = null;
+
+const scroller = document.getElementById("scroller");
+const stagewrap = document.getElementById("stagewrap");
+
+// C-major pool across a comfortable treble range.
+const POOL = ["c/4","d/4","e/4","f/4","g/4","a/4","b/4","c/5","d/5","e/5","f/5","g/5"];
+
+function makeSequence() {
+  notes = [];
+  for (let i = 0; i < NUM_NOTES; i++) {
+    const key = POOL[Math.floor(Math.random() * POOL.length)];
+    notes.push({ key, letter: key[0].toUpperCase(), x: 0, state: "pending" });
+  }
+}
+
+function render() {
+  scroller.innerHTML = "";
+  const width = START_X + NUM_NOTES * SPACING + 40;
+  const renderer = new VF.Renderer(scroller, VF.Renderer.Backends.SVG);
+  renderer.resize(width, 220);
+  const ctx = renderer.getContext();
+
+  const stave = new VF.Stave(10, 60, width - 20);
+  stave.addClef("treble").addKeySignature("C");
+  stave.setContext(ctx).draw();
+
+  const staveNotes = notes.map(n =>
+    new VF.StaveNote({ keys: [n.key], duration: "q", clef: "treble" })
+  );
+  const voice = new VF.Voice({ num_beats: NUM_NOTES, beat_value: 4 }).setStrict(false);
+  voice.addTickables(staveNotes);
+  new VF.Formatter().joinVoices([voice]).format([voice], width - 120);
+  voice.draw(ctx, stave);
+
+  // capture each note's x within the SVG for scroll alignment + overlays
+  staveNotes.forEach((sn, i) => { notes[i].x = sn.getAbsoluteX(); });
+
+  // overlay layer for green/red highlight bars
+  let overlay = document.getElementById("overlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "overlay";
+    overlay.style.cssText = "position:absolute;top:0;left:0;pointer-events:none;";
+    scroller.appendChild(overlay);
+  }
+}
+
+function setScroll(px) { scroller.style.transform = `translateX(${px}px)`; }
+
+// interpolated note-space x at fractional position p
+function xAt(p) {
+  const i = Math.floor(p);
+  if (i < 0) return notes[0].x + p * SPACING;
+  if (i >= notes.length - 1) return notes[notes.length - 1].x;
+  const frac = p - i;
+  return notes[i].x + frac * (notes[i + 1].x - notes[i].x);
+}
+
+function activeIndex(p) {
+  const i = Math.round(p);
+  if (i < 0 || i >= notes.length) return -1;
+  return Math.abs(p - i) < 0.5 ? i : -1;
+}
+
+function markBar(i, color) {
+  const overlay = document.getElementById("overlay");
+  const bar = document.createElement("div");
+  bar.style.cssText =
+    `position:absolute;top:62px;height:96px;width:22px;border-radius:4px;` +
+    `left:${notes[i].x - 11}px;background:${color};`;
+  overlay.appendChild(bar);
+}
+
+function judge(i, ok) {
+  if (notes[i].state !== "pending") return;
+  notes[i].state = ok ? "correct" : "wrong";
+  markBar(i, ok ? "rgba(60,180,100,0.4)" : "rgba(220,70,70,0.4)");
+  if (ok) {
+    Synth.playFreq(Tunings.noteFreq(notes[i].key.replace("/", "")), { timbre: "mallet", duration: 0.7 });
+    document.getElementById("hits").textContent = ++stats.hits;
+  } else {
+    Synth.buzz();
+    document.getElementById("miss").textContent = ++stats.miss;
+  }
+}
+
+let stats = { hits: 0, miss: 0 };
+
+function loop() {
+  const beatDur = 60 / bpm;
+  const p = (Synth.now() - startTime) / beatDur;
+  setScroll(MARKER_X - xAt(p) - 10);
+
+  // auto-miss notes that slipped past the marker unjudged
+  for (let i = 0; i < notes.length; i++) {
+    if (notes[i].state === "pending" && p > i + 0.5) judge(i, false);
+  }
+
+  if (p > notes.length) { stop(); return; }
+  raf = requestAnimationFrame(loop);
+}
+
+function start() {
+  Synth.ensure();
+  if (running) return;
+  running = true;
+  startTime = Synth.now();
+  loop();
+}
+function stop() {
+  running = false;
+  if (raf) cancelAnimationFrame(raf);
+}
+function reset() {
+  stop();
+  stats = { hits: 0, miss: 0 };
+  document.getElementById("hits").textContent = "0";
+  document.getElementById("miss").textContent = "0";
+  makeSequence();
+  render();
+  setScroll(MARKER_X - notes[0].x - 10);
+}
+
+document.addEventListener("keydown", (e) => {
+  if (!running) return;
+  const k = e.key.toUpperCase();
+  if (k < "A" || k > "G") return;
+  const beatDur = 60 / bpm;
+  const p = (Synth.now() - startTime) / beatDur;
+  const i = activeIndex(p);
+  if (i < 0) return;
+  judge(i, notes[i].letter === k);
+});
+
+document.getElementById("start").onclick = start;
+document.getElementById("reset").onclick = reset;
+document.getElementById("bpm").oninput = (e) => {
+  bpm = +e.target.value;
+  document.getElementById("bpmval").textContent = bpm;
+};
+
+reset();
+</script>
+</body>
+</html>
