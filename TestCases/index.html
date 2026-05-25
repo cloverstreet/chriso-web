@@ -22,6 +22,17 @@
   }
 
   /* Full-screen particle storm canvas (index3 storm-phase derived) */
+  /* Data-driven centrepiece: circular waveform scope + grain/pan blips +
+     gesture-history trail. Sits above the storm, below the title. */
+  canvas#center-viz {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+    pointer-events: none;
+    mix-blend-mode: screen;
+  }
   canvas#storm {
     position: fixed;
     inset: 0;
@@ -226,9 +237,10 @@
 <body>
 <canvas id="glow"></canvas>
 <canvas id="storm"></canvas>
+<canvas id="center-viz"></canvas>
 <div id="title-wrap">
   <div id="title">/testcases/</div>
-  <div id="subtitle">isolated feature experiments</div>
+  <div id="subtitle">isolated feature experiences</div>
 </div>
 <div id="loading">loading…</div>
 <div id="links"></div>
@@ -281,7 +293,12 @@ document.addEventListener('visibilitychange', () => {
 const linksContainer = document.getElementById('links');
 const loadingEl      = document.getElementById('loading');
 let linkEntries = [];
-let testNames   = ['TESTCASES'];   // text used for the letterform pulses
+let testNames   = ['TESTCASES'];   // (retained; letterform pulses retired but harmless)
+
+// ── Centre-viz state (data-driven centrepiece) ──────────────────────────
+let vizAnalyser = null, vizWave = null;   // master waveform tap
+const grainEvents  = [];   // {pan, rate, t} — recent grain spawns (spatialization)
+const gestureTrail = [];   // {x, y, t} — recent cursor samples (gesture history)
 
 async function loadLinks() {
   let items = [];
@@ -405,13 +422,15 @@ function glowFrame() {
     const dy = glowMouse.y - L.cy;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
-    // Proximity reach — cursor must get closer to light/sound a link
-    // (dialed back ~20% from 460 on 2026-05-22). Drives glow + per-link audio.
-    const reach = 368;
+    // Proximity reach — cursor must get close to light/sound a link.
+    // Tightened to 330 and given a steeper *downward* falloff (pow 2.3
+    // instead of smoothstep) so a link stays dark until the cursor is
+    // genuinely near, then comes up quickly. Drives glow + per-link audio.
+    const reach = 330;
     let prox = 0;
     if (glowMouse.active) {
-      prox = Math.max(0, 1 - dist / reach);
-      prox = prox * prox * (3 - 2 * prox);
+      const t = Math.max(0, 1 - dist / reach);
+      prox = Math.pow(t, 2.3);
     }
     L.prox = prox;
 
@@ -536,19 +555,11 @@ function tickStorm() {
   }
   mLastX = glowMouse.x; mLastY = glowMouse.y;
 
-  // Cycle phase
-  const phase = (stormT % CYCLE_DUR) / CYCLE_DUR;
-  let attractWeight = 0;
-  if (phase < 0.42) attractWeight = 0;
-  else if (phase < 0.52) attractWeight = (phase - 0.42) / 0.10;
-  else if (phase < 0.72) attractWeight = 1;
-  else if (phase < 0.84) attractWeight = 1 - (phase - 0.72) / 0.12;
-  else attractWeight = 0;
-
-  const setIdx = attractorSets.length
-    ? Math.floor(stormT / CYCLE_DUR) % attractorSets.length
-    : 0;
-  const currentSet = attractorSets[setIdx];
+  // Letterforms retired 2026-05-23 — the particle field is now pure
+  // ambient curl-flow + cursor warp, and the focal element is the
+  // data-driven #center-viz (waveform + grains + gesture history).
+  const attractWeight = 0;
+  const currentSet = null;
 
   // Trail decay (lighter than index3 so letters read clearly)
   sCtx.globalCompositeOperation = 'source-over';
@@ -652,6 +663,13 @@ function startAudio() {
   master = actx.createGain();
   master.gain.value = muted ? 0 : MASTER_LEVEL;
   master.connect(actx.destination);
+
+  // Tap the master output for the centre-viz waveform (read-only branch)
+  vizAnalyser = actx.createAnalyser();
+  vizAnalyser.fftSize = 2048;
+  vizAnalyser.smoothingTimeConstant = 0.55;
+  vizWave = new Float32Array(vizAnalyser.fftSize);
+  master.connect(vizAnalyser);
 
   // FM-modulated saw drone (index3 storm-bus shape, slightly lower fund)
   droneGain = actx.createGain();
@@ -758,6 +776,10 @@ function spawnGrain() {
   src.connect(lpf); lpf.connect(env); env.connect(pan); pan.connect(granGain);
   src.start(t0, sampleStart, dur);
   src.stop(t0 + dur + 0.05);
+
+  // Record for the centre-viz (pan = stereo position, rate ≈ pitch)
+  grainEvents.push({ pan: pan.pan.value, rate: src.playbackRate.value, t: performance.now() });
+  if (grainEvents.length > 80) grainEvents.shift();
 }
 
 function scheduleCrackle() {
@@ -796,8 +818,21 @@ function modulateLoop() {
     const sNorm = Math.min(1, mSpeed / 100);
     crackleGain.gain.linearRampToValueAtTime(
       0.022 + sNorm * 0.08, actx.currentTime + 0.2);
+
+    // The ~1.1 Hz drone FM (modGain depth) is now a GESTURAL parameter:
+    // proximity to screen centre. Out at the edges it's ~silent (clean,
+    // un-wobbled drone); as the cursor approaches centre the wobble swells
+    // in. Squared so it stays subtle until you're genuinely near centre.
+    let centerness = 0;
+    if (glowMouse.active) {
+      const dcx = glowMouse.x - glowW / 2, dcy = glowMouse.y - glowH / 2;
+      const dc  = Math.sqrt(dcx*dcx + dcy*dcy);
+      const maxR = Math.min(glowW, glowH) * 0.5;
+      centerness = Math.max(0, 1 - dc / maxR);
+      centerness *= centerness;
+    }
     modGain.gain.linearRampToValueAtTime(
-      5 + sNorm * 18, actx.currentTime + 0.2);
+      0.6 + centerness * 15, actx.currentTime + 0.25);
     noiseRingOsc.frequency.linearRampToValueAtTime(
       180 + sNorm * 700, actx.currentTime + 0.2);
 
@@ -880,6 +915,119 @@ document.addEventListener('keydown',    tryStart);
 
 // ── Bootstrap ─────────────────────────────────────────────────────────
 loadLinks();
+
+
+// ── Centre-viz: circular waveform scope + grain/pan blips + gesture trail ─
+// A data-driven centrepiece. Three layers:
+//   • waveform ring — master output as a circular oscilloscope
+//   • grain blips   — each recent grain a dot; angle = stereo pan, radius
+//                     = pitch (playbackRate), fading by age (spatialization)
+//   • gesture trail — recent cursor path, scaled into the disc (history)
+const cvCanvas = document.getElementById('center-viz');
+const cvCtx    = cvCanvas.getContext('2d');
+let cvSize = 0;
+function resizeCenterViz() {
+  cvSize = Math.round(Math.min(window.innerWidth, window.innerHeight) * 0.52);
+  cvCanvas.width  = cvSize * glowDpr;
+  cvCanvas.height = cvSize * glowDpr;
+  cvCanvas.style.width  = cvSize + 'px';
+  cvCanvas.style.height = cvSize + 'px';
+  cvCtx.setTransform(glowDpr, 0, 0, glowDpr, 0, 0);
+}
+resizeCenterViz();
+window.addEventListener('resize', resizeCenterViz);
+
+// Sample the cursor into the gesture history (its own listener — keeps the
+// late-declared gestureTrail out of the early glowMouse handler's scope).
+document.addEventListener('pointermove', e => {
+  gestureTrail.push({ x: e.clientX, y: e.clientY, t: performance.now() });
+  if (gestureTrail.length > 140) gestureTrail.shift();
+});
+
+function tickCenterViz() {
+  requestAnimationFrame(tickCenterViz);
+  if (!pageVisible || !cvSize) return;
+
+  const now = performance.now();
+  const cx = cvSize / 2, cy = cvSize / 2;
+  const R0 = cvSize * 0.30;          // base ring radius
+
+  // Gentle trail-decay clear (motion smear)
+  cvCtx.globalCompositeOperation = 'source-over';
+  cvCtx.fillStyle = 'rgba(8,10,16,0.22)';
+  cvCtx.fillRect(0, 0, cvSize, cvSize);
+  cvCtx.globalCompositeOperation = 'lighter';
+
+  // ── Gesture-history trail: recent cursor path scaled into the disc ──
+  if (gestureTrail.length > 1) {
+    cvCtx.lineWidth = 1;
+    for (let i = 1; i < gestureTrail.length; i++) {
+      const p0 = gestureTrail[i - 1], p1 = gestureTrail[i];
+      const age = (now - p1.t) / 2600;            // ~2.6s memory
+      if (age > 1) continue;
+      const sc = cvSize * 0.32 / Math.max(window.innerWidth, window.innerHeight);
+      const x0 = cx + (p0.x - window.innerWidth / 2) * sc;
+      const y0 = cy + (p0.y - window.innerHeight / 2) * sc;
+      const x1 = cx + (p1.x - window.innerWidth / 2) * sc;
+      const y1 = cy + (p1.y - window.innerHeight / 2) * sc;
+      cvCtx.strokeStyle = `hsla(200, 70%, 72%, ${(1 - age) * 0.5})`;
+      cvCtx.beginPath();
+      cvCtx.moveTo(x0, y0);
+      cvCtx.lineTo(x1, y1);
+      cvCtx.stroke();
+    }
+  }
+
+  // ── Grain blips: angle = pan, radius = pitch, fade by age ──
+  for (let i = grainEvents.length - 1; i >= 0; i--) {
+    const g = grainEvents[i];
+    const age = (now - g.t) / 850;                // ~0.85s life
+    if (age > 1) { continue; }
+    const ang = g.pan * (Math.PI * 0.75) - Math.PI / 2;   // pan → angle (top-centred)
+    const rad = R0 * (0.55 + (g.rate / 2.1) * 0.7);       // pitch → radius
+    const gx = cx + Math.cos(ang) * rad;
+    const gy = cy + Math.sin(ang) * rad;
+    const hue = 180 + g.rate * 60;                        // pitch → hue
+    const a = (1 - age) * 0.8;
+    const sz = 2 + (1 - age) * 4;
+    cvCtx.fillStyle = `hsla(${hue}, 90%, 66%, ${a})`;
+    cvCtx.beginPath();
+    cvCtx.arc(gx, gy, sz, 0, Math.PI * 2);
+    cvCtx.fill();
+  }
+
+  // ── Waveform ring: master output as a circular oscilloscope ──
+  if (vizAnalyser && vizWave) {
+    vizAnalyser.getFloatTimeDomainData(vizWave);
+    const N = 180;                       // angular resolution
+    const step = Math.floor(vizWave.length / N);
+    let rms = 0;
+    cvCtx.lineWidth = 1.6;
+    cvCtx.strokeStyle = 'rgba(210, 228, 245, 0.85)';
+    cvCtx.beginPath();
+    for (let i = 0; i <= N; i++) {
+      const s = vizWave[(i % N) * step] || 0;
+      rms += s * s;
+      const ang = (i / N) * Math.PI * 2 - Math.PI / 2;
+      const r = R0 + s * cvSize * 0.16;
+      const x = cx + Math.cos(ang) * r;
+      const y = cy + Math.sin(ang) * r;
+      if (i === 0) cvCtx.moveTo(x, y); else cvCtx.lineTo(x, y);
+    }
+    cvCtx.stroke();
+    // Soft inner glow scaled by loudness
+    rms = Math.sqrt(rms / N);
+    const glowR = R0 * (0.5 + Math.min(1, rms * 6) * 0.5);
+    const grad = cvCtx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
+    grad.addColorStop(0, `rgba(150, 200, 240, ${0.10 + Math.min(0.25, rms * 3)})`);
+    grad.addColorStop(1, 'rgba(150, 200, 240, 0)');
+    cvCtx.fillStyle = grad;
+    cvCtx.beginPath();
+    cvCtx.arc(cx, cy, glowR, 0, Math.PI * 2);
+    cvCtx.fill();
+  }
+}
+tickCenterViz();
 </script>
 </body>
 </html>
