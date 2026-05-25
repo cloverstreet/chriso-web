@@ -862,24 +862,30 @@ const activePanners = new Set();
 // When the tab isn't in front, ramp master to 0 and suspend the audio
 // context; halt grain/crackle spawn loops. Resume on visible. See
 // CLAUDE.md "Auto-mute non-instrument pages when not in front."
+// Fade out + suspend when hidden OR the window loses focus; resume + fade
+// in on return. Covers tab-switch AND app/window-switch.
 let pageVisible = (document.visibilityState !== 'hidden');
-document.addEventListener('visibilitychange', () => {
-  pageVisible = (document.visibilityState !== 'hidden');
+let bgHidden = false;
+function applyBackgroundState() {
+  const hidden = (document.visibilityState === 'hidden') || !document.hasFocus();
+  pageVisible = !hidden;
+  if (hidden === bgHidden) return;
+  bgHidden = hidden;
   if (!actx || !master) return;
-  if (pageVisible) {
-    actx.resume();
-    const t = actx.currentTime;
-    master.gain.cancelScheduledValues(t);
-    master.gain.setValueAtTime(master.gain.value, t);
-    master.gain.linearRampToValueAtTime(muted ? 0 : MASTER_LEVEL, t + 0.4);
+  const t = actx.currentTime;
+  master.gain.cancelScheduledValues(t);
+  master.gain.setValueAtTime(master.gain.value, t);
+  if (hidden) {
+    master.gain.linearRampToValueAtTime(0, t + 0.3);
+    setTimeout(() => { if (bgHidden && actx) actx.suspend(); }, 360);
   } else {
-    const t = actx.currentTime;
-    master.gain.cancelScheduledValues(t);
-    master.gain.setValueAtTime(master.gain.value, t);
-    master.gain.linearRampToValueAtTime(0, t + 0.15);
-    setTimeout(() => { if (!pageVisible && actx) actx.suspend(); }, 200);
+    actx.resume();
+    master.gain.linearRampToValueAtTime(muted ? 0 : MASTER_LEVEL, t + 0.4);
   }
-});
+}
+document.addEventListener('visibilitychange', applyBackgroundState);
+window.addEventListener('blur',  applyBackgroundState);
+window.addEventListener('focus', applyBackgroundState);
 
 // ── Spatialization debug controls (live-tweakable multipliers) ────────
 let grainVolMult   = 1;   // multiplier on granGain target

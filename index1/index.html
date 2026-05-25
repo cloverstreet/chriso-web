@@ -426,20 +426,30 @@ document.addEventListener('click',      tryStart);
 document.addEventListener('keydown',    tryStart);
 
 // Auto-mute + suspend when tab is not in front (standard for non-instrument pages)
-document.addEventListener('visibilitychange', () => {
-  pageVisible = (document.visibilityState !== 'hidden');
+// Fade out + suspend when hidden OR the window loses focus; resume + fade
+// in on return. Covers tab-switch AND app/window-switch (visibilitychange
+// alone misses the latter on desktop).
+let bgHidden = false;
+function applyBackgroundState() {
+  const hidden = (document.visibilityState === 'hidden') || !document.hasFocus();
+  pageVisible = !hidden;
+  if (hidden === bgHidden) return;
+  bgHidden = hidden;
   if (!actx || !master) return;
   const t = actx.currentTime;
   master.gain.cancelScheduledValues(t);
   master.gain.setValueAtTime(master.gain.value, t);
-  if (pageVisible) {
+  if (hidden) {
+    master.gain.linearRampToValueAtTime(0, t + 0.3);
+    setTimeout(() => { if (bgHidden && actx) actx.suspend(); }, 360);
+  } else {
     actx.resume();
     master.gain.linearRampToValueAtTime(MASTER_LEVEL, t + 0.4);
-  } else {
-    master.gain.linearRampToValueAtTime(0, t + 0.15);
-    setTimeout(() => { if (!pageVisible && actx) actx.suspend(); }, 220);
   }
-});
+}
+document.addEventListener('visibilitychange', applyBackgroundState);
+window.addEventListener('blur',  applyBackgroundState);
+window.addEventListener('focus', applyBackgroundState);
 </script>
 </body>
 </html>
