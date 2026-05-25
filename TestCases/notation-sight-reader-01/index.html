@@ -20,16 +20,14 @@
   .stat b { color:#e6e8ec; } .stat i { color:#f06a6a; font-style:normal; }
 
   #stage { position:relative; background:#fbfbf8; border-radius:10px; overflow:hidden; height:240px; }
-  #staff  { position:absolute; inset:0; z-index:1; }       /* static: clef + lines */
-  #clip   { position:absolute; top:0; bottom:0; right:0; overflow:hidden; z-index:2; } /* left set in JS = FAILX */
+  #staff  { position:absolute; inset:0; z-index:1; }
+  #clip   { position:absolute; top:0; bottom:0; right:0; overflow:hidden; z-index:2; }
   #track  { position:absolute; top:0; left:0; will-change:transform; }
-  #fb     { position:absolute; top:0; left:0; }            /* behind the notes */
-  #notes  { position:absolute; top:0; left:0; }            /* the scrolling noteheads */
-  /* the line a note must be played BEFORE it crosses (just right of the clef) */
+  #fb     { position:absolute; top:0; left:0; }
+  #notes  { position:absolute; top:0; left:0; }
   #failline { position:absolute; top:0; bottom:0; width:2px; background:rgba(220,70,70,0.85); z-index:4; }
   #failline::after { content:"play before here"; position:absolute; top:6px; left:8px;
               font-size:10px; color:#cc5555; white-space:nowrap; }
-  /* feedback dots — small, centered ON the notehead */
   .dot { position:absolute; width:26px; height:26px; border-radius:50%; transform:translate(-50%,-50%); }
   .dot.correct { background:rgba(45,180,95,0.55); }
   .dot.missed  { background:rgba(220,70,70,0.5); }
@@ -39,16 +37,26 @@
          font-size:22px; font-weight:600; color:#15171c; z-index:5; pointer-events:none; }
 
   #fx { position:fixed; inset:0; z-index:50; display:none; opacity:0; transition:opacity 1s ease; }
-  #fxhint { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); z-index:51; display:none;
-            color:#fff; font-size:13px; opacity:0.8; text-shadow:0 1px 4px #000; }
+  #guy { position:fixed; inset:0; z-index:51; display:none; pointer-events:none; }
+  #fxhint { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); z-index:52; display:none;
+            color:#fff; font-size:13px; opacity:0.85; text-shadow:0 1px 4px #000; }
 
-  /* key map — hidden behind a toggle (instrument first) */
   .keymap { display:none; margin-top:14px; color:#8b909a; font-size:13px; line-height:1.6; max-width:760px; }
   .app.keysopen .keymap { display:block; }
   .kbrow { display:flex; gap:6px; margin-top:6px; }
   .kc { display:flex; flex-direction:column; align-items:center; min-width:40px; padding:5px 0;
         background:#23262d; border:1px solid #3a3f4a; border-radius:7px; }
   .kc b { color:#e6e8ec; font-size:14px; } .kc span { color:#8b909a; font-size:11px; margin-top:2px; }
+  /* piano diagram */
+  .piano { position:relative; height:128px; margin-top:10px; width:360px; }
+  .wk { position:absolute; top:0; width:44px; height:128px; background:#f4f4ef; border:1px solid #999;
+        border-radius:0 0 5px 5px; box-sizing:border-box; display:flex; flex-direction:column;
+        justify-content:flex-end; align-items:center; padding-bottom:6px; }
+  .wk b { color:#222; font-size:14px; } .wk span { color:#777; font-size:10px; }
+  .bk { position:absolute; top:0; width:28px; height:80px; background:#222; border:1px solid #000;
+        border-radius:0 0 4px 4px; z-index:2; display:flex; flex-direction:column;
+        justify-content:flex-end; align-items:center; padding-bottom:5px; }
+  .bk b { color:#fff; font-size:12px; } .bk span { color:#bbb; font-size:9px; }
 </style>
 </head>
 <body>
@@ -72,29 +80,37 @@
   </div>
 
   <canvas id="fx"></canvas>
-  <div id="fxhint">drag to mold · press Esc to return</div>
+  <canvas id="guy"></canvas>
+  <div id="fxhint">move the mouse to stir the notes · Esc to return</div>
 
 <script>
 const VF = Vex.Flow;
 
-// piano-style typing layout (positional) — used in "piano" mode
-const KEYMAP = {
-  z:"c/4", x:"d/4", c:"e/4", v:"f/4", b:"g/4", n:"a/4", m:"b/4",
-  q:"c/5", w:"d/5", e:"e/5", r:"f/5", t:"g/5", y:"a/5", u:"b/5",
+// ── input mappings ──────────────────────────────────────────────────────
+// piano/chromatic: home row = white keys C..C; top row = sharps (each top key
+// is the sharp of the white to its lower-left). r=E#(=F), i=B#(=C) are
+// intentional enharmonic redundancies.
+const PIANO = {
+  a:"c/4", w:"c#/4", s:"d/4", e:"d#/4", d:"e/4", r:"f/4", f:"f/4", t:"f#/4",
+  g:"g/4", y:"g#/4", h:"a/4", u:"a#/4", j:"b/4", i:"c/5", k:"c/5", o:"c#/5",
 };
-const POOL = Object.values(KEYMAP);
-let mode = "letters";   // "letters" (press note name, any octave) | "piano" (positional)
+let mode = "letters";   // "letters" (note name, any octave) | "piano"
 
-const N = 24;
+// diatonic C-major pool the staff draws from (two octaves)
+const POOL = ["c/4","d/4","e/4","f/4","g/4","a/4","b/4","c/5","d/5","e/5","f/5","g/5","a/5","b/5"];
+
+let N = 10;              // notes per sequence — grows by 5 each clean round
 const SPACING = 92;
-const FAILX = 58;        // deadline x — clef sits just to its left
+const FAILX = 58;
 const LEADIN = 4;
 const SVG_H = 240, STAVE_Y = 96;
+const NOTE_BEATS = 4;    // whole notes (switch to 2 for half-notes => double speed)
 
-const BASE = 52, TMIN = 28, TMAX = 190;
-const COMFORT = 2.2, LEADK = 16, WRONG_PEN = 26, PEN_DECAY = 0.6;
+// adaptive tempo (musical MM). time between notes crossing the line = 60*NOTE_BEATS/bpm.
+const BASE = 72, TMIN = 34, TMAX = 170;
+const COMFORT = 4, LEADK = 13, WRONG_PEN = 22, PEN_DECAY = 0.6;
 
-let notes = [];          // {key, xRel, y, state, dot}
+let notes = [];
 let activeIdx = 0, missed = 0;
 let scrollX = 0, bpm = BASE, penalty = 0;
 let running = false, lastT = 0, raf = null;
@@ -103,7 +119,7 @@ const stage = document.getElementById("stage");
 const staffEl = document.getElementById("staff");
 const clipEl = document.getElementById("clip");
 const trackEl = document.getElementById("track");
-const fbEl = document.getElementById("notes") && document.getElementById("fb");
+const fbEl = document.getElementById("fb");
 const notesEl = document.getElementById("notes");
 const failEl = document.getElementById("failline");
 const elTempo = document.getElementById("tempo");
@@ -113,11 +129,15 @@ const elMsg = document.getElementById("msg");
 
 clipEl.style.left = FAILX + "px";
 failEl.style.left = FAILX + "px";
-
 const ringEl = document.createElement("div"); ringEl.className = "ring"; fbEl.appendChild(ringEl);
 
+function pcOf(noteKey) {       // 'c#/4' -> pitch class 0..11
+  const m = /^([a-g])(#|b)?\//.exec(noteKey);
+  const base = { c:0, d:2, e:4, f:5, g:7, a:9, b:11 }[m[1]];
+  return ((base + (m[2] === "#" ? 1 : m[2] === "b" ? -1 : 0)) % 12 + 12) % 12;
+}
 function baseOffset() { return FAILX + LEADIN * SPACING - (notes[0] ? notes[0].xRel : 20); }
-function screenX(i) { return notes[i].xRel + baseOffset() - scrollX; }   // x in stage coords
+function screenX(i) { return notes[i].xRel + baseOffset() - scrollX; }
 
 function makeSequence() {
   notes = [];
@@ -125,7 +145,6 @@ function makeSequence() {
   activeIdx = 0; missed = 0;
 }
 
-// static staff: clef + 5 lines, fixed, spanning the stage
 function renderStaff() {
   staffEl.innerHTML = "";
   const w = stage.clientWidth || 900;
@@ -137,21 +156,19 @@ function renderStaff() {
   stave.setContext(ctx).draw();
 }
 
-// scrolling notes layer: noteheads only (no staff lines / clef), same y as the static staff
 function renderNotes() {
   notesEl.innerHTML = "";
   const width = N * SPACING + 120;
   const r = new VF.Renderer(notesEl, VF.Renderer.Backends.SVG);
   r.resize(width, SVG_H);
   const ctx = r.getContext();
-  const stave = new VF.Stave(0, STAVE_Y, width);   // positioning context only — NOT drawn
+  const stave = new VF.Stave(0, STAVE_Y, width);   // positioning only — not drawn
   stave.setContext(ctx);
   const sn = notes.map(n => new VF.StaveNote({ keys: [n.key], duration: "w", clef: "treble" }));
   const voice = new VF.Voice({ num_beats: N * 4, beat_value: 4 }).setStrict(false);
   voice.addTickables(sn);
   new VF.Formatter().joinVoices([voice]).format([voice], N * SPACING);
-  voice.draw(ctx, stave);   // draws noteheads + ledger lines, no staff lines
-
+  voice.draw(ctx, stave);
   const groups = [...notesEl.querySelectorAll(".vf-stavenote")];
   sn.forEach((s, i) => {
     const nh = groups[i].querySelector(".vf-notehead") || groups[i];
@@ -165,14 +182,10 @@ function placeDot(i) {
   const n = notes[i];
   if (!n.dot) { n.dot = document.createElement("div"); fbEl.appendChild(n.dot); }
   n.dot.className = "dot " + n.state;
-  n.dot.style.left = n.xRel + "px";
-  n.dot.style.top = n.y + "px";
+  n.dot.style.left = n.xRel + "px"; n.dot.style.top = n.y + "px";
 }
-
 function paint() {
-  // scroll the whole track (notes + dots) as one
   trackEl.style.transform = `translateX(${baseOffset() - scrollX - FAILX}px)`;
-  // active ring rides the current target note
   if (activeIdx < N && notes[activeIdx].state === "pending") {
     ringEl.style.display = "block";
     ringEl.style.left = notes[activeIdx].xRel + "px";
@@ -180,7 +193,7 @@ function paint() {
   } else ringEl.style.display = "none";
 }
 
-function judge(correct) {
+function judge(correct, pressedKey) {
   const n = notes[activeIdx];
   if (correct) {
     n.state = "correct"; placeDot(activeIdx);
@@ -188,12 +201,13 @@ function judge(correct) {
     activeIdx++;
     if (activeIdx >= N) finish();
   } else {
-    penalty += WRONG_PEN; Synth.buzz();
-    ringEl.animate([{ borderColor: "rgba(220,70,70,0.95)" }, { borderColor: "rgba(40,110,220,0.85)" }], { duration: 220 });
+    penalty += WRONG_PEN;
+    // sound the pitch they actually pressed, but "wrong" (sour but recognizable)
+    if (pressedKey) Synth.playFreq(Tunings.noteFreq(pressedKey.replace("/", "")), { timbre: "wrong", decay: 0.5, gain: 0.18 });
+    ringEl.animate([{ borderColor: "rgba(220,70,70,0.95)" }, { borderColor: "rgba(40,110,220,0.85)" }], { duration: 240 });
   }
   updateStats();
 }
-
 function updateStats() {
   elProg.textContent = Math.min(activeIdx, N) + " / " + N;
   elMiss.textContent = missed;
@@ -204,20 +218,19 @@ function loop() {
   const t = Synth.now();
   let dt = t - lastT; lastT = t;
   if (dt < 0 || dt > 0.5) dt = 0;
-
   if (activeIdx < N) {
     const lead = (screenX(activeIdx) - FAILX) / SPACING;
     const target = Math.max(TMIN, Math.min(TMAX, BASE + LEADK * (lead - COMFORT) - penalty));
     bpm += (target - bpm) * Math.min(1, dt * 3);
   }
   penalty *= Math.pow(PEN_DECAY, dt);
-  scrollX += (bpm / 60) * SPACING * dt;
+  // scroll: one note-gap takes NOTE_BEATS beats at the current MM
+  scrollX += (bpm / (60 * NOTE_BEATS)) * SPACING * dt;
 
   while (activeIdx < N && notes[activeIdx].state === "pending" && screenX(activeIdx) < FAILX) {
     notes[activeIdx].state = "missed"; placeDot(activeIdx); missed++; activeIdx++;
   }
   if (activeIdx >= N) { finish(); return; }
-
   paint(); updateStats();
   raf = requestAnimationFrame(loop);
 }
@@ -228,8 +241,7 @@ function start() {
   elMsg.style.display = "none";
   fbEl.querySelectorAll(".dot").forEach(d => d.remove());
   makeSequence();
-  renderStaff();
-  renderNotes();
+  renderStaff(); renderNotes();
   notes.forEach(n => n.dot = null);
   scrollX = 0; bpm = BASE; penalty = 0; lastT = Synth.now();
   running = true;
@@ -242,7 +254,7 @@ function finish() {
   running = false;
   if (raf) cancelAnimationFrame(raf);
   paint();
-  if (missed === 0) runFinale();
+  if (missed === 0) { runFinale(); N += 5; }   // reward grows by 5 notes next round
   else { elMsg.textContent = `${N - missed} / ${N}`; elMsg.style.display = "flex"; }
 }
 
@@ -250,33 +262,40 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") { stopFinale(); return; }
   if (!running || activeIdx >= N) return;
   const k = e.key.toLowerCase();
-  let correct = null;
+  let correct = null, pressedKey = null;
   if (mode === "letters") {
     if (!/^[a-g]$/.test(k)) return;
-    correct = (notes[activeIdx].key[0] === k);       // letter only, octave ignored
+    const oct = notes[activeIdx].key.split("/")[1];
+    pressedKey = k + "/" + oct;                       // sound it near the target octave
+    correct = (notes[activeIdx].key[0] === k);        // octave-agnostic
   } else {
-    const pitch = KEYMAP[k];
-    if (!pitch) return;
-    correct = (pitch === notes[activeIdx].key);
+    pressedKey = PIANO[k];
+    if (!pressedKey) return;
+    correct = (pcOf(pressedKey) === pcOf(notes[activeIdx].key));
   }
   e.preventDefault();
-  judge(correct);
+  judge(correct, pressedKey);
 });
 
-// ── visual key map (reflects current mode) ──────────────────────────────
+// ── visual key map ──────────────────────────────────────────────────────
 function renderKeymap() {
   const km = document.getElementById("keymap");
   if (mode === "letters") {
     const caps = ["A","B","C","D","E","F","G"].map(L => `<div class="kc"><b>${L}</b><span>${L}</span></div>`).join("");
     km.innerHTML = `Press the note's <b>letter name</b> — octave doesn't matter.<div class="kbrow">${caps}</div>` +
       `<div style="margin-top:10px">Self-paced: a correct note lets you play the next at once. Stay ahead and tempo climbs; ` +
-      `wrong tries slow it and you can retry until the note slips past the red line (a miss). Clear with zero misses for a surprise.</div>`;
+      `wrong tries sound sour and slow it down — retry until the note slips past the red line (a miss). Zero misses → a surprise.</div>`;
   } else {
-    const row = (keys, oct) => `<div class="kbrow">` + keys.map(k =>
-      `<div class="kc"><b>${k.toUpperCase()}</b><span>${KEYMAP[k].replace("/", "").toUpperCase()}</span></div>`).join("") + `</div>`;
-    km.innerHTML = `Play the note's <b>position</b>, like a piano — lower octave on the bottom row, upper on the top.` +
-      row(["q","w","e","r","t","y","u"]) + row(["z","x","c","v","b","n","m"]) +
-      `<div style="margin-top:10px">Self-paced; tempo rises as you get ahead, slows on wrong tries. Retry until the note passes the red line. Zero misses → surprise.</div>`;
+    const whites = [["a","C"],["s","D"],["d","E"],["f","F"],["g","G"],["h","A"],["j","B"],["k","C"]];
+    const blacks = [{ after:0, k:"w", n:"C♯" },{ after:1, k:"e", n:"D♯" },{ after:3, k:"t", n:"F♯" },{ after:4, k:"y", n:"G♯" },{ after:5, k:"u", n:"A♯" }];
+    const WK = 44, BK = 28;
+    let html = `<div class="piano">`;
+    whites.forEach((w, i) => { html += `<div class="wk" style="left:${i*WK}px"><b>${w[0].toUpperCase()}</b><span>${w[1]}</span></div>`; });
+    blacks.forEach(b => { html += `<div class="bk" style="left:${(b.after+1)*WK - BK/2}px"><b>${b.k.toUpperCase()}</b><span>${b.n}</span></div>`; });
+    html += `</div>`;
+    km.innerHTML = `Play the note's <b>position</b> — letters sit on a piano. Top row = sharps/flats ` +
+      `(also <b>R</b>=E♯/F, <b>I</b>=B♯/C, <b>O</b>=C♯).${html}` +
+      `<div style="margin-top:8px">Octave-agnostic. Wrong notes still sound (sour) so you hear what you pressed.</div>`;
   }
 }
 
@@ -291,114 +310,200 @@ document.getElementById("keysbtn").onclick = () => {
   document.getElementById("keysbtn").innerHTML = open ? "Key map&nbsp;◂" : "Key map&nbsp;▸";
 };
 
-/* ───────────────────── 100% finale (unchanged) ───────────────────── */
-let fxState = null, hideTimer = null;
-function runFinale() { playAvantGarde(); try { startShader(); } catch (err) {} }
+/* ───────────────── 100% finale — the note-eater playground ─────────────────
+   The notes become glowing blobs (WebGL metaballs). A stick-figure superhero
+   flies around organically (spring-seek toward the nearest blob + multi-sine
+   wander), swallows each blob — playing its note — and ejects it out the rear.
+   He starts fast (the opening flurry), slows after each note, and his cruise
+   speed slews toward how fast you're moving the mouse (still mouse → he rests).
+   Stir the field with the mouse: clustered blobs get eaten in quick succession,
+   so the notes bunch up rhythmically. Plays on until you hit Esc. */
+let fx = null, hideTimer = null;
 function midiOf(key) { return Tunings.nameToMidi(key.replace("/", "")); }
+function runFinale() { try { startPlayground(); } catch (e) {} }
 
-function playAvantGarde() {
-  const c = Synth.context();
-  let t = c.currentTime + 0.05;
-  const timbres = ["gamelan", "mallet", "sine"];
-  const mids = notes.map(n => midiOf(n.key));
-  let step = 0.16;
-  for (let pass = 0; pass < 3; pass++) {
-    const order = pass % 2 ? [...mids].reverse() : mids;
-    order.forEach((m, i) => {
-      const oct = (Math.random() < 0.3) ? (Math.random() < 0.5 ? -12 : 12) : 0;
-      const cents = (Math.random() - 0.5) * (pass === 2 ? 70 : 25);
-      const hz = 440 * Math.pow(2, (m + oct - 69) / 12 + cents / 1200);
-      const tim = timbres[(i + pass) % timbres.length];
-      Synth.playFreq(hz, { timbre: tim, decay: 0.5 + Math.random() * 1.2, gain: 0.08 + Math.random() * 0.06, when: t });
-      if (Math.random() < 0.18) Synth.playFreq(hz * Math.pow(2, 3 / 12), { timbre: tim, decay: 0.8, gain: 0.06, when: t });
-      t += step; step = Math.max(0.05, step * 0.985);
-    });
-  }
-  Synth.playFreq(440 * Math.pow(2, (mids[0] - 24 - 69) / 12), { timbre: "gamelan", decay: 3.5, gain: 0.18, when: t + 0.1 });
-}
+const CRUISE_MAX = 1.15, SEEK = 7.0, EAT_DIST = 0.045, MOLD_R = 0.26, MOLD_PULL = 9.0;
 
 const FRAG = `
 precision highp float;
-uniform vec2 uRes; uniform float uTime; uniform vec2 uMouse;
-uniform int uCount; uniform vec2 uPos[32]; uniform float uPitch[32];
+uniform vec2 uRes; uniform float uTime;
+uniform int uCount; uniform vec2 uPos[32]; uniform float uPitch[32]; uniform float uScale[32];
 vec3 hue(float h){ return 0.55 + 0.45*cos(6.2831*(h+vec3(0.0,0.33,0.67))); }
 void main(){
-  vec2 uv = gl_FragCoord.xy / uRes;
-  vec2 p = uv; p.x *= uRes.x/uRes.y;
+  vec2 uv = gl_FragCoord.xy/uRes; vec2 p = uv; p.x *= uRes.x/uRes.y;
   float field = 0.0; vec3 col = vec3(0.0);
   for(int i=0;i<32;i++){
     if(i>=uCount) break;
+    if(uScale[i] < 0.01) continue;
     vec2 c = uPos[i]; c.x *= uRes.x/uRes.y;
     float ph = float(i)*1.7;
-    c += 0.06*vec2(sin(uTime*0.9+ph), cos(uTime*0.7+ph*1.3));
-    vec2 m = uMouse; m.x *= uRes.x/uRes.y;
-    vec2 d = m - c; float md = dot(d,d);
-    c += d * 0.18 * exp(-md*6.0);
+    c += 0.015*vec2(sin(uTime*0.9+ph), cos(uTime*0.7+ph*1.3));
     float r = dot(p-c,p-c);
-    float w = 0.0016/(r+0.0009);
-    field += w; col += hue(uPitch[i]) * w;
+    float w = uScale[i]*0.0018/(r+0.0009);
+    field += w; col += hue(uPitch[i])*w;
   }
   col /= max(field,0.0001);
   float h = smoothstep(0.6,2.4,field);
-  vec3 bg = vec3(0.03,0.04,0.06);
-  vec3 outc = mix(bg, col*(0.5+0.9*h), smoothstep(0.35,1.2,field));
+  vec3 outc = mix(vec3(0.03,0.04,0.06), col*(0.5+0.9*h), smoothstep(0.35,1.2,field));
   outc += pow(h,3.0)*0.5;
   gl_FragColor = vec4(outc,1.0);
 }`;
 const VERT = `attribute vec2 a; void main(){ gl_Position = vec4(a,0.0,1.0); }`;
 
-function startShader() {
-  const cv = document.getElementById("fx"), hint = document.getElementById("fxhint");
+function startPlayground() {
+  const cv = document.getElementById("fx"), gc = document.getElementById("guy"), hint = document.getElementById("fxhint");
   const gl = cv.getContext("webgl");
-  if (!gl) return;
+  const g2 = gc.getContext("2d");
+  if (!gl || !g2) return;
   clearTimeout(hideTimer);
-  cv.style.display = "block"; hint.style.display = "block";
+  cv.style.display = "block"; gc.style.display = "block"; hint.style.display = "block";
   requestAnimationFrame(() => { cv.style.opacity = "1"; });
-  function size() { cv.width = innerWidth; cv.height = innerHeight; gl.viewport(0, 0, cv.width, cv.height); }
+
+  const mids = notes.map(n => midiOf(n.key));
+  const lo = Math.min(...mids), hi = Math.max(...mids);
+  const blobs = notes.map((n, i) => ({
+    x: 0.12 + 0.76 * (i / Math.max(1, notes.length - 1)) + (Math.random() - 0.5) * 0.04,
+    y: 0.25 + 0.5 * ((mids[i] - lo) / Math.max(1, hi - lo)),
+    vx: 0, vy: 0, midi: mids[i], pitch: (mids[i] - lo) / Math.max(1, hi - lo), scale: 1, eaten: false,
+  }));
+  const guy = { x: 0.5, y: 0.5, vx: 0, vy: 0, cruise: CRUISE_MAX, mouth: 0, face: 0 };
+  const mouse = { x: 0.5, y: 0.5, px: 0.5, py: 0.5, sp: 0 };
+  const parts = [];
+  let regrow = -1;
+
+  function size() { cv.width = gc.width = innerWidth; cv.height = gc.height = innerHeight; gl.viewport(0, 0, cv.width, cv.height); }
   size();
+  const onMove = (ev) => { mouse.x = ev.clientX / innerWidth; mouse.y = 1 - ev.clientY / innerHeight; };
+  window.addEventListener("pointermove", onMove); window.addEventListener("resize", size);
+
   const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
   const prog = gl.createProgram();
   gl.attachShader(prog, sh(gl.VERTEX_SHADER, VERT)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FRAG));
   gl.linkProgram(prog); gl.useProgram(prog);
   const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
-  const la = gl.getAttribLocation(prog, "a");
-  gl.enableVertexAttribArray(la); gl.vertexAttribPointer(la, 2, gl.FLOAT, false, 0, 0);
-  const count = Math.min(notes.length, 32);
-  const pos = new Float32Array(64), pit = new Float32Array(32);
-  const mids = notes.map(n => midiOf(n.key));
-  const lo = Math.min(...mids), hi = Math.max(...mids);
-  for (let i = 0; i < count; i++) {
-    pos[i*2] = 0.08 + 0.84 * (i / Math.max(1, count - 1));
-    pos[i*2+1] = 0.2 + 0.6 * ((mids[i] - lo) / Math.max(1, hi - lo));
-    pit[i] = (mids[i] - lo) / Math.max(1, hi - lo);
-  }
+  const la = gl.getAttribLocation(prog, "a"); gl.enableVertexAttribArray(la); gl.vertexAttribPointer(la, 2, gl.FLOAT, false, 0, 0);
   const U = n => gl.getUniformLocation(prog, n);
-  gl.uniform2fv(U("uPos"), pos); gl.uniform1fv(U("uPitch"), pit); gl.uniform1i(U("uCount"), count);
-  let mouse = [0.5, 0.5];
-  const onMove = (ev) => { mouse = [ev.clientX / innerWidth, 1 - ev.clientY / innerHeight]; };
-  cv.addEventListener("pointermove", onMove); window.addEventListener("resize", size);
-  const t0 = performance.now(); let alive = true;
+  const pit = new Float32Array(32); blobs.forEach((b, i) => pit[i] = b.pitch);
+  gl.uniform1fv(U("uPitch"), pit); gl.uniform1i(U("uCount"), Math.min(blobs.length, 32));
+
+  function eat(b) {
+    b.eaten = true;
+    const wild = Math.min(1, guy.cruise / CRUISE_MAX);     // fast = wilder (like the opening flurry)
+    const oct = (Math.random() < 0.3 * wild) ? (Math.random() < 0.5 ? -12 : 12) : 0;
+    const cents = (Math.random() - 0.5) * (8 + 60 * wild);
+    const hz = 440 * Math.pow(2, (b.midi + oct - 69) / 12 + cents / 1200);
+    const tim = ["gamelan", "mallet", "sine"][(Math.random() * 3) | 0];
+    Synth.playFreq(hz, { timbre: tim, decay: 0.5 + Math.random() * 1.1, gain: 0.1, when: Synth.now() + 0.001 });
+    parts.push({ x: guy.x, y: guy.y, vx: -Math.cos(guy.face) * 0.45, vy: -Math.sin(guy.face) * 0.45, life: 1, hue: b.pitch });
+    guy.cruise *= 0.7; guy.mouth = 0.16;                    // slows after digesting
+  }
+
+  let t0 = performance.now(), prevT = t0, alive = true;
   function frame() {
     if (!alive) return;
-    gl.uniform2f(U("uRes"), cv.width, cv.height);
-    gl.uniform1f(U("uTime"), (performance.now() - t0) / 1000);
-    gl.uniform2f(U("uMouse"), mouse[0], mouse[1]);
+    const now = performance.now(); let dt = (now - prevT) / 1000; prevT = now; if (dt > 0.05) dt = 0.05;
+    const tt = (now - t0) / 1000;
+
+    // mouse speed (units/sec), smoothed
+    const msp = Math.hypot(mouse.x - mouse.px, mouse.y - mouse.py) / Math.max(dt, 1e-3);
+    mouse.sp += (msp - mouse.sp) * 0.25; mouse.px = mouse.x; mouse.py = mouse.y;
+
+    // blob physics: mouse stirs/gathers, light mutual separation, damping
+    for (const b of blobs) {
+      if (b.eaten) { b.scale += (0 - b.scale) * Math.min(1, dt * 8); continue; }
+      b.scale += (1 - b.scale) * Math.min(1, dt * 6);
+      const dx = mouse.x - b.x, dy = mouse.y - b.y, d = Math.hypot(dx, dy);
+      if (d < MOLD_R) { const f = (1 - d / MOLD_R) * MOLD_PULL * dt; b.vx += dx * f; b.vy += dy * f; }
+    }
+    for (let i = 0; i < blobs.length; i++) for (let j = i + 1; j < blobs.length; j++) {
+      const a = blobs[i], c = blobs[j]; if (a.eaten || c.eaten) continue;
+      const dx = c.x - a.x, dy = c.y - a.y, d = Math.hypot(dx, dy) || 1e-3;
+      if (d < 0.07) { const f = (0.07 - d) * 2.0 * dt / d; a.vx -= dx * f; a.vy -= dy * f; c.vx += dx * f; c.vy += dy * f; }
+    }
+    for (const b of blobs) {
+      b.vx *= 0.9; b.vy *= 0.9; b.x += b.vx * dt; b.y += b.vy * dt;
+      b.x = Math.max(0.05, Math.min(0.95, b.x)); b.y = Math.max(0.12, Math.min(0.9, b.y));
+    }
+
+    // guy: cruise slews toward mouse activity; spring-seek nearest blob + organic wander
+    const cruiseTarget = 0.04 + Math.min(CRUISE_MAX, mouse.sp * 1.3);
+    guy.cruise += (cruiseTarget - guy.cruise) * Math.min(1, dt * 1.4);
+    let tgt = null, best = 1e9;
+    for (const b of blobs) { if (b.eaten) continue; const d = Math.hypot(b.x - guy.x, b.y - guy.y); if (d < best) { best = d; tgt = b; } }
+    if (tgt) { guy.vx += (tgt.x - guy.x) * SEEK * dt; guy.vy += (tgt.y - guy.y) * SEEK * dt; }
+    guy.vx += 0.5 * (Math.sin(tt * 1.7) + 0.6 * Math.sin(tt * 0.53 + 1.3)) * dt;
+    guy.vy += 0.5 * (Math.cos(tt * 1.31) + 0.6 * Math.sin(tt * 0.91 + 2.1)) * dt;
+    guy.vx *= 0.9; guy.vy *= 0.9;
+    const sp = Math.hypot(guy.vx, guy.vy);
+    if (sp > guy.cruise && sp > 1e-4) { guy.vx *= guy.cruise / sp; guy.vy *= guy.cruise / sp; }
+    guy.x += guy.vx * dt; guy.y += guy.vy * dt;
+    if (guy.x < 0.04 || guy.x > 0.96) guy.vx *= -0.6; if (guy.y < 0.08 || guy.y > 0.92) guy.vy *= -0.6;
+    guy.x = Math.max(0.04, Math.min(0.96, guy.x)); guy.y = Math.max(0.08, Math.min(0.92, guy.y));
+    if (sp > 1e-3) guy.face = Math.atan2(guy.vy, guy.vx);
+    guy.mouth = Math.max(0, guy.mouth - dt);
+
+    if (tgt && best < EAT_DIST) eat(tgt);
+    // when all eaten, regrow the field after a beat so play continues
+    if (blobs.every(b => b.eaten)) { if (regrow < 0) regrow = tt + 1.0; if (tt > regrow) { blobs.forEach(b => b.eaten = false); guy.cruise = CRUISE_MAX; regrow = -1; } }
+
+    // shader uniforms
+    const pos = new Float32Array(64), scl = new Float32Array(32);
+    blobs.forEach((b, i) => { if (i < 32) { pos[i*2] = b.x; pos[i*2+1] = b.y; scl[i] = b.eaten ? b.scale : b.scale; } });
+    gl.uniform2f(U("uRes"), cv.width, cv.height); gl.uniform1f(U("uTime"), tt);
+    gl.uniform2fv(U("uPos"), pos); gl.uniform1fv(U("uScale"), scl);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-    fxState.r = requestAnimationFrame(frame);
+
+    // 2D character + ejected particles
+    g2.clearRect(0, 0, gc.width, gc.height);
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt * 0.9;
+      if (p.life <= 0) { parts.splice(i, 1); continue; }
+      const px = p.x * gc.width, py = (1 - p.y) * gc.height;
+      g2.globalAlpha = Math.max(0, p.life); g2.beginPath(); g2.arc(px, py, 7, 0, 7);
+      g2.fillStyle = "hsl(" + (p.hue * 300) + ",80%,65%)"; g2.fill();
+    }
+    g2.globalAlpha = 1;
+    drawGuy(g2, guy.x * gc.width, (1 - guy.y) * gc.height, guy.face, guy.mouth, sp);
+    fx.r = requestAnimationFrame(frame);
   }
-  fxState = { stop() { alive = false; if (fxState.r) cancelAnimationFrame(fxState.r);
-              cv.removeEventListener("pointermove", onMove); window.removeEventListener("resize", size); } };
+  fx = { stop() { alive = false; if (fx.r) cancelAnimationFrame(fx.r); window.removeEventListener("pointermove", onMove); window.removeEventListener("resize", size); } };
   frame();
 }
-function stopFinale() {
-  const cv = document.getElementById("fx"), hint = document.getElementById("fxhint");
-  if (fxState) { fxState.stop(); fxState = null; }
-  cv.style.opacity = "0"; hint.style.display = "none";
-  clearTimeout(hideTimer); hideTimer = setTimeout(() => { cv.style.display = "none"; }, 1000);
+
+// a little caped stick-figure superhero
+function drawGuy(c, x, y, face, mouth, sp) {
+  const s = 1, wob = Math.sin(performance.now() / 120) * 0.3;
+  c.save(); c.translate(x, y); c.rotate(Math.sin(face) * 0.0); // keep upright; face used for cape dir
+  c.strokeStyle = "#fff"; c.lineWidth = 3; c.lineCap = "round";
+  // cape (trails opposite motion)
+  c.beginPath(); c.moveTo(-2, -8);
+  c.quadraticCurveTo(-Math.cos(face) * 26 - 6, -Math.sin(face) * 22 + 10, -Math.cos(face) * 18, 24);
+  c.lineTo(0, 16); c.closePath(); c.fillStyle = "rgba(220,60,90,0.8)"; c.fill();
+  // body
+  c.beginPath(); c.moveTo(0, -4); c.lineTo(0, 16); c.stroke();
+  // arms (one raised heroically)
+  c.beginPath(); c.moveTo(0, 2); c.lineTo(13, -8 + wob * 4); c.moveTo(0, 2); c.lineTo(-11, 8 - wob * 4); c.stroke();
+  // legs
+  c.beginPath(); c.moveTo(0, 16); c.lineTo(9, 30 + wob * 3); c.moveTo(0, 16); c.lineTo(-9, 30 - wob * 3); c.stroke();
+  // head
+  c.beginPath(); c.arc(0, -15, 11, 0, 7); c.fillStyle = "#ffe0b8"; c.fill(); c.lineWidth = 2.5; c.strokeStyle = "#fff"; c.stroke();
+  // eyes + mouth (opens when eating)
+  c.fillStyle = "#222";
+  c.beginPath(); c.arc(-4, -17, 1.6, 0, 7); c.arc(4, -17, 1.6, 0, 7); c.fill();
+  const mo = 1.5 + mouth * 26;
+  c.beginPath(); c.ellipse(0, -10, 3 + mouth * 8, mo / 6 + 1.5, 0, 0, 7); c.fillStyle = "#7a1020"; c.fill();
+  c.restore();
 }
 
-// boot — idle render so the staff + notes are visible before starting
+function stopFinale() {
+  const cv = document.getElementById("fx"), gc = document.getElementById("guy"), hint = document.getElementById("fxhint");
+  if (fx) { fx.stop(); fx = null; }
+  cv.style.opacity = "0"; hint.style.display = "none";
+  clearTimeout(hideTimer); hideTimer = setTimeout(() => { cv.style.display = "none"; gc.style.display = "none"; }, 1000);
+}
+
+// boot
 renderKeymap();
 makeSequence(); renderStaff(); renderNotes(); notes.forEach(n => n.dot = null); paint(); updateStats();
 </script>

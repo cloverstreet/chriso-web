@@ -69,6 +69,9 @@ window.Synth = (function () {
     mallet: [[1, 1], [2, 0.4], [3, 0.15]],
     sine: [[1, 1]],
     gamelan: [[1, 1], [2.8, 0.55], [5.25, 0.32], [8.9, 0.16], [12.1, 0.08]],
+    // "wrong": fundamental stays dominant so the pitch is still recognizable,
+    // but a beating detune + a minor-2nd cluster make it sound sour/off.
+    wrong: [[1, 1], [0.99, 0.7], [1.0595, 0.6], [1.005, 0.5], [2.04, 0.18]],
   };
 
   // Play a single frequency. opts: {decay, timbre, gain, when}
