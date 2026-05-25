@@ -21,9 +21,8 @@
   button.mini { padding:2px 8px; font-size:13px; border-radius:6px; }
   button.tab.on { background:#39414f; border-color:#5a626f; }
   label { font-size:13px; color:#b6bcc6; display:flex; gap:8px; align-items:center; }
-  .controls input[type=range] { width:130px; }
+  #bpm { width:300px; }
 
-  /* top row: gain meter + presets side by side */
   .toprow { display:flex; gap:26px; align-items:flex-start; margin:0 0 16px; flex-wrap:wrap; }
   .presets { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12.5px; color:#8b909a; }
   .pbox { width:26px; height:26px; border:1px solid #3a3f4a; background:#23262d; border-radius:6px;
@@ -34,17 +33,25 @@
   .presets input { width:84px; }
   .phint { color:#5f6670; }
 
-  .cellhead { display:flex; align-items:center; gap:14px; font-size:12.5px; color:#5b5036; margin-bottom:3px; flex-wrap:wrap; }
-  .cellhead .tag { background:#d8c79a; border:1px solid #b9a877; border-radius:5px; padding:1px 8px; color:#4a3f24; }
-  .cellhead .off, .cellhead .phase { display:flex; align-items:center; gap:6px; }
+  /* left tool rail (dynamics, later articulations) */
+  .tools { display:flex; flex-direction:column; gap:5px; align-items:stretch; padding-top:38px; }
+  .tools .tlabel { font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:#7a7f88; margin-bottom:2px; }
+  .tools button { padding:5px 0; width:46px; font-size:14px; font-family:"Times New Roman",serif; font-style:italic; font-weight:700; }
+  .tools button.dimbtn { font-style:normal; font-weight:400; font-size:12px; }
+
+  .cellhead { display:flex; align-items:center; gap:12px; font-size:12.5px; color:#5b5036; margin-bottom:3px; flex-wrap:wrap; }
+  .cellhead .tag { background:#5a8f5a; border:1px solid #3e7a4c; border-radius:5px; padding:1px 8px; color:#0f240f; cursor:pointer; user-select:none; }
+  .cellhead .tag.muted { background:#b65656; border-color:#9a4040; color:#2a0d0d; }
+  .cellhead .off, .cellhead .phase { display:flex; align-items:center; gap:5px; }
   .cellhead .offval { min-width:34px; text-align:center; font-variant-numeric:tabular-nums; }
   .cellhead input[type=range] { width:120px; }
   .cellhead select { background:#e5d7b3; color:#4a3f24; border:1px solid #b9a877; border-radius:5px; font-size:12px; padding:1px 3px; }
-  .cellhead .len { color:#7a6e4d; }
+  .cellhead .len { color:#7a6e4d; min-width:118px; display:inline-block; }
+  .cellhead button.mini { background:#d8c79a; border-color:#b9a877; color:#4a3f24; }
+  .cellctl { display:flex; gap:8px; margin:10px 0 0; }
 
-  /* the parchment "page" that all the cells sit on */
   #page {
-    border-radius:8px; padding:18px 16px 8px; box-shadow:0 3px 16px rgba(0,0,0,0.45);
+    border-radius:8px; padding:18px 16px 8px;
     background-color:#ece0c0;
     background-image:
       radial-gradient(ellipse at 18% 22%, rgba(255,252,240,0.55), rgba(255,252,240,0) 42%),
@@ -58,8 +65,7 @@
   .stagewrap { position:relative; background:transparent; overflow:visible; }
   .playhead { position:absolute; top:6px; bottom:6px; width:2px; background:rgba(180,70,30,0.85); z-index:5; }
 
-  /* drawer (tabs) */
-  .app { display:flex; gap:30px; align-items:flex-start; max-width:1300px; }
+  .app { display:flex; gap:24px; align-items:flex-start; max-width:1340px; }
   .playspace { flex:1 1 auto; min-width:0; }
   .info { display:none; }
   .app.drawer .info { display:block; flex:0 0 360px; max-width:380px;
@@ -78,22 +84,22 @@
   table.tuning td.num, table.tuning td.cents { font-variant-numeric:tabular-nums; }
   table.tuning .cplus { color:#67d98b; } table.tuning .cminus { color:#f0a06a; }
   @media (max-width:900px) {
+    .app { flex-wrap:wrap; }
     .app.drawer { flex-direction:column; }
-    .app.drawer .info { flex-basis:auto; max-width:none; border-left:0;
-            border-top:1px solid #2a2e37; padding-left:0; padding-top:18px; }
+    .app.drawer .info { flex-basis:auto; max-width:none; border-left:0; border-top:1px solid #2a2e37; padding-left:0; padding-top:18px; }
   }
 </style>
 </head>
 <body>
   <div class="app" id="app">
+    <div class="tools" id="tools"></div>
     <main class="playspace">
       <h1>Polymetric Looping Cells</h1>
 
       <div class="controls">
         <button id="play">Play</button>
         <button id="stop">Stop</button>
-        <label>Tempo <input id="bpm" type="range" min="40" max="200" value="96" /> <span id="bpmval">96</span> bpm</label>
-        <button id="rand">Randomize</button>
+        <label>Tempo <input id="bpm" type="range" min="1" max="1000" value="96" /> <span id="bpmval">96</span> bpm</label>
         <button id="undo">Undo</button>
         <button id="mapbtn" class="tab">Pitch mapping</button>
         <button id="aboutbtn" class="tab">About</button>
@@ -105,6 +111,7 @@
       </div>
 
       <div id="page"><div id="cells"></div></div>
+      <div class="cellctl"><button id="addcell" class="mini">+ cell</button><button id="subcell" class="mini">− cell</button></div>
     </main>
 
     <aside class="info" id="info">
@@ -115,21 +122,20 @@
         <table class="tuning" id="tuningtable"></table>
       </div>
       <div class="panel" id="panel-about">
-        <p class="sub">Notation test case 02 — three cells of different lengths looping on one shared tempo clock, so
-        they phase against each other. Pitch comes from a selectable tuning system (see Pitch mapping); default is 12-tone
-        equal temperament, exact-Hz via Web Audio.</p>
+        <p class="sub">Notation test case 02 — cells of different lengths loop on one shared clock and phase against each
+        other. Pitch comes from a selectable tuning (see Pitch mapping); default is 12-tone equal temperament.</p>
         <div class="legend">
-          <div><b>Offsets (per line):</b> <b>shift</b> rotates the notation left/right by the chosen unit (1/16…1/2) —
-          a note crossing the loop end splits into tied pieces; <b>phase</b> slides the playhead −100…+100% of a quarter
-          without renotating.</div>
-          <div style="margin-top:10px"><b>Edit the notes:</b> click a note to select it; click again to toggle
-          note↔rest. Drag up/down — or ↑/↓ — to change pitch (by scale degree); ←/→ reorders it. Number keys:
-          <code>2</code>=16th, <code>3</code>=8th, <code>4</code>=quarter, <code>5</code>=half, <code>6</code>=whole,
-          <code>0</code>=rest. <code>Delete</code> removes. <b>Randomize</b> re-rolls pitches (same lengths); <b>Undo</b>
-          reverts it.</div>
-          <div style="margin-top:10px"><b>Presets:</b> shift-click a numbered box to save the current notes + offsets
-          (not the tuning); click to recall. Save/recall a whole set of 10 as a named <b>bank</b> (banks <i>do</i> store
-          the tuning). A built-in <b>factory ET</b> bank ramps from simple (1) to complex (10).</div>
+          <div><b>Cell header:</b> click the green/red <b>name</b> to mute/unmute. <b>−/+</b> by the length shorten the
+          cell or extend it with a rest. <b>🎲</b> re-rolls that cell's pitches (Undo reverts). <b>shift</b> rotates the
+          notation by the chosen unit; <b>phase</b> slides the playhead ±100% of a quarter.</div>
+          <div style="margin-top:10px"><b>Edit notes:</b> click to select; click again toggles note↔rest. Drag or ↑/↓
+          = pitch (scale degree); ←/→ reorders. Numbers <code>2/3/4/5/6</code> = 16th/8th/quarter/half/whole,
+          <code>0</code> = rest; <code>Delete</code> removes.</div>
+          <div style="margin-top:10px"><b>Dynamics:</b> select a note, then click a dynamic on the left rail — it sits
+          under the note and holds until the next marking (wrapping around the loop). <b>×</b> clears it.</div>
+          <div style="margin-top:10px"><b>Cells:</b> <b>+ / − cell</b> at the bottom add/remove cells. <b>Presets:</b>
+          shift-click a box to save (notes + offsets + dynamics, not tuning); click to recall. <b>Banks</b> store the
+          tuning too; built-in <b>factory ET</b> ramps simple → complex.</div>
         </div>
       </div>
     </aside>
@@ -138,13 +144,24 @@
 <script>
 const VF = Vex.Flow;
 
-// ── tuning systems ────────────────────────────────────────────────────────
-const MAJOR = [0, 2, 4, 5, 7, 9, 11];                   // diatonic ET semitone steps
+// ── tuning systems ──────────────────────────────────────────────────────────
+const MAJOR = [0, 2, 4, 5, 7, 9, 11];
 const PCN = ["c","c","d","d","e","f","f","g","g","a","a","b"];
+const R = 261.63;                                   // ~C4 root for cents-based scales
+const cents24 = Array.from({ length: 24 }, (_, i) => i * 50);
+const partch43 = [0,21.51,53.27,84.47,111.73,150.64,165.00,182.40,203.91,231.17,266.87,294.13,315.64,347.41,386.31,
+  417.51,435.08,470.78,498.04,519.55,551.32,582.51,617.49,648.68,680.45,701.96,729.22,764.92,782.49,813.69,852.59,
+  884.36,905.87,933.13,968.83,996.09,1017.60,1035.00,1049.36,1088.27,1115.53,1146.73,1178.49];
 const TUNINGS = {
-  "12-TET":  { type: "et" },
-  "Pélog":   { type: "cents", scale: Tunings.PELOG },
-  "Sléndro": { type: "cents", scale: Tunings.SLENDRO },
+  "12-TET":             { type:"et" },
+  "Just (5-limit)":     { type:"cents", scale:{ rootHz:R, cents:[0,203.91,386.31,498.04,701.96,884.36,1088.27] } },
+  "Pythagorean":        { type:"cents", scale:{ rootHz:R, cents:[0,203.91,407.82,498.045,701.955,905.865,1109.775] } },
+  "1/4-comma meantone": { type:"cents", scale:{ rootHz:R, cents:[0,193.16,386.31,503.42,696.58,889.74,1082.89] } },
+  "Werckmeister III":   { type:"cents", scale:{ rootHz:R, cents:[0,192.18,390.23,498.05,696.09,888.27,1092.18] } },
+  "24-TET":             { type:"cents", scale:{ rootHz:R, cents:cents24 } },
+  "Partch 43":          { type:"cents", scale:{ rootHz:R, cents:partch43 } },
+  "Pélog":              { type:"cents", scale: Tunings.PELOG },
+  "Sléndro":            { type:"cents", scale: Tunings.SLENDRO },
 };
 let curTuning = "12-TET";
 let degCache = {};
@@ -160,22 +177,24 @@ function degInfo(deg, octOff) {
   const T = TUNINGS[curTuning]; let info;
   if (T.type === "et") {
     const m = degMidi12(deg) + 12 * octOff, pc = ((m % 12) + 12) % 12, octave = Math.floor(m / 12) - 1;
-    info = { key: PCN[pc] + "/" + octave, acc: "n", cents: 0 };   // diatonic ET: plain, no microtonal
+    info = { key: PCN[pc] + "/" + octave, acc: "n", cents: 0 };
   } else info = describe(degFreq(deg, octOff));
   degCache[ck] = info; return info;
 }
 function degCount() { const T = TUNINGS[curTuning]; return T.type === "et" ? 7 : T.scale.cents.length; }
 
-// ── cells (longest on the bottom; bottom is bass clef + half notes) ─────────
+// ── cells ─────────────────────────────────────────────────────────────────
 const CELLS = [
   { name:"A", clef:"treble", oct: 0,  seq:[5,3,1] },
   { name:"B", clef:"treble", oct: 0,  seq:[1,2,3,5,4] },
-  { name:"C", clef:"bass",   oct:-1, seq:[1,3,5,1,3,5], dur:8 },   // half notes, longest
+  { name:"C", clef:"bass",   oct:-1, seq:[1,3,5,1,3,5], dur:8 },
 ];
 const PPB = 56;
 const DUR = { 16:"w", 8:"h", 4:"q", 2:"8", 1:"16" };
 const KEY_DUR = { "2":1, "3":2, "4":4, "5":8, "6":16 };
 const DUR_NAME = { 16:"whole", 8:"half", 4:"quarter", 2:"eighth", 1:"sixteenth" };
+const DYN_GAIN = { pp:0.04, p:0.07, mp:0.10, mf:0.14, f:0.19, ff:0.27 };
+const DYN_LIST = ["pp","p","mp","mf","f","ff"];
 function cellLen16(cell) { return cell.notes.reduce((s, n) => s + n.dur16, 0); }
 function decompose(len16) { const out = []; let r = len16; for (const u of [16,8,4,2,1]) while (r >= u) { out.push(u); r -= u; } return out.length ? out : [1]; }
 function lengthLabel(cell) {
@@ -183,17 +202,15 @@ function lengthLabel(cell) {
   let u = 1; for (const c of [16,8,4,2,1]) if (c <= maxU && total % c === 0) { u = c; break; }
   const n = total / u; return n + " " + DUR_NAME[u] + "-note beat" + (n === 1 ? "" : "s");
 }
-function initCells() {
-  CELLS.forEach(c => {
-    c.notes = c.seq.map(d => ({ deg: d, dur16: c.dur || 4, rest: false }));
-    c.shift16 = 0; c.shiftUnit = 2; c.phaseBeats = 0; c.muted = false; c.prevLB = 0; c.seek = true;
-  });
+function initCell(c) {
+  c.notes = c.seq.map(d => ({ deg: d, dur16: c.dur || 4, rest: false, dyn: null }));
+  c.shift16 = 0; c.shiftUnit = 2; c.phaseBeats = 0; c.muted = false; c.prevLB = 0; c.seek = true;
 }
-initCells();
+CELLS.forEach(initCell);
 
 let sel = { cell: null, idx: -1 };
 const drag = { active: false, cell: null, moved: false, startY: 0, startDeg: 0, already: false };
-let undoState = null;
+let undoSnap = null;   // {cell, notes}
 
 function rotatedEvents(cell) {
   const S = cellLen16(cell) || 4, shift = ((cell.shift16 % S) + S) % S;
@@ -211,19 +228,22 @@ function rotatedEvents(cell) {
   ev.sort((x, y) => x.on16 - y.on16);
   return ev;
 }
+function computeDyn(cell) {           // effective gain per note index (markings hold; wrap around)
+  let carry = null; for (const n of cell.notes) if (n.dyn) carry = n.dyn;
+  cell.dynGain = cell.notes.map(n => { if (n.dyn) carry = n.dyn; return carry ? DYN_GAIN[carry] : 0.12; });
+}
 
 function buildCell(cell, container) {
-  const cellDiv = document.createElement("div"); cellDiv.className = "cell";
+  const cellDiv = document.createElement("div"); cellDiv.className = "cell"; cell.cellDiv = cellDiv;
   const head = document.createElement("div"); head.className = "cellhead";
   head.innerHTML =
-    `<span class="tag">Cell ${cell.name}</span> <span class="len"></span>` +
-    `<label><input type="checkbox" class="mute"> mute</label>` +
-    `<span class="off">shift ` +
-    `<select class="unit"><option value="1">1/16</option><option value="2" selected>1/8</option>` +
+    `<span class="tag">Cell ${cell.name}</span>` +
+    `<span class="len"></span><button class="mini lenm">−</button><button class="mini lenp">+</button>` +
+    `<button class="mini rand" title="randomize pitches">🎲</button>` +
+    `<span class="off">shift <select class="unit"><option value="1">1/16</option><option value="2" selected>1/8</option>` +
     `<option value="4">1/4</option><option value="8">1/2</option></select> ` +
     `<button class="mini" data-d="-1">◀</button><span class="offval">0</span><button class="mini" data-d="1">▶</button></span>` +
-    `<label class="phase">phase <input type="range" class="ph" min="-100" max="100" step="1" value="0">` +
-    `<span class="phval">0%</span></label>`;
+    `<label class="phase">phase <input type="range" class="ph" min="-100" max="100" step="1" value="0"><span class="phval">0%</span></label>`;
   cellDiv.appendChild(head);
   const wrap = document.createElement("div"); wrap.className = "stagewrap"; wrap.style.height = "118px";
   const scroller = document.createElement("div");
@@ -233,18 +253,20 @@ function buildCell(cell, container) {
   cellDiv.appendChild(wrap); container.appendChild(cellDiv);
 
   cell.scroller = scroller; cell.playhead = playhead; cell.overlay = overlay; cell.wrap = wrap;
+  cell.tag = head.querySelector(".tag");
   cell.offval = head.querySelector(".offval"); cell.lenEl = head.querySelector(".len");
-  cell.muteChk = head.querySelector(".mute"); cell.unitSel = head.querySelector(".unit");
-  cell.phSlider = head.querySelector(".ph"); cell.phVal = head.querySelector(".phval");
+  cell.unitSel = head.querySelector(".unit"); cell.phSlider = head.querySelector(".ph"); cell.phVal = head.querySelector(".phval");
 
-  cell.muteChk.onchange = (e) => { cell.muted = e.target.checked; };
+  cell.tag.onclick = () => { cell.muted = !cell.muted; cell.tag.classList.toggle("muted", cell.muted); };
   cell.unitSel.onchange = (e) => { cell.shiftUnit = +e.target.value; };
+  head.querySelector(".rand").onclick = () => randomizeCell(cell);
+  head.querySelector(".lenm").onclick = () => { if (cell.notes.length > 1) { cell.notes.pop(); if (sel.cell === cell) sel.idx = Math.min(sel.idx, cell.notes.length - 1); drawNotation(cell); cell.seek = true; } };
+  head.querySelector(".lenp").onclick = () => { const d = cell.notes.length ? cell.notes[cell.notes.length - 1].dur16 : 4; cell.notes.push({ deg: 1, dur16: d, rest: true, dyn: null }); drawNotation(cell); cell.seek = true; };
   head.querySelectorAll("button[data-d]").forEach(b => {
     b.onclick = () => { cell.shift16 += (+b.dataset.d) * cell.shiftUnit;
       cell.offval.textContent = (cell.shift16 > 0 ? "+" : "") + cell.shift16 + "/16"; drawNotation(cell); cell.seek = true; };
   });
-  cell.phSlider.oninput = (e) => { const v = +e.target.value; cell.phaseBeats = v / 100;
-    cell.phVal.textContent = (v > 0 ? "+" : "") + v + "%"; cell.seek = true; };
+  cell.phSlider.oninput = (e) => { const v = +e.target.value; cell.phaseBeats = v / 100; cell.phVal.textContent = (v > 0 ? "+" : "") + v + "%"; cell.seek = true; };
 
   wrap.addEventListener("pointerdown", (e) => {
     const x = e.clientX - wrap.getBoundingClientRect().left;
@@ -253,8 +275,7 @@ function buildCell(cell, container) {
     if (bi < 0 || bd > 34) { sel = { cell: null, idx: -1 }; updateSelBoxes(); return; }
     const already = (sel.cell === cell && sel.idx === bi);
     sel = { cell, idx: bi };
-    drag.active = true; drag.cell = cell; drag.moved = false; drag.startY = e.clientY;
-    drag.startDeg = cell.notes[bi].deg; drag.already = already;
+    drag.active = true; drag.cell = cell; drag.moved = false; drag.startY = e.clientY; drag.startDeg = cell.notes[bi].deg; drag.already = already;
     updateSelBoxes();
   });
   wrap.addEventListener("pointermove", (e) => {
@@ -265,11 +286,13 @@ function buildCell(cell, container) {
     if (note.deg !== drag.startDeg + dd) { note.deg = drag.startDeg + dd; drawNotation(cell); cell.seek = true; }
   });
 
+  cell.tag.classList.toggle("muted", cell.muted);
   drawNotation(cell);
 }
 
 function drawNotation(cell) {
   cell.events = rotatedEvents(cell);
+  computeDyn(cell);
   cell.beats = cellLen16(cell) / 4;
   cell.scroller.innerHTML = "";
   const width = 90 + cell.beats * PPB + 30;
@@ -284,13 +307,16 @@ function drawNotation(cell) {
   const notes = [];
   cell.events.forEach(ev => {
     ev.noteStart = notes.length;
+    const srcDyn = (ev.head && cell.notes[ev.idx]) ? cell.notes[ev.idx].dyn : null;
     decompose(ev.len16).forEach((p, k) => {
       if (ev.rest) { notes.push(new VF.StaveNote({ keys: [restKey], duration: DUR[p] + "r", clef: cell.clef })); return; }
       const di = degInfo(ev.deg, cell.oct);
       const sn = new VF.StaveNote({ keys: [di.key], duration: DUR[p], clef: cell.clef, auto_stem: true });
       if (k === 0 && di.acc && di.acc !== "n") sn.addModifier(new VF.Accidental(di.acc), 0);
       if (k === 0) sn.addModifier(new VF.Annotation(String(ev.deg))
-        .setVerticalJustification(VF.Annotation.VerticalJustify.BOTTOM).setFont("Arial", 10, ""), 0);
+        .setVerticalJustification(VF.Annotation.VerticalJustify.TOP).setFont("Arial", 10, ""), 0);
+      if (k === 0 && srcDyn) sn.addModifier(new VF.Annotation(srcDyn)
+        .setVerticalJustification(VF.Annotation.VerticalJustify.BOTTOM).setFont("Times New Roman", 14, "bold"), 0);
       notes.push(sn);
     });
   });
@@ -310,8 +336,7 @@ function drawNotation(cell) {
 
   if (!cell.selBox) {
     cell.selBox = document.createElement("div");
-    cell.selBox.style.cssText = "position:absolute;top:12px;height:94px;width:26px;border:2px solid rgba(40,110,220,0.85);" +
-      "border-radius:5px;box-sizing:border-box;pointer-events:none;display:none;";
+    cell.selBox.style.cssText = "position:absolute;top:12px;height:94px;width:26px;border:2px solid rgba(40,110,220,0.9);border-radius:5px;box-sizing:border-box;pointer-events:none;display:none;";
     cell.overlay.appendChild(cell.selBox);
   }
   updateSelBoxes();
@@ -327,24 +352,21 @@ function updateSelBoxes() {
 function xAtBeat(cell, b) {
   const p = cell.points;
   for (let i = 0; i < p.length - 1; i++)
-    if (b >= p[i].beat && b <= p[i + 1].beat) {
-      const f = (b - p[i].beat) / ((p[i + 1].beat - p[i].beat) || 1);
-      return p[i].x + f * (p[i + 1].x - p[i].x);
-    }
+    if (b >= p[i].beat && b <= p[i + 1].beat) { const f = (b - p[i].beat) / ((p[i + 1].beat - p[i].beat) || 1); return p[i].x + f * (p[i + 1].x - p[i].x); }
   return p[p.length - 1].x;
 }
 
-// ── transport ──────────────────────────────────────────────────────────────
+// ── transport ────────────────────────────────────────────────────────────
 let bpm = 96, bpmTarget = 96, beatPos = 0, lastT = 0, running = false, raf = null;
 function trigger(cell, e) {
   flash(cell, e.x);
   if (cell.muted) return;
-  Synth.playFreq(degFreq(e.deg, cell.oct), { timbre: "gamelan", decay: 0.6, gain: 0.12 });
+  const g = (cell.dynGain && cell.dynGain[e.idx] != null) ? cell.dynGain[e.idx] : 0.12;
+  Synth.playFreq(degFreq(e.deg, cell.oct), { timbre: "gamelan", decay: 0.6, gain: g });
 }
 function flash(cell, x) {
   const bar = document.createElement("div");
-  bar.style.cssText = `position:absolute;top:24px;height:64px;width:20px;border-radius:4px;left:${x-10}px;` +
-    `background:rgba(60,150,90,0.4);transition:opacity .35s ease-out;`;
+  bar.style.cssText = `position:absolute;top:24px;height:64px;width:20px;border-radius:4px;left:${x-10}px;background:rgba(60,150,90,0.4);transition:opacity .35s ease-out;`;
   cell.overlay.appendChild(bar);
   requestAnimationFrame(() => { bar.style.opacity = "0"; });
   setTimeout(() => bar.remove(), 400);
@@ -377,7 +399,7 @@ function play() {
 }
 function stop() { running = false; if (raf) cancelAnimationFrame(raf); }
 
-// ── editing keys ────────────────────────────────────────────────────────────
+// ── editing keys ──────────────────────────────────────────────────────────
 document.addEventListener("keydown", (e) => {
   if (!sel.cell || sel.idx < 0) return;
   if (/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
@@ -393,9 +415,8 @@ document.addEventListener("keydown", (e) => {
     drawNotation(c); c.seek = true; e.preventDefault();
   } else if (e.key === "Backspace" || e.key === "Delete") {
     c.notes.splice(sel.idx, 1);
-    if (c.notes.length === 0) c.notes.push({ deg: 1, dur16: 4, rest: false });
-    sel.idx = Math.min(sel.idx, c.notes.length - 1);
-    drawNotation(c); c.seek = true; e.preventDefault();
+    if (c.notes.length === 0) c.notes.push({ deg: 1, dur16: 4, rest: false, dyn: null });
+    sel.idx = Math.min(sel.idx, c.notes.length - 1); drawNotation(c); c.seek = true; e.preventDefault();
   }
 });
 document.addEventListener("pointerup", () => {
@@ -405,15 +426,29 @@ document.addEventListener("pointerup", () => {
   drag.active = false;
 });
 
-// ── randomize / undo (pitches only; lengths unchanged) ──────────────────────
-function randomize() {
-  undoState = snapshotState();
+// ── randomize / undo (pitches only; lengths unchanged) ───────────────────────
+function randomizeCell(cell) {
+  undoSnap = { cell, notes: cell.notes.map(n => ({ ...n })) };
   const n = degCount();
-  for (const c of CELLS) { c.notes.forEach(nt => { if (!nt.rest) nt.deg = 1 + Math.floor(Math.random() * n); }); drawNotation(c); c.seek = true; }
+  cell.notes.forEach(nt => { if (!nt.rest) nt.deg = 1 + Math.floor(Math.random() * n); });
+  drawNotation(cell); cell.seek = true;
 }
-function undo() { if (undoState) { applyState(undoState); undoState = null; } }
+function undo() { if (undoSnap && CELLS.includes(undoSnap.cell)) { undoSnap.cell.notes = undoSnap.notes.map(n => ({ ...n })); drawNotation(undoSnap.cell); undoSnap.cell.seek = true; undoSnap = null; } }
 
-// ── pitch-mapping table (tuning-aware) ──────────────────────────────────────
+// ── add / remove cells ───────────────────────────────────────────────────────
+function addCell() {
+  const name = String.fromCharCode(65 + CELLS.length);
+  const c = { name, clef: "treble", oct: 0, seq: [1, 3, 5] };
+  initCell(c); CELLS.push(c); buildCell(c, document.getElementById("cells"));
+}
+function subCell() {
+  if (CELLS.length <= 1) return;
+  const c = CELLS.pop();
+  if (sel.cell === c) sel = { cell: null, idx: -1 };
+  if (c.cellDiv) c.cellDiv.remove();
+}
+
+// ── pitch-mapping ────────────────────────────────────────────────────────────
 function describe(freq) {
   const midi = 69 + 12 * Math.log2(freq / 440);
   const q = Math.round(midi * 2) / 2, cents = Math.round((midi - q) * 100);
@@ -433,21 +468,30 @@ function renderMiniStaff(div, key, acc) {
 function buildTuningTable() {
   const T = TUNINGS[curTuning], micro = T.type !== "et";
   document.getElementById("tunecaption").innerHTML = micro
-    ? `<b>${curTuning}</b> — notated at the <i>nearest quarter-tone</i> (Stein-Zimmermann accidentals); the pitch you hear is exact, cents show the deviation.`
+    ? `<b>${curTuning}</b> — notated at the <i>nearest quarter-tone</i>; cents = deviation of the exact pitch from the notated note.`
     : `<b>12-tone equal temperament</b> — standard diatonic notation, no microtones.`;
   const t = document.getElementById("tuningtable");
-  t.innerHTML = "<tr><th>degree</th><th>notation</th>" + (micro ? "<th>cents</th>" : "") + "<th>Hz</th></tr>";
+  const many = degCount() > 14;
+  t.innerHTML = many
+    ? "<tr><th>deg</th><th>cents</th><th>Hz</th></tr>"
+    : "<tr><th>degree</th><th>notation</th>" + (micro ? "<th>cents</th>" : "") + "<th>Hz</th></tr>";
   const jobs = [];
   for (let i = 0; i < degCount(); i++) {
     const deg = i + 1, hz = degFreq(deg, 0), d = degInfo(deg, 0);
     const tr = document.createElement("tr");
-    let cents = "";
-    if (micro) { const sign = d.cents > 0 ? "+" : (d.cents < 0 ? "−" : "±"), cls = d.cents > 0 ? "cplus" : (d.cents < 0 ? "cminus" : "");
-      cents = `<td class="cents ${cls}">${sign}${Math.abs(d.cents)}¢</td>`; }
-    tr.innerHTML = `<td class="num">${deg}</td><td class="notecell"><div></div></td>${cents}<td class="num">${hz.toFixed(1)}</td>`;
-    t.appendChild(tr); jobs.push({ div: tr.querySelector(".notecell > div"), d });
+    if (many) {                                   // 24-TET / Partch: compact (no mini-staff per row)
+      const c = Math.round(T.scale.cents[i] || 0);
+      tr.innerHTML = `<td class="num">${deg}</td><td class="num">${c}¢</td><td class="num">${hz.toFixed(1)}</td>`;
+    } else {
+      let cents = "";
+      if (micro) { const sign = d.cents > 0 ? "+" : (d.cents < 0 ? "−" : "±"), cls = d.cents > 0 ? "cplus" : (d.cents < 0 ? "cminus" : "");
+        cents = `<td class="cents ${cls}">${sign}${Math.abs(d.cents)}¢</td>`; }
+      tr.innerHTML = `<td class="num">${deg}</td><td class="notecell"><div></div></td>${cents}<td class="num">${hz.toFixed(1)}</td>`;
+      jobs.push({ div: () => tr.querySelector(".notecell > div"), d });
+    }
+    t.appendChild(tr);
   }
-  jobs.forEach(j => renderMiniStaff(j.div, j.d.key, j.d.acc));
+  jobs.forEach(j => renderMiniStaff(j.div(), j.d.key, j.d.acc));
 }
 function setTuning(name) {
   if (!TUNINGS[name]) return;
@@ -456,43 +500,38 @@ function setTuning(name) {
   CELLS.forEach(c => drawNotation(c)); buildTuningTable();
 }
 
-// ── presets + banks ─────────────────────────────────────────────────────────
+// ── presets + banks ──────────────────────────────────────────────────────────
 const SLOT_KEY = "polycells.slots", BANK_KEY = "polycells.banks";
 let slots = JSON.parse(localStorage.getItem(SLOT_KEY) || "null") || new Array(10).fill(null);
 let banks = JSON.parse(localStorage.getItem(BANK_KEY) || "{}");
-
-function snapshotState() {     // notes + offsets only (NOT tuning)
-  return CELLS.map(c => ({ notes: c.notes.map(n => ({ ...n })), shift16: c.shift16, shiftUnit: c.shiftUnit, phaseBeats: c.phaseBeats, muted: c.muted }));
-}
+function snapshotState() { return CELLS.map(c => ({ notes: c.notes.map(n => ({ ...n })), shift16: c.shift16, shiftUnit: c.shiftUnit, phaseBeats: c.phaseBeats, muted: c.muted })); }
 function applyState(st) {
   st.forEach((s, i) => {
     const c = CELLS[i]; if (!c) return;
-    c.notes = s.notes.map(n => ({ ...n })); c.shift16 = s.shift16; c.shiftUnit = s.shiftUnit;
-    c.phaseBeats = s.phaseBeats; c.muted = s.muted; cellHeadSync(c); drawNotation(c); c.seek = true;
+    c.notes = s.notes.map(n => ({ ...n })); c.shift16 = s.shift16; c.shiftUnit = s.shiftUnit; c.phaseBeats = s.phaseBeats; c.muted = s.muted;
+    cellHeadSync(c); drawNotation(c); c.seek = true;
   });
   sel = { cell: null, idx: -1 }; updateSelBoxes();
 }
 function cellHeadSync(c) {
   c.offval.textContent = (c.shift16 > 0 ? "+" : "") + c.shift16 + "/16";
-  c.unitSel.value = String(c.shiftUnit); c.muteChk.checked = c.muted;
+  c.unitSel.value = String(c.shiftUnit); c.tag.classList.toggle("muted", c.muted);
   const v = Math.round(c.phaseBeats * 100); c.phSlider.value = v; c.phVal.textContent = (v > 0 ? "+" : "") + v + "%";
 }
 const persistSlots = () => localStorage.setItem(SLOT_KEY, JSON.stringify(slots));
 const persistBanks = () => localStorage.setItem(BANK_KEY, JSON.stringify(banks));
-
-// factory ET bank: simple (1) -> complex + longer (10)
 function factoryET() {
   const out = [];
   for (let k = 1; k <= 10; k++) {
     const cells = CELLS.map((c, ci) => {
-      const baseLen = (ci === 2 ? 2 : 3) + Math.floor(k * (ci === 2 ? 0.5 : 0.9));   // grows with k
+      const baseLen = (ci === 2 ? 2 : 3) + Math.floor(k * (ci === 2 ? 0.5 : 0.9));
       const notes = [];
       for (let i = 0; i < baseLen; i++) {
-        const span = 3 + Math.min(4, Math.floor(k / 2));         // pitch range widens with k
-        const deg = 1 + ((i * (1 + (k % 3))) % span);            // patterned, more movement at higher k
-        let dur = ci === 2 ? 8 : 4;                              // bass = half notes; others quarters
-        if (ci !== 2 && k > 6 && i % 3 === 2) dur = 2;           // sprinkle eighths late
-        notes.push({ deg, dur16: dur, rest: (k > 4 && i > 0 && i % 5 === 4) });
+        const span = 3 + Math.min(4, Math.floor(k / 2));
+        const deg = 1 + ((i * (1 + (k % 3))) % span);
+        let dur = ci === 2 ? 8 : 4;
+        if (ci !== 2 && k > 6 && i % 3 === 2) dur = 2;
+        notes.push({ deg, dur16: dur, rest: (k > 4 && i > 0 && i % 5 === 4), dyn: null });
       }
       return { notes, shift16: 0, shiftUnit: 2, phaseBeats: (ci === 1 && k > 7) ? 0.25 : 0, muted: false };
     });
@@ -500,59 +539,62 @@ function factoryET() {
   }
   return out;
 }
-
 function buildPresets() {
   const el = document.getElementById("presets");
   el.innerHTML = "presets:";
   const boxes = document.createElement("span"); boxes.style.cssText = "display:flex;gap:5px;margin-left:4px";
   for (let i = 0; i < 10; i++) {
     const b = document.createElement("div"); b.className = "pbox" + (slots[i] ? " full" : ""); b.textContent = i + 1;
-    b.onclick = (e) => {
-      if (e.shiftKey) { slots[i] = snapshotState(); persistSlots(); b.classList.add("full"); }
-      else if (slots[i]) applyState(slots[i]);
-    };
+    b.onclick = (e) => { if (e.shiftKey) { slots[i] = snapshotState(); persistSlots(); b.classList.add("full"); } else if (slots[i]) applyState(slots[i]); };
     boxes.appendChild(b);
   }
   el.appendChild(boxes);
   const bankSel = document.createElement("select");
   const refreshBanks = () => { bankSel.innerHTML = `<option value="">bank…</option>` + Object.keys(banks).map(n => `<option>${n}</option>`).join(""); };
   refreshBanks();
-  bankSel.onchange = () => {
-    const bk = banks[bankSel.value]; if (!bk) return;
-    if (bk.tuning) setTuning(bk.tuning);              // banks DO restore the tuning
-    slots = JSON.parse(JSON.stringify(bk.slots)); persistSlots(); buildPresets();
-  };
+  bankSel.onchange = () => { const bk = banks[bankSel.value]; if (!bk) return; if (bk.tuning) setTuning(bk.tuning); slots = JSON.parse(JSON.stringify(bk.slots)); persistSlots(); buildPresets(); };
   const nameIn = document.createElement("input"); nameIn.placeholder = "bank name";
   const saveBtn = document.createElement("button"); saveBtn.className = "mini"; saveBtn.textContent = "save bank";
-  saveBtn.onclick = () => { const n = (nameIn.value || "").trim(); if (!n) return;
-    banks[n] = { tuning: curTuning, slots: JSON.parse(JSON.stringify(slots)) }; persistBanks(); refreshBanks(); bankSel.value = n; };
+  saveBtn.onclick = () => { const n = (nameIn.value || "").trim(); if (!n) return; banks[n] = { tuning: curTuning, slots: JSON.parse(JSON.stringify(slots)) }; persistBanks(); refreshBanks(); bankSel.value = n; };
   el.appendChild(bankSel); el.appendChild(nameIn); el.appendChild(saveBtn);
   const hint = document.createElement("span"); hint.className = "phint"; hint.textContent = "shift-click to save · click to recall";
   el.appendChild(hint);
 }
 
-// ── boot ─────────────────────────────────────────────────────────────────────
+// ── dynamics tool rail ───────────────────────────────────────────────────────
+function buildTools() {
+  const el = document.getElementById("tools");
+  el.innerHTML = `<div class="tlabel">dyn</div>`;
+  DYN_LIST.forEach(d => {
+    const b = document.createElement("button"); b.textContent = d;
+    b.onclick = () => { if (!sel.cell || sel.idx < 0) return; const note = sel.cell.notes[sel.idx];
+      note.dyn = (note.dyn === d) ? null : d; drawNotation(sel.cell); };
+    el.appendChild(b);
+  });
+  const clr = document.createElement("button"); clr.className = "dimbtn"; clr.textContent = "×"; clr.title = "clear dynamic";
+  clr.onclick = () => { if (sel.cell && sel.idx >= 0) { sel.cell.notes[sel.idx].dyn = null; drawNotation(sel.cell); } };
+  el.appendChild(clr);
+}
+
+// ── boot ──────────────────────────────────────────────────────────────────────
 CELLS.forEach(c => buildCell(c, document.getElementById("cells")));
-// tuning selector
 const tsel = document.getElementById("tuningsel");
 tsel.innerHTML = Object.keys(TUNINGS).map(n => `<option ${n === curTuning ? "selected" : ""}>${n}</option>`).join("");
 tsel.onchange = (e) => setTuning(e.target.value);
 buildTuningTable();
-// ensure the factory ET bank exists
 if (!banks["factory ET"]) { banks["factory ET"] = { tuning: "12-TET", slots: factoryET() }; persistBanks(); }
-buildPresets();
+buildPresets(); buildTools();
 
 Synth.ensure();
 if (window.AudioWidgets && AudioWidgets.MeterStrip) {
-  const meter = new AudioWidgets.MeterStrip(document.getElementById("meter"), Synth.masterNode(), {
-    label: "OUTPUT", gainNode: Synth.masterNode(), gainMin: -48, gainMax: 6, stereo: false,
-  });
+  const meter = new AudioWidgets.MeterStrip(document.getElementById("meter"), Synth.masterNode(), { label: "OUTPUT", gainNode: Synth.masterNode(), gainMin: -48, gainMax: 6, stereo: false });
   meter.start();
 }
 document.getElementById("play").onclick = play;
 document.getElementById("stop").onclick = stop;
-document.getElementById("rand").onclick = randomize;
 document.getElementById("undo").onclick = undo;
+document.getElementById("addcell").onclick = addCell;
+document.getElementById("subcell").onclick = subCell;
 document.getElementById("bpm").oninput = (e) => { bpmTarget = +e.target.value; document.getElementById("bpmval").textContent = e.target.value; };
 
 const app = document.getElementById("app");
