@@ -271,6 +271,17 @@
   .opt.tiny {
     padding: 3px 8px; font-size: 0.56rem; letter-spacing: 0.14em;
   }
+  /* Navigation hint — bottom-center, fades after first interaction. */
+  .nav-hint {
+    position: fixed; bottom: 1.6rem; left: 50%; transform: translateX(-50%);
+    z-index: 10; pointer-events: none;
+    font-family: 'Fraunces', serif; font-weight: 300;
+    font-size: 0.62rem; letter-spacing: 0.22em; text-transform: lowercase;
+    color: rgba(196, 168, 120, 0.5);
+    transition: opacity 0.8s ease; opacity: 0;
+  }
+  .nav-hint.show { opacity: 1; }
+  #scene { touch-action: none; }   /* claim touch for camera, not page scroll */
 </style>
 </head>
 <body>
@@ -288,8 +299,13 @@
 
 <!-- Settings tabs (top-right) -->
 <div class="tabs">
+  <button class="tab" id="viewTab">view: 3rd</button>
   <button class="tab" id="audioTab">audio</button>
 </div>
+
+<!-- Navigation hint — text adapts to device (touch vs pointer). Fades after
+     first interaction. -->
+<div class="nav-hint" id="navHint"></div>
 <div class="tab-panel" id="audioPanel">
   <div class="tab-row">
     <span class="tab-label">listening on</span>
@@ -869,34 +885,213 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
   let energy = 0;
   window.addEventListener('pointermove', e => { mx = e.clientX; my = e.clientY; });
 
+  // ══ User avatar + camera rig ═════════════════════════
+  // The avatar is the listener's BODY. The camera relates to it in three
+  // modes (3rd / 2nd-over-shoulder / 1st); the AudioContext.listener
+  // couples to the avatar — NOT the free camera — so spatial audio is
+  // heard from where the body sits, even when the camera is orbiting in
+  // 3rd person. This is the "detach from head" model from the binaural
+  // explorer, generalized into view modes.
+  const avatar = new THREE.Group();
+  const avHead = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.SphereGeometry(0.26, 14, 10)),
+    new THREE.LineBasicMaterial({ color: 0x6ec6ff, transparent: true, opacity: 0.9 })
+  );
+  avHead.position.y = 1.5; avatar.add(avHead);
+  const avNose = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.ConeGeometry(0.07, 0.2, 8)),
+    new THREE.LineBasicMaterial({ color: 0x6ec6ff, transparent: true, opacity: 0.65 })
+  );
+  avNose.geometry.translate(0, -0.1, 0); avNose.geometry.rotateX(Math.PI / 2);
+  avNose.position.set(0, 1.47, -0.26); avatar.add(avNose);
+  const avSh = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(0.5, 0.06, 0.18)),
+    new THREE.LineBasicMaterial({ color: 0x4a90c0, transparent: true, opacity: 0.55 })
+  );
+  avSh.position.y = 1.22; avatar.add(avSh);
+  const AVATAR_POS = new THREE.Vector3(-3.0, 0, 1.6);  // a seat facing the room
+  const AVATAR_EYE = 1.5;
+  avatar.position.copy(AVATAR_POS);
+  scene.add(avatar);
+
+  const VIEW_MODES  = ['third', 'over', 'first'];
+  const VIEW_LABELS = { third: '3rd', over: '2nd', first: '1st' };
+  let viewModeIdx = 0;          // entrance = 3rd person
+  let camYaw = 0.7, camPitch = 0.38, camDist = 7.0;   // 3rd-person orbit
+  let avatarYaw = 0, avatarPitch = 0;                  // body facing / 1st-person gaze
+  let idleSec = 0, autoBlend = 1;
+  const IDLE_BEFORE_AUTO = 3.0;
+  const viewMode = () => VIEW_MODES[viewModeIdx];
+
+  function fwdVec(yaw, pitch) {
+    return new THREE.Vector3(
+      Math.sin(yaw) * Math.cos(pitch),
+      Math.sin(pitch),
+      -Math.cos(yaw) * Math.cos(pitch)
+    );
+  }
+  function faceRoom() {
+    const c = new THREE.Vector3(-1.2, AVATAR_EYE, -2);
+    const d = new THREE.Vector3().subVectors(c, AVATAR_POS);
+    avatarYaw = Math.atan2(d.x, -d.z);
+  }
+  faceRoom();
+  function recenterView() {
+    faceRoom();
+    avatarPitch = 0; camYaw = 0.7; camPitch = 0.38; camDist = 7.0;
+    idleSec = 0; autoBlend = 0;
+  }
+
+  // ── Interaction — device-aware ───────────────────────
+  const isTouch = window.matchMedia('(pointer: coarse)').matches || ('ontouchstart' in window);
+  const navHintEl = document.getElementById('navHint');
+  navHintEl.textContent = isTouch
+    ? 'drag to look · pinch to zoom · double-tap to recenter'
+    : 'drag to look · scroll to zoom · double-click to recenter';
+
+  const sceneEl = renderer.domElement;
+  let dragging = false, lastPX = 0, lastPY = 0;
+  let pinchActive = false, pinchStartDist = 0, pinchStartCamDist = 0;
+  let lastTapMs = 0;
+  const DRAG_SENS = 0.005;
+
+  function bumpIdle() { idleSec = 0; autoBlend = 0; navHintEl.classList.add('show'); }
+  function touchDist(e) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    return Math.hypot(dx, dy);
+  }
+  function applyDrag(dx, dy) {
+    bumpIdle();
+    if (viewMode() === 'third') {
+      camYaw   -= dx * DRAG_SENS;
+      camPitch += dy * DRAG_SENS;
+      camPitch = Math.max(-0.15, Math.min(1.30, camPitch));
+    } else {
+      avatarYaw -= dx * DRAG_SENS;             // turn the body
+      if (viewMode() === 'first') {
+        avatarPitch += dy * DRAG_SENS;
+        avatarPitch = Math.max(-0.6, Math.min(0.6, avatarPitch));
+      }
+    }
+  }
+
+  // Mouse / pen
+  sceneEl.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'touch') return;
+    dragging = true; lastPX = e.clientX; lastPY = e.clientY; bumpIdle();
+    sceneEl.setPointerCapture && sceneEl.setPointerCapture(e.pointerId);
+  });
+  sceneEl.addEventListener('pointermove', e => {
+    if (!dragging || e.pointerType === 'touch') return;
+    applyDrag(e.clientX - lastPX, e.clientY - lastPY);
+    lastPX = e.clientX; lastPY = e.clientY;
+  });
+  sceneEl.addEventListener('pointerup',     () => { dragging = false; });
+  sceneEl.addEventListener('pointercancel', () => { dragging = false; });
+  sceneEl.addEventListener('wheel', e => {
+    e.preventDefault();
+    camDist = Math.max(2.2, Math.min(16, camDist + e.deltaY * 0.01));
+    bumpIdle();
+  }, { passive: false });
+  sceneEl.addEventListener('dblclick', recenterView);
+
+  // Touch — 1-finger drag, 2-finger pinch, double-tap recenter
+  sceneEl.addEventListener('touchstart', e => {
+    if (e.touches.length === 1) {
+      dragging = true; lastPX = e.touches[0].clientX; lastPY = e.touches[0].clientY; bumpIdle();
+    } else if (e.touches.length === 2) {
+      pinchActive = true; pinchStartDist = touchDist(e); pinchStartCamDist = camDist;
+    }
+  }, { passive: true });
+  sceneEl.addEventListener('touchmove', e => {
+    if (pinchActive && e.touches.length === 2) {
+      const d = touchDist(e);
+      camDist = Math.max(2.2, Math.min(16, pinchStartCamDist * (pinchStartDist / Math.max(1, d))));
+      bumpIdle();
+    } else if (dragging && e.touches.length === 1) {
+      applyDrag(e.touches[0].clientX - lastPX, e.touches[0].clientY - lastPY);
+      lastPX = e.touches[0].clientX; lastPY = e.touches[0].clientY;
+    }
+  }, { passive: true });
+  sceneEl.addEventListener('touchend', e => {
+    if (e.touches.length === 0) {
+      dragging = false; pinchActive = false;
+      const now = performance.now();
+      if (now - lastTapMs < 300) recenterView();
+      lastTapMs = now;
+    }
+  });
+
+  // View-mode toggle button (cycles 3rd → 2nd → 1st)
+  const viewTabBtn = document.getElementById('viewTab');
+  viewTabBtn.addEventListener('click', () => {
+    viewModeIdx = (viewModeIdx + 1) % VIEW_MODES.length;
+    viewTabBtn.textContent = 'view: ' + VIEW_LABELS[viewMode()];
+    bumpIdle();
+  });
+
   // ── Main frame loop ──────────────────────────────────
   let t = 0;
   const lookTarget = new THREE.Vector3(-1.2, 0.9, -2);
+  camera.position.set(2, 4, 8);   // seed near the 3rd-person spot; lerps in
 
   function frame() {
     t += 0.0024;
 
-    // Camera drift
-    const r = 11.5 + Math.sin(t * 0.4) * 0.7;
-    camera.position.x = Math.cos(t * 0.6) * r;
-    camera.position.z = Math.sin(t * 0.6) * r + 1;
-    camera.position.y = 3.4 + Math.sin(t * 0.9) * 0.4;
-    camera.lookAt(lookTarget);
+    // ── Camera rig ─────────────────────────────────────
+    const dt = 0.016;
+    idleSec += dt;
+    // After a few idle seconds, auto-rotate gradually re-engages: the orbit
+    // drifts in 3rd person, the gaze drifts in over/first. Interaction snaps
+    // autoBlend back to 0 (full manual).
+    if (idleSec > IDLE_BEFORE_AUTO) autoBlend = Math.min(1, autoBlend + dt * 0.2);
+    if (autoBlend > 0) {
+      if (viewMode() === 'third') camYaw   += dt * 0.12 * autoBlend;
+      else                        avatarYaw += dt * 0.05 * autoBlend;
+    }
+    avatar.rotation.y = avatarYaw;
+    const eye = new THREE.Vector3(avatar.position.x, avatar.position.y + AVATAR_EYE, avatar.position.z);
 
-    // Couple AudioContext.listener to camera for binaural realism.
-    // Has to wait until audioCtx is created (lazy-init on first gesture).
+    let camTarget, lookAtP;
+    const vm = viewMode();
+    if (vm === 'first') {
+      avHead.visible = false; avNose.visible = false;
+      camTarget = eye.clone();
+      lookAtP = eye.clone().add(fwdVec(avatarYaw, avatarPitch));
+    } else if (vm === 'over') {
+      avHead.visible = true; avNose.visible = true;
+      const back = fwdVec(avatarYaw, 0).multiplyScalar(-1.9);
+      camTarget = eye.clone().add(back); camTarget.y += 0.45;
+      lookAtP = eye.clone().add(fwdVec(avatarYaw, 0).multiplyScalar(3));
+    } else { // third — free orbit around the avatar
+      avHead.visible = true; avNose.visible = true;
+      const ox = Math.sin(camYaw) * Math.cos(camPitch);
+      const oz = Math.cos(camYaw) * Math.cos(camPitch);
+      const oy = Math.sin(camPitch);
+      camTarget = new THREE.Vector3(
+        eye.x + ox * camDist,
+        eye.y + oy * camDist + 1.0,
+        eye.z + oz * camDist
+      );
+      lookAtP = eye.clone();
+    }
+    camera.position.lerp(camTarget, vm === 'first' ? 0.5 : 0.18);
+    camera.lookAt(lookAtP);
+    lookTarget.copy(lookAtP);
+
+    // Couple AudioContext.listener to the AVATAR (its eye + facing), not the
+    // free camera. Lazy until audioCtx exists.
     if (audioCtx) {
       const l = audioCtx.listener;
-      const fwd = new THREE.Vector3().subVectors(lookTarget, camera.position).normalize();
+      const lf = fwdVec(avatarYaw, vm === 'first' ? avatarPitch : 0);
       if (l.positionX) {
-        l.positionX.value = camera.position.x;
-        l.positionY.value = camera.position.y;
-        l.positionZ.value = camera.position.z;
-        l.forwardX.value = fwd.x; l.forwardY.value = fwd.y; l.forwardZ.value = fwd.z;
+        l.positionX.value = eye.x; l.positionY.value = eye.y; l.positionZ.value = eye.z;
+        l.forwardX.value = lf.x; l.forwardY.value = lf.y; l.forwardZ.value = lf.z;
         l.upX.value = 0; l.upY.value = 1; l.upZ.value = 0;
       } else {
-        l.setPosition(camera.position.x, camera.position.y, camera.position.z);
-        l.setOrientation(fwd.x, fwd.y, fwd.z, 0, 1, 0);
+        l.setPosition(eye.x, eye.y, eye.z);
+        l.setOrientation(lf.x, lf.y, lf.z, 0, 1, 0);
       }
     }
 
