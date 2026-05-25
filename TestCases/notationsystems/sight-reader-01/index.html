@@ -36,7 +36,7 @@
   #msg { position:absolute; inset:0; display:none; align-items:center; justify-content:center;
          font-size:22px; font-weight:600; color:#15171c; z-index:5; pointer-events:none; }
 
-  #fx { position:fixed; inset:0; z-index:50; display:none; opacity:0; transition:opacity 1s ease; }
+  #fx { position:fixed; inset:0; z-index:50; display:none; opacity:0; }
   #guy { position:fixed; inset:0; z-index:51; display:none; pointer-events:none; }
   #fxhint { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); z-index:52; display:none;
             color:#fff; font-size:13px; opacity:0.85; text-shadow:0 1px 4px #000; }
@@ -323,7 +323,12 @@ let fx = null, hideTimer = null;
 function midiOf(key) { return Tunings.nameToMidi(key.replace("/", "")); }
 function runFinale() { try { startPlayground(); } catch (e) {} }
 
-const CRUISE_MAX = 2.4, SEEK = 11.0, EAT_DIST = 0.055, MOLD_R = 0.34, MOLD_PULL = 22.0, DIGEST = 0.2;
+const CRUISE_MAX = 3.4, SEEK = 14.0, EAT_DIST = 0.05, MOLD_R = 0.34, MOLD_PULL = 20.0, DIGEST = 0.22;
+const EJECT_VEL = 1.6;     // a digested note is pooped out hard, shooting far
+const CATCH_VMAX = 0.6;    // Marge only catches a note slower than this (moving ones slip past)
+const SEP_R = 0.11, SEP_K = 7.0;   // inter-note repulsion (anti-glob), scaled by mouse speed
+const TRANSPOSE = 3;       // Marge digests every note up a minor third (a "transformer")
+function midiToName(m){ const N=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]; m=Math.round(m); return N[((m%12)+12)%12]+(Math.floor(m/12)-1); }
 
 const FRAG = `
 precision highp float;
@@ -358,7 +363,8 @@ function startPlayground() {
   if (!gl || !g2) return;
   clearTimeout(hideTimer);
   cv.style.display = "block"; gc.style.display = "block"; hint.style.display = "block";
-  requestAnimationFrame(() => { cv.style.opacity = "1"; });
+  void cv.offsetWidth;                 // flush layout so the fade-in transition fires reliably
+  cv.style.opacity = "1";
 
   const mids = notes.map(n => midiOf(n.key));
   const lo = Math.min(...mids), hi = Math.max(...mids);
@@ -368,7 +374,7 @@ function startPlayground() {
     vx: 0, vy: 0, midi: mids[i], pitch: (mids[i] - lo) / Math.max(1, hi - lo),
     scale: 1, state: "free", tEat: 0,   // state: "free" | "inside" (being digested)
   }));
-  const guy = { x: 0.5, y: 0.5, vx: 0, vy: 0, cruise: CRUISE_MAX, mouth: 0, face: 0, sitting: false };
+  const guy = { x: 0.5, y: 0.5, vx: 0, vy: 0, cruise: CRUISE_MAX, mouth: 0, face: 0, sitting: false, head: 1, butt: 1 };
   const mouse = { x: 0.5, y: 0.5, px: 0.5, py: 0.5, sp: 0 };
   const parts = [];
 
@@ -385,8 +391,8 @@ function startPlayground() {
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
   const la = gl.getAttribLocation(prog, "a"); gl.enableVertexAttribArray(la); gl.vertexAttribPointer(la, 2, gl.FLOAT, false, 0, 0);
   const U = n => gl.getUniformLocation(prog, n);
-  const pit = new Float32Array(32); blobs.forEach((b, i) => pit[i] = b.pitch);
-  gl.uniform1fv(U("uPitch"), pit); gl.uniform1i(U("uCount"), Math.min(blobs.length, 32));
+  const pit = new Float32Array(32);   // uPitch refreshed each frame (pitch climbs as notes digest)
+  gl.uniform1i(U("uCount"), Math.min(blobs.length, 32));
 
   function eat(b) {
     b.state = "inside"; b.tEat = (performance.now() - t0) / 1000;
@@ -396,7 +402,7 @@ function startPlayground() {
     const hz = 440 * Math.pow(2, (b.midi + oct - 69) / 12 + cents / 1200);
     const tim = ["gamelan", "mallet", "sine"][(Math.random() * 3) | 0];
     Synth.playFreq(hz, { timbre: tim, decay: 0.5 + Math.random() * 1.1, gain: 0.1, when: Synth.now() + 0.001 });
-    guy.cruise *= 0.82; guy.mouth = 0.2;                    // slows after each digest
+    guy.cruise *= 0.85; guy.mouth = 0.55; guy.head = 1.8;   // head swells, mouth gapes while ingesting
   }
 
   let t0 = performance.now(), prevT = t0, alive = true;
@@ -419,27 +425,34 @@ function startPlayground() {
         b.x += (mx - b.x) * Math.min(1, dt * 16); b.y += (my - b.y) * Math.min(1, dt * 16);
         b.scale += (0 - b.scale) * Math.min(1, dt * 16);
         if (tt - b.tEat > DIGEST) {
-          b.state = "free";                                  // poop it out, same as it went in
-          b.x = guy.x - Math.cos(guy.face) * 0.05; b.y = guy.y - Math.sin(guy.face) * 0.05;
-          b.vx = -Math.cos(guy.face) * 0.7 + (Math.random() - 0.5) * 0.15;
-          b.vy = -Math.sin(guy.face) * 0.7 + (Math.random() - 0.5) * 0.15;
-          b.scale = 0.2;
+          b.state = "free";                                  // poop it out the rear, shooting far
+          b.midi += TRANSPOSE; if (b.midi > 93) b.midi -= 24; // digested -> up a minor third (Marge's transform)
+          b.x = guy.x - Math.cos(guy.face) * 0.06; b.y = guy.y - Math.sin(guy.face) * 0.06;
+          b.vx = -Math.cos(guy.face) * EJECT_VEL + (Math.random() - 0.5) * 0.2;
+          b.vy = -Math.sin(guy.face) * EJECT_VEL + (Math.random() - 0.5) * 0.2;
+          b.scale = 0.2; guy.butt = 1.9;                     // rear swells as the note comes out
           parts.push({ x: b.x, y: b.y, vx: b.vx * 0.4, vy: b.vy * 0.4, life: 0.5, hue: b.pitch });
         }
         continue;
       }
       b.scale += (1 - b.scale) * Math.min(1, dt * 7);
-      const dx = mouse.x - b.x, dy = mouse.y - b.y, d = Math.hypot(dx, dy);
+      // mouse molds: attract toward the cursor, but a close-range repel makes a
+      // fast incomer swing past instead of collapsing onto a single point.
+      const dx = mouse.x - b.x, dy = mouse.y - b.y, d = Math.hypot(dx, dy) || 1e-3;
       if (d < MOLD_R) { const f = (1 - d / MOLD_R) * MOLD_PULL * dt; b.vx += dx * f; b.vy += dy * f; }
+      if (d < 0.07) { const r = (1 - d / 0.07) * MOLD_PULL * 1.1 * dt; b.vx -= (dx / d) * r * 0.07; b.vy -= (dy / d) * r * 0.07; }
     }
+    // inter-note repulsion (anti-glob): firmer when the mouse moves fast (scatter),
+    // gentle when slow so notes can still glob together.
+    const sepK = SEP_K * (0.35 + mouse.sp * 2.2);
     for (let i = 0; i < blobs.length; i++) for (let j = i + 1; j < blobs.length; j++) {
       const a = blobs[i], c = blobs[j]; if (a.state !== "free" || c.state !== "free") continue;
       const dx = c.x - a.x, dy = c.y - a.y, d = Math.hypot(dx, dy) || 1e-3;
-      if (d < 0.06) { const f = (0.06 - d) * 2.2 * dt / d; a.vx -= dx * f; a.vy -= dy * f; c.vx += dx * f; c.vy += dy * f; }
+      if (d < SEP_R) { const f = (1 - d / SEP_R) * sepK * dt / d; a.vx -= dx * f; a.vy -= dy * f; c.vx += dx * f; c.vy += dy * f; }
     }
     for (const b of blobs) {
       if (b.state !== "free") continue;
-      b.vx *= 0.9; b.vy *= 0.9; b.x += b.vx * dt; b.y += b.vy * dt;
+      b.vx *= 0.92; b.vy *= 0.92; b.x += b.vx * dt; b.y += b.vy * dt;
       b.x = Math.max(0.05, Math.min(0.95, b.x)); b.y = Math.max(0.12, Math.min(0.9, b.y));
     }
 
@@ -465,13 +478,16 @@ function startPlayground() {
     if (sp > 1e-3) guy.face = Math.atan2(guy.vy, guy.vx);
     guy.mouth = Math.max(0, guy.mouth - dt);
 
-    if (tgt && best < EAT_DIST && tgt.state === "free") eat(tgt);
+    // only catches a (nearly) still note — moving ones slip past her
+    if (tgt && best < EAT_DIST && tgt.state === "free" && Math.hypot(tgt.vx, tgt.vy) < CATCH_VMAX) eat(tgt);
+    guy.head += (1 - guy.head) * Math.min(1, dt * 4);    // head/rear relax back to normal
+    guy.butt += (1 - guy.butt) * Math.min(1, dt * 5);
 
-    // shader uniforms
+    // shader uniforms (uPitch refreshed: hue tracks the climbing pitch)
     const pos = new Float32Array(64), scl = new Float32Array(32);
-    blobs.forEach((b, i) => { if (i < 32) { pos[i*2] = b.x; pos[i*2+1] = b.y; scl[i] = b.scale; } });
+    blobs.forEach((b, i) => { if (i < 32) { pos[i*2] = b.x; pos[i*2+1] = b.y; scl[i] = b.scale; pit[i] = (b.midi - lo) / Math.max(1, hi - lo); } });
     gl.uniform2f(U("uRes"), cv.width, cv.height); gl.uniform1f(U("uTime"), tt);
-    gl.uniform2fv(U("uPos"), pos); gl.uniform1fv(U("uScale"), scl);
+    gl.uniform2fv(U("uPos"), pos); gl.uniform1fv(U("uScale"), scl); gl.uniform1fv(U("uPitch"), pit);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
     // 2D overlay: faint MOLD ring at the cursor, ejected-blob puffs, then the hero
@@ -484,36 +500,62 @@ function startPlayground() {
       g2.globalAlpha = Math.max(0, p.life); g2.beginPath(); g2.arc(p.x * gc.width, (1 - p.y) * gc.height, 6, 0, 7);
       g2.fillStyle = "hsl(" + (p.hue * 300) + ",80%,65%)"; g2.fill();
     }
+    // note label inside each free blob (e.g. C4, E2)
+    g2.font = "11px -apple-system, system-ui, sans-serif"; g2.textAlign = "center"; g2.textBaseline = "middle";
+    for (const b of blobs) {
+      if (b.state !== "free" || b.scale < 0.4) continue;
+      g2.fillStyle = "rgba(255,255,255,0.9)";
+      g2.fillText(midiToName(b.midi), b.x * gc.width, (1 - b.y) * gc.height);
+    }
     g2.globalAlpha = 1;
-    drawGuy(g2, guy.x * gc.width, (1 - guy.y) * gc.height, guy.face, guy.mouth, sp);
+    drawGuy(g2, guy.x * gc.width, (1 - guy.y) * gc.height, guy.face, guy.mouth, sp, guy.head, guy.butt);
     fx.r = requestAnimationFrame(frame);
   }
   fx = { stop() { alive = false; if (fx.r) cancelAnimationFrame(fx.r); window.removeEventListener("pointermove", onMove); window.removeEventListener("resize", size); } };
   frame();
 }
 
-// a little caped stick-figure superhero
-function drawGuy(c, x, y, face, mouth, sp) {
-  const s = 1, wob = Math.sin(performance.now() / 120) * 0.3;
-  c.save(); c.translate(x, y); c.rotate(Math.sin(face) * 0.0); // keep upright; face used for cape dir
-  c.strokeStyle = "#fff"; c.lineWidth = 3; c.lineCap = "round";
-  // cape (trails opposite motion)
+// Marge, the planet-eater — caped, long flowing hair; her head swells & mouth
+// gapes while eating, and her rear swells as the note comes out the other end.
+function drawGuy(c, x, y, face, mouth, sp, head, butt) {
+  head = head || 1; butt = butt || 1;
+  const wob = Math.sin(performance.now() / 120) * 0.3, T = performance.now() / 1000;
+  const fx = -Math.cos(face), fy = -Math.sin(face);     // trailing direction (opposite motion)
+  c.save(); c.translate(x, y); c.lineCap = "round"; c.lineJoin = "round";
+  // cape
   c.beginPath(); c.moveTo(-2, -8);
-  c.quadraticCurveTo(-Math.cos(face) * 26 - 6, -Math.sin(face) * 22 + 10, -Math.cos(face) * 18, 24);
+  c.quadraticCurveTo(fx * 26 - 6, fy * 22 + 10, fx * 18, 24);
   c.lineTo(0, 16); c.closePath(); c.fillStyle = "rgba(220,60,90,0.8)"; c.fill();
-  // body
+  // rear bulge (grows as a note is expelled)
+  if (butt > 1.03) {
+    c.beginPath(); c.ellipse(fx * 11, fy * 11 + 9, 9 * butt, 9 * butt, 0, 0, 7);
+    c.fillStyle = "rgba(255,210,170,0.95)"; c.fill();
+  }
+  // body, arms, legs
+  c.strokeStyle = "#fff"; c.lineWidth = 3;
   c.beginPath(); c.moveTo(0, -4); c.lineTo(0, 16); c.stroke();
-  // arms (one raised heroically)
   c.beginPath(); c.moveTo(0, 2); c.lineTo(13, -8 + wob * 4); c.moveTo(0, 2); c.lineTo(-11, 8 - wob * 4); c.stroke();
-  // legs
   c.beginPath(); c.moveTo(0, 16); c.lineTo(9, 30 + wob * 3); c.moveTo(0, 16); c.lineTo(-9, 30 - wob * 3); c.stroke();
-  // head
-  c.beginPath(); c.arc(0, -15, 11, 0, 7); c.fillStyle = "#ffe0b8"; c.fill(); c.lineWidth = 2.5; c.strokeStyle = "#fff"; c.stroke();
-  // eyes + mouth (opens when eating)
+  // long flowing hair — strands stream opposite her motion, with a wave
+  const hr = 11 * head;
+  c.strokeStyle = "rgba(150,80,40,0.92)"; c.lineWidth = 2.4;
+  for (let i = 0; i < 7; i++) {
+    const a = -Math.PI / 2 + (i - 3) * 0.34;
+    const ox = Math.cos(a) * hr, oy = Math.sin(a) * hr - 15;
+    const wv = Math.sin(T * 3 + i * 0.8) * 7;
+    c.beginPath(); c.moveTo(ox, oy);
+    c.quadraticCurveTo(ox + fx * 18 - fy * wv, oy + fy * 18 + fx * wv, ox + fx * 34, oy + fy * 34 + 12);
+    c.stroke();
+  }
+  // head (swells while ingesting)
+  c.beginPath(); c.arc(0, -15, hr, 0, 7); c.fillStyle = "#ffe0b8"; c.fill();
+  c.lineWidth = 2.5; c.strokeStyle = "#fff"; c.stroke();
+  // eyes
   c.fillStyle = "#222";
-  c.beginPath(); c.arc(-4, -17, 1.6, 0, 7); c.arc(4, -17, 1.6, 0, 7); c.fill();
-  const mo = 1.5 + mouth * 26;
-  c.beginPath(); c.ellipse(0, -10, 3 + mouth * 8, mo / 6 + 1.5, 0, 0, 7); c.fillStyle = "#7a1020"; c.fill();
+  c.beginPath(); c.arc(-4 * head, -17, 1.7, 0, 7); c.arc(4 * head, -17, 1.7, 0, 7); c.fill();
+  // mouth (gapes wide while eating)
+  const mw = 3 + mouth * 30, mh = 2 + mouth * 26;
+  c.beginPath(); c.ellipse(0, -11 - (head - 1) * 5, mw, mh, 0, 0, 7); c.fillStyle = "#7a1020"; c.fill();
   c.restore();
 }
 
