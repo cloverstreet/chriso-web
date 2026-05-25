@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Instrument Interfaces · keyboard as instrument</title>
+<link rel="stylesheet" href="/widgets/audio-widgets.css" />
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:-apple-system, system-ui, sans-serif;
+         background:#15171c; color:#e6e8ec; padding:24px; line-height:1.5; }
+  h1 { font-size:19px; font-weight:600; margin:0 0 4px; }
+  .tag { color:#8b909a; font-size:13px; margin:0 0 18px; max-width:760px; }
+
+  .controls { display:flex; gap:18px; align-items:flex-end; flex-wrap:wrap; margin-bottom:8px; }
+  .field { display:flex; flex-direction:column; gap:4px; }
+  .field > label { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:#8b909a; }
+  select, button { background:#2a2e37; color:#e6e8ec; border:1px solid #3a3f4a;
+           padding:7px 12px; border-radius:8px; font-size:14px; cursor:pointer; }
+  select { min-width:230px; }
+  button:hover, select:hover { background:#343a45; }
+  .oct { display:flex; align-items:center; gap:6px; }
+  .oct button { padding:5px 11px; }
+  #octLabel { min-width:24px; text-align:center; font-variant-numeric:tabular-nums; }
+  input[type=range] { width:120px; vertical-align:middle; }
+  .row2 { display:flex; gap:22px; align-items:flex-end; flex-wrap:wrap; margin-bottom:18px; color:#b6bcc6; font-size:13px; }
+  .synth { display:flex; gap:20px; align-items:flex-end; flex-wrap:wrap;
+           background:#1b1e25; border:1px solid #2a2e37; border-radius:10px; padding:12px 16px; margin-bottom:18px; }
+  .sg { display:flex; flex-direction:column; gap:3px; }
+  .sg > label, .sg > .sglbl { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:#8b909a; }
+  .sg .val { color:#cdd3dd; font-variant-numeric:tabular-nums; font-size:12px; }
+  .sg input[type=range] { width:92px; }
+  .vib { display:flex; align-items:center; gap:8px; }
+  .vib input[type=range] { width:80px; }
+  #meter { min-width:150px; }
+  .sep { width:1px; align-self:stretch; background:#2a2e37; }
+
+  /* the physical keyboard */
+  #keyboard { display:flex; flex-direction:column; gap:6px; margin:6px 0 18px;
+              user-select:none; touch-action:none; }
+  .krow { display:flex; gap:6px; }
+  .key { position:relative; width:62px; height:64px; border-radius:9px;
+         background: hsl(var(--hue) 38% 22%);
+         border:1px solid hsl(var(--hue) 38% 34%);
+         display:flex; flex-direction:column; justify-content:center; align-items:center;
+         cursor:pointer; transition:transform .04s, background .04s, box-shadow .04s; }
+  .key:hover { background: hsl(var(--hue) 40% 27%); }
+  .key.on { background: hsl(var(--hue) 70% 52%); color:#10131a;
+            box-shadow:0 0 0 2px hsl(var(--hue) 80% 70%); transform:translateY(1px); }
+  .key .cap { position:absolute; top:4px; left:6px; font-size:10px; color:#aeb4be; }
+  .key.on .cap { color:#10131a; }
+  .key .note { font-size:15px; font-weight:600; }
+  .key .note sub { font-size:9px; font-weight:500; vertical-align:super; opacity:.8; }
+  .key .hz { font-size:9.5px; opacity:.65; font-variant-numeric:tabular-nums; }
+
+  /* info */
+  .panel { max-width:900px; }
+  .desc { background:#1b1e25; border:1px solid #2a2e37; border-radius:10px;
+          padding:12px 16px; margin-bottom:10px; font-size:13.5px; color:#c6ccd6; }
+  .desc b { color:#e6e8ec; }
+  #gens .gen { background:#23262d; padding:2px 8px; border-radius:5px; color:#cdd3dd; }
+  .splitlbl { color:#8b909a; font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+
+  /* references drawer */
+  #refsBtn { margin-top:6px; }
+  #refs { display:none; max-width:900px; margin-top:14px; background:#1b1e25;
+          border:1px solid #2a2e37; border-radius:10px; padding:4px 22px 14px; }
+  #refs.open { display:block; }
+  #refs h3 { font-size:13px; margin:16px 0 6px; color:#cdd3dd; }
+  #refs p, #refs li { font-size:13px; color:#aab0ba; }
+  #refs a { color:#9bd1ff; text-decoration:none; }
+  #refs a:hover { text-decoration:underline; }
+  #refs code { background:#23262d; padding:1px 5px; border-radius:4px; color:#cdd3dd; font-size:12px; }
+</style>
+</head>
+<body>
+  <h1>Instrument Interfaces — the computer keyboard as an instrument</h1>
+  <p class="tag">Two orthogonal sides of the same puzzle. A <b>layout</b> decides how the physical keys are
+    arranged into a pitch field; a <b>note system</b> decides what frequency each position sounds. Swap either
+    independently. Pitch is exact-Hz Web Audio — no MIDI, no 12-note assumption. Type on your keyboard, or click the keys.</p>
+
+  <div class="controls">
+    <div class="field">
+      <label>Keyboard layout — <span class="splitlbl" style="text-transform:none">key → position</span></label>
+      <select id="layout"></select>
+    </div>
+    <div class="field">
+      <label>Note system — <span class="splitlbl" style="text-transform:none">position → pitch</span></label>
+      <select id="system"></select>
+    </div>
+    <div class="field">
+      <label>Octave (↑ / ↓)</label>
+      <div class="oct"><button id="octDown">−</button><span id="octLabel">0</span><button id="octUp">+</button></div>
+    </div>
+  </div>
+
+  <div class="synth">
+    <div class="sg">
+      <label>Waveform</label>
+      <select id="wave" style="min-width:auto">
+        <option value="triangle">triangle</option>
+        <option value="sine">sine</option>
+        <option value="sawtooth">saw</option>
+        <option value="square">square</option>
+      </select>
+    </div>
+    <div class="sep"></div>
+    <div class="sg"><span class="sglbl">Attack · <span id="envAv" class="val"></span></span>
+      <input id="envA" type="range" min="0.001" max="1" step="0.001" value="0.012" /></div>
+    <div class="sg"><span class="sglbl">Decay · <span id="envDv" class="val"></span></span>
+      <input id="envD" type="range" min="0.005" max="1.5" step="0.005" value="0.12" /></div>
+    <div class="sg"><span class="sglbl">Sustain · <span id="envSv" class="val"></span></span>
+      <input id="envS" type="range" min="0" max="1" step="0.01" value="0.6" /></div>
+    <div class="sg"><span class="sglbl">Release · <span id="envRv" class="val"></span></span>
+      <input id="envR" type="range" min="0.01" max="2.5" step="0.01" value="0.35" /></div>
+    <div class="sep"></div>
+    <div class="sg">
+      <span class="sglbl"><label class="vib"><input type="checkbox" id="vibOn" /> Vibrato</label></span>
+      <div class="vib" style="margin-top:2px">
+        <span class="val" id="vibRatev" style="min-width:48px"></span>
+        <input id="vibRate" type="range" min="0.5" max="12" step="0.1" value="5.5" />
+        <span class="val" id="vibDepthv" style="min-width:34px"></span>
+        <input id="vibDepth" type="range" min="0" max="80" step="1" value="14" />
+      </div>
+    </div>
+    <div class="sep"></div>
+    <div class="sg"><span class="sglbl">Output</span><div id="meter"></div></div>
+  </div>
+
+  <div id="keyboard"></div>
+
+  <div class="panel">
+    <div class="desc"><b>Layout.</b> <span id="layoutDesc"></span></div>
+    <div class="desc" id="gens"></div>
+    <div class="desc"><b>System.</b> <span id="sysDesc"></span></div>
+    <button id="refsBtn">What's been done ▸</button>
+    <div id="refs">
+      <h3>Why not piano- (or theremin-) on-a-screen?</h3>
+      <p>Skeuomorphic touch instruments inherit the piano's 12-TET-specific, C-major-biased 7+5 topology while
+      losing the physical key edges that let you find notes without looking. No haptics, finger occlusion of the
+      target, no isomorphism. Useful for teaching the familiar; a dead end for new instruments. (Hunt &amp; Wanderley:
+      the <i>mapping</i> is the instrument — many-to-one mappings feel expressive, one-to-one feels sterile.
+      <a href="https://www.nime.org/" target="_blank">NIME</a>.)</p>
+
+      <h3>Isomorphic layouts — same shape = same interval, everywhere</h3>
+      <p>An interval becomes a fixed move on the grid, so a chord/scale shape transposes by sliding your hand — and
+      survives retuning to any temperament. The layouts here:</p>
+      <ul>
+        <li><b>Wicki–Hayden</b> (concertina): right = whole tone, up = fifth.
+          <a href="https://en.wikipedia.org/wiki/Wicki%E2%80%93Hayden_note_layout" target="_blank">ref</a></li>
+        <li><b>Harmonic Table / Tonnetz</b> (C-Thru AXiS): right = major third, up = fifth ⇒ up-left = minor third.
+          <a href="https://en.wikipedia.org/wiki/Harmonic_table_note_layout" target="_blank">ref</a></li>
+        <li><b>Jankó</b> (1882 piano reform): whole tones along a rank, ranks offset by a semitone.
+          <a href="https://musicnotation.org/wiki/instruments/janko-keyboard/" target="_blank">ref</a></li>
+      </ul>
+      <p>Hardware in this lineage: <a href="https://www.lumatone.io/" target="_blank">Lumatone</a> (280 hex keys,
+      Bosanquet generalized layout), <a href="https://www.rogerlinndesign.com/linnstrument" target="_blank">LinnStrument</a>,
+      <a href="https://www.striso.org/" target="_blank">Striso</a>, <a href="https://hpi.zentral.zone/tonalplexus" target="_blank">H-Pi Tonal Plexus</a> (211 keys/octave),
+      and the <a href="https://en.wikipedia.org/wiki/Array_mbira" target="_blank">Array mbira</a>.</p>
+
+      <h3>QWERTY as instrument — prior art</h3>
+      <p>The <b>Piano / Tracker</b> layout here is the FT2 → Renoise → FL Studio → Ableton convention:
+      bottom rows = one chromatic octave (black keys on the offset keys above), QWERTY+number rows the octave above.
+      <a href="https://tutorials.renoise.com/wiki/Playing_Notes_with_the_Computer_Keyboard" target="_blank">Renoise</a> ·
+      <a href="https://github.com/stuartmemo/qwerty-hancock" target="_blank">qwerty-hancock</a> (JS lib) ·
+      <a href="https://forum.openmpt.org/index.php?topic=5647.0" target="_blank">OpenMPT: isomorphic layouts on QWERTY</a>.
+      Keys are read by <code>event.code</code>, so it works regardless of OS keyboard locale.</p>
+
+      <h3>Note systems</h3>
+      <p>Subsets of 12-TET (pentatonic, diatonic, whole-tone, chromatic); equal divisions worth playing
+      (19-, 24-quarter-tone, 31-, 53-TET); just intonation (pure ratios); the non-octave
+      <a href="https://en.wikipedia.org/wiki/Bohlen%E2%80%93Pierce_scale" target="_blank">Bohlen–Pierce</a>
+      (repeats at the 3:1 tritave); and measured gamelan
+      <a href="https://en.wikipedia.org/wiki/Pelog" target="_blank">pélog</a> /
+      <a href="https://en.wikipedia.org/wiki/Slendro" target="_blank">sléndro</a> cents tables.
+      The clean architecture mirrors <a href="https://www.huygens-fokker.org/scala/scl_format.html" target="_blank">Scala</a>
+      <code>.scl</code> (the scale) × <code>.kbm</code> (which keys play it).</p>
+      <p style="margin-top:10px;color:#8b909a">Each key is labelled by its nearest 12-TET note plus cents deviation
+      (e.g. <code>G4<sup>+50</sup></code>), with the exact frequency beneath — so even deeply microtonal pitches
+      have a readable anchor. Colour = pitch class within the period.</p>
+    </div>
+  </div>
+
+  <script src="/widgets/audio-widgets.js"></script>
+  <script src="models.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
