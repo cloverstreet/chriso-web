@@ -63,7 +63,7 @@
   <div class="app" id="app">
     <h1>Sight-Reading Trainer</h1>
     <div class="controls">
-      <button id="start">New sequence</button>
+      <button id="start">Play</button>
       <span class="stat">tempo <b id="tempo">—</b> · <span id="prog">0 / 0</span> · missed <i id="miss">0</i></span>
       <button id="modebtn">Mode: letters</button>
       <button id="keysbtn">Key map&nbsp;▸</button>
@@ -102,7 +102,7 @@ const POOL = ["c/4","d/4","e/4","f/4","g/4","a/4","b/4","c/5","d/5","e/5","f/5",
 let N = 10;              // notes per sequence — grows by 5 each clean round
 const SPACING = 92;
 const FAILX = 58;
-const LEADIN = 4;
+const LEADIN = 2;        // notes of lead before the first reaches the deadline (closer = sooner)
 const SVG_H = 240, STAVE_Y = 96;
 const NOTE_BEATS = 2;    // half notes (2x the whole-note speed). gap between notes = 60*NOTE_BEATS/bpm
 
