@@ -4,9 +4,10 @@
 // Plain global (no ES module) so the pages run by double-clicking the HTML.
 
 window.Synth = (function () {
-  const MASTER_LEVEL = 0.9; // this page's output level (chriso.org standard)
+  const MASTER_LEVEL = 0.55; // output level (turned down — was overloading)
   let ctx = null;
-  let master = null;
+  let master = null; // user-controlled output gain (driven by MeterStrip)
+  let gate = null;   // separate auto-mute gate (hidden tab), so the two don't fight
   let muted = false; // hidden-tab auto-mute state
 
   function ensure() {
@@ -14,7 +15,10 @@ window.Synth = (function () {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
       master = ctx.createGain();
       master.gain.value = MASTER_LEVEL;
-      master.connect(ctx.destination);
+      gate = ctx.createGain();
+      gate.gain.value = 1;
+      master.connect(gate);
+      gate.connect(ctx.destination);
     }
     // Browsers start the context suspended until a user gesture.
     if (ctx.state === "suspended" && !muted) ctx.resume();
@@ -44,15 +48,15 @@ window.Synth = (function () {
     if (document.hidden) {
       muted = true;
       const t = ctx.currentTime;
-      master.gain.cancelScheduledValues(t);
-      master.gain.setTargetAtTime(0, t, 0.02);
+      gate.gain.cancelScheduledValues(t);
+      gate.gain.setTargetAtTime(0, t, 0.02);
       setTimeout(() => { if (document.hidden && ctx) ctx.suspend(); }, 80);
     } else {
       muted = false;
       ctx.resume().then(() => {
         const t = ctx.currentTime;
-        master.gain.cancelScheduledValues(t);
-        master.gain.setTargetAtTime(MASTER_LEVEL, t, 0.02);
+        gate.gain.cancelScheduledValues(t);
+        gate.gain.setTargetAtTime(1, t, 0.02);
       });
     }
   }
@@ -131,5 +135,7 @@ window.Synth = (function () {
     playFreq,
     buzz,
     timbres: () => Object.keys(TIMBRES),
+    context: () => ensure(),
+    masterNode: () => { ensure(); return master; }, // for MeterStrip (measure + control)
   };
 })();
