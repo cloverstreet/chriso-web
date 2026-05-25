@@ -1008,11 +1008,11 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
   // just swinging the camera. (+dx so drag-right looks right.)
   function applyDrag(dx, dy) {
     bumpIdle();
-    // "Grab the world" on both axes: drag-right pans the view right (you
-    // turn left), drag-down looks up. Pitch range is wide and deliberately
-    // hyperreal — near ±83°, far past natural neck range.
+    // Matches the binaural-explorer convention: drag-right looks right,
+    // drag-down looks down (yaw -= dx, pitch -= dy). Pitch range is wide
+    // and deliberately hyperreal — near ±83°, far past natural neck range.
     lookYaw   -= dx * DRAG_SENS;
-    lookPitch += dy * DRAG_SENS;
+    lookPitch -= dy * DRAG_SENS;
     lookPitch = Math.max(-1.45, Math.min(1.45, lookPitch));
   }
 
