@@ -70,15 +70,35 @@
   #powers .pen { display:flex; align-items:center; gap:3px; color:#8b909a; cursor:pointer; }
   #powers .iv { width:78px; }
   #powers .ivv { font-variant-numeric:tabular-nums; color:#9aa1ad; }
+  /* game header row */
+  .topbar { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:10px; }
+  .topbar .title { font-size:18px; font-weight:600; }
+  .topbar label { font-size:13px; color:#b6bcc6; display:flex; gap:6px; align-items:center; }
+  .topbar select { background:#2a2e37; color:#e6e8ec; border:1px solid #3a3f4a; border-radius:6px; font-size:13px; padding:4px 7px; }
+  .topbar select option:disabled { color:#565b63; }
+  .cur { font-size:13px; color:#b6bcc6; } .cur b { color:#e6e8ec; font-variant-numeric:tabular-nums; }
+  .chips { display:flex; gap:5px; flex-wrap:wrap; }
+  .chip { font-size:11px; padding:3px 8px; border-radius:11px; border:1px solid #2f343d; background:#1d2026; color:#5c626b; }
+  .chip.earned { color:#cdd3dd; border-color:#4a5160; cursor:pointer; }
+  .chip.on { background:#2f5a39; border-color:#3e7a4c; color:#dfeede; }
+  .chip.notimpl.earned { color:#9aa1ad; }
+  .chips .iv { width:48px; background:#2a2e37; color:#e6e8ec; border:1px solid #3a3f4a; border-radius:5px; font-size:11px; }
 </style>
 </head>
 <body>
   <div class="app" id="app">
-    <h1>Sight-Reading Trainer</h1>
+    <div class="topbar">
+      <span class="title">Sight-Reading Trainer</span>
+      <label>Mode <select id="modeSel"></select></label>
+      <label>Level <select id="levelSel"></select></label>
+      <span class="cur">to&nbsp;beat <b id="curLevel">1</b></span>
+      <button id="resetAll">Reset all</button>
+      <span id="powerchips" class="chips"></span>
+    </div>
     <div class="controls">
       <button id="start">Play</button>
       <span class="stat">tempo <b id="tempo">—</b> · <span id="prog">0 / 0</span> · missed <i id="miss">0</i></span>
-      <button id="modebtn">Mode: letters</button>
+      <button id="modebtn">Keys: letters</button>
       <button id="keysbtn">Key map&nbsp;▸</button>
     </div>
 
@@ -92,10 +112,9 @@
     <div class="keymap" id="keymap"></div>
   </div>
 
-  <div id="powers"></div>
   <canvas id="fx"></canvas>
   <canvas id="guy"></canvas>
-  <div id="fxhint">notes roam on their own — toggle superpowers (top-right) · Esc to return</div>
+  <div id="fxhint">notes roam on their own — toggle a superpower up top · Esc to return</div>
 
 <script>
 const VF = Vex.Flow;
@@ -110,19 +129,48 @@ const PIANO = {
 };
 let mode = "letters";   // "letters" (note name, any octave) | "piano"
 
-// diatonic C-major pool the staff draws from (two octaves)
-const POOL = ["c/4","d/4","e/4","f/4","g/4","a/4","b/4","c/5","d/5","e/5","f/5","g/5","a/5","b/5"];
+// ── game: modes (clefs) × progressive levels ─────────────────────────────
+const MODES = [
+  { id:"treble",   name:"Treble Clef",   vf:"treble",     bottom:"e/4" },
+  { id:"bass",     name:"Bass Clef",     vf:"bass",       bottom:"g/2" },
+  { id:"soprano",  name:"Soprano Clef",  vf:"soprano",    bottom:"c/4" },
+  { id:"alto",     name:"Alto Clef",     vf:"alto",       bottom:"f/3" },
+  { id:"tenor",    name:"Tenor Clef",    vf:"tenor",      bottom:"d/3" },
+  { id:"baritone", name:"Baritone Clef", vf:"baritone-f", bottom:"b/2" },
+];
+const NLEVELS = 12;
+let progress = JSON.parse(localStorage.getItem("sr.progress") || "null") || {};   // {modeId: highest level beaten}
+let powerEarned = +(localStorage.getItem("sr.power") || 0);                        // superpowers unlocked (0..10)
+let modeId = localStorage.getItem("sr.mode") || "treble";
+const beaten = m => progress[m] || 0;
+const currentLevel = m => Math.min(NLEVELS, beaten(m) + 1);                        // next level to beat
+let activeLevel = currentLevel(modeId);
+const LADDER = ["c","d","e","f","g","a","b"];
+function stepKey(key, n) { const [L, o] = key.split("/"); const idx = LADDER.indexOf(L) + 7 * (+o) + n; return LADDER[((idx % 7) + 7) % 7] + "/" + Math.floor(idx / 7); }
+function levelCfg(L) {
+  const tiers = [
+    { span:"few",    accid:"none"   }, { span:"staff",  accid:"none"   }, { span:"ledger", accid:"none"   },
+    { span:"ledger", accid:"none"   }, { span:"ledger", accid:"none"   }, { span:"ledger", accid:"sharps" },
+    { span:"ledger", accid:"sharps" }, { span:"wide",   accid:"flats"  }, { span:"wide",   accid:"flats"  },
+    { span:"wide",   accid:"all"    }, { span:"wide",   accid:"micro"  }, { span:"wide",   accid:"micro"  },
+  ];
+  return Object.assign({ N: 5 + L, bpm: 48 + L * 7 }, tiers[Math.min(L, NLEVELS) - 1]);
+}
 
-let N = 10;              // notes per sequence — grows by 5 each clean round
+let N = 8;
 const SPACING = 92;
 const FAILX = 58;
-const LEADIN = 2;        // notes of lead before the first reaches the deadline (closer = sooner)
+const LEADIN = 2;        // notes of lead before the first reaches the deadline
 const SVG_H = 240, STAVE_Y = 96;
-const NOTE_BEATS = 2;    // half notes (2x the whole-note speed). gap between notes = 60*NOTE_BEATS/bpm
+const NOTE_BEATS = 2;    // half notes (gap between notes = 60*NOTE_BEATS/bpm)
+let BASE = 72;           // starting tempo for the active level
+const TMIN = 34, TMAX = 170, COMFORT = 4, LEADK = 13, WRONG_PEN = 22, PEN_DECAY = 0.6;
 
-// adaptive tempo (musical MM). time between notes crossing the line = 60*NOTE_BEATS/bpm.
-const BASE = 72, TMIN = 34, TMAX = 170;
-const COMFORT = 4, LEADK = 13, WRONG_PEN = 22, PEN_DECAY = 0.6;
+function noteFreqAcc(n) { let f = Tunings.noteFreq(n.key.replace("/", ""));
+  if (n.acc === "#") f *= Math.pow(2, 1/12); else if (n.acc === "b") f /= Math.pow(2, 1/12);
+  else if (n.acc === "+") f *= Math.pow(2, 0.5/12); else if (n.acc === "d") f /= Math.pow(2, 0.5/12); return f; }
+function notePc(n) { const base = { c:0,d:2,e:4,f:5,g:7,a:9,b:11 }[n.letter];
+  return ((base + (n.acc === "#" ? 1 : n.acc === "b" ? -1 : 0)) % 12 + 12) % 12; }
 
 let notes = [];
 let activeIdx = 0, missed = 0;
@@ -153,9 +201,20 @@ function pcOf(noteKey) {       // 'c#/4' -> pitch class 0..11
 function baseOffset() { return FAILX + LEADIN * SPACING - (notes[0] ? notes[0].xRel : 20); }
 function screenX(i) { return notes[i].xRel + baseOffset() - scrollX; }
 
-function makeSequence() {
-  notes = [];
-  for (let i = 0; i < N; i++) notes.push({ key: POOL[(Math.random() * POOL.length) | 0], xRel: 0, y: 0, state: "pending" });
+function genSequence() {
+  const m = MODES.find(x => x.id === modeId), cfg = levelCfg(activeLevel);
+  const ranges = { few:[2,6], staff:[0,8], ledger:[-3,11], wide:[-6,14] };
+  const [lo, hi] = ranges[cfg.span]; const pool = [];
+  for (let s = lo; s <= hi; s++) pool.push(stepKey(m.bottom, s));
+  N = cfg.N; BASE = cfg.bpm; notes = [];
+  for (let i = 0; i < N; i++) {
+    const key = pool[(Math.random() * pool.length) | 0]; let acc = "";
+    if (cfg.accid === "sharps" && Math.random() < 0.4) acc = "#";
+    else if (cfg.accid === "flats" && Math.random() < 0.45) acc = Math.random() < 0.5 ? "b" : "#";
+    else if (cfg.accid === "all" && Math.random() < 0.5) acc = Math.random() < 0.5 ? "#" : "b";
+    else if (cfg.accid === "micro" && Math.random() < 0.5) acc = Math.random() < 0.5 ? "+" : "d";
+    notes.push({ key, acc, letter: key[0], xRel: 0, y: 0, state: "pending" });
+  }
   activeIdx = 0; missed = 0;
 }
 
@@ -166,7 +225,7 @@ function renderStaff() {
   r.resize(w, SVG_H);
   const ctx = r.getContext();
   const stave = new VF.Stave(8, STAVE_Y, w - 16);
-  stave.addClef("treble");
+  stave.addClef((MODES.find(x => x.id === modeId) || {}).vf || "treble");
   stave.setContext(ctx).draw();
 }
 
@@ -178,8 +237,10 @@ function renderNotes() {
   const ctx = r.getContext();
   const stave = new VF.Stave(0, STAVE_Y, width);   // positioning only — not drawn
   stave.setContext(ctx);
+  const clef = (MODES.find(x => x.id === modeId) || {}).vf || "treble";
   const dur = NOTE_BEATS >= 4 ? "w" : "h";
-  const sn = notes.map(n => new VF.StaveNote({ keys: [n.key], duration: dur, clef: "treble" }));
+  const sn = notes.map(n => { const s = new VF.StaveNote({ keys: [n.key], duration: dur, clef });
+    if (n.acc && n.acc !== "n") s.addModifier(new VF.Accidental(n.acc), 0); return s; });
   const voice = new VF.Voice({ num_beats: N * NOTE_BEATS, beat_value: 4 }).setStrict(false);
   voice.addTickables(sn);
   new VF.Formatter().joinVoices([voice]).format([voice], N * SPACING);
@@ -208,17 +269,16 @@ function paint() {
   } else ringEl.style.display = "none";
 }
 
-function judge(correct, pressedKey) {
+function judge(correct, wrongFreq) {
   const n = notes[activeIdx];
   if (correct) {
     n.state = "correct"; placeDot(activeIdx);
-    Synth.playFreq(Tunings.noteFreq(n.key.replace("/", "")), { timbre: "mallet", decay: 0.5, gain: 0.2 });
+    Synth.playFreq(noteFreqAcc(n), { timbre: "mallet", decay: 0.5, gain: 0.2 });
     activeIdx++;
     if (activeIdx >= N) finish();
   } else {
     penalty += WRONG_PEN;
-    // sound the pitch they actually pressed, but "wrong" (sour but recognizable)
-    if (pressedKey) Synth.playFreq(Tunings.noteFreq(pressedKey.replace("/", "")), { timbre: "wrong", decay: 0.5, gain: 0.18 });
+    if (wrongFreq) Synth.playFreq(wrongFreq, { timbre: "wrong", decay: 0.5, gain: 0.18 });   // sour but recognizable
     ringEl.animate([{ borderColor: "rgba(220,70,70,0.95)" }, { borderColor: "rgba(40,110,220,0.85)" }], { duration: 240 });
   }
   updateStats();
@@ -255,7 +315,7 @@ function start() {
   stopFinale();
   elMsg.style.display = "none";
   fbEl.querySelectorAll(".dot").forEach(d => d.remove());
-  makeSequence();
+  genSequence();
   renderStaff(); renderNotes();
   notes.forEach(n => n.dot = null);
   scrollX = 0; bpm = BASE; penalty = 0; lastT = Synth.now();
@@ -269,27 +329,34 @@ function finish() {
   running = false;
   if (raf) cancelAnimationFrame(raf);
   paint();
-  if (missed === 0) { rounds++; localStorage.setItem("sr.rounds", rounds); refreshPowers(); runFinale(); N += 5; }   // a perfect round: progress + reward grows
-  else { elMsg.textContent = `${N - missed} / ${N}`; elMsg.style.display = "flex"; }
+  if (missed === 0) {
+    if (activeLevel === currentLevel(modeId)) {        // beat the level you were due to beat -> advance + powerup
+      progress[modeId] = activeLevel;
+      localStorage.setItem("sr.progress", JSON.stringify(progress));
+      if (powerEarned < POWERS.length) { powerEarned++; localStorage.setItem("sr.power", powerEarned); }
+      buildLevelMenu(); updateCur(); renderChips();
+    }
+    runFinale();
+  } else { elMsg.textContent = `${N - missed} / ${N}`; elMsg.style.display = "flex"; }
 }
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") { stopFinale(); return; }
   if (!running || activeIdx >= N) return;
   const k = e.key.toLowerCase();
-  let correct = null, pressedKey = null;
+  const n = notes[activeIdx];
+  let correct = null, wrongFreq = null;
   if (mode === "letters") {
     if (!/^[a-g]$/.test(k)) return;
-    const oct = notes[activeIdx].key.split("/")[1];
-    pressedKey = k + "/" + oct;                       // sound it near the target octave
-    correct = (notes[activeIdx].key[0] === k);        // octave-agnostic
+    correct = (n.letter === k);                       // octave + accidental agnostic
+    wrongFreq = Tunings.noteFreq(k + "4");
   } else {
-    pressedKey = PIANO[k];
-    if (!pressedKey) return;
-    correct = (pcOf(pressedKey) === pcOf(notes[activeIdx].key));
+    const pk = PIANO[k]; if (!pk) return;
+    correct = (pcOf(pk) === notePc(n));               // pitch class incl. accidental
+    wrongFreq = Tunings.noteFreq(pk.replace("/", ""));
   }
   e.preventDefault();
-  judge(correct, pressedKey);
+  judge(correct, wrongFreq);
 });
 
 // ── visual key map ──────────────────────────────────────────────────────
@@ -314,10 +381,35 @@ function renderKeymap() {
   }
 }
 
+// ── menus / progression ────────────────────────────────────────────────
+function buildModeMenu() {
+  document.getElementById("modeSel").innerHTML =
+    MODES.map(m => `<option value="${m.id}" ${m.id === modeId ? "selected" : ""}>${m.name}</option>`).join("");
+}
+function buildLevelMenu() {
+  const sel = document.getElementById("levelSel"), cur = currentLevel(modeId);
+  sel.innerHTML = "";
+  for (let L = 1; L <= NLEVELS; L++) {
+    const o = document.createElement("option"); o.value = L; o.textContent = "Level " + L;
+    if (L > cur) o.disabled = true;                  // not beaten yet -> greyed/unplayable
+    o.selected = (L === activeLevel); sel.appendChild(o);
+  }
+}
+function updateCur() { document.getElementById("curLevel").textContent = currentLevel(modeId); }
+function previewLevel() { genSequence(); renderStaff(); renderNotes(); notes.forEach(n => n.dot = null); fbEl.querySelectorAll(".dot").forEach(d => d.remove()); paint(); updateStats(); }
+
 document.getElementById("start").onclick = start;
+document.getElementById("modeSel").onchange = (e) => { modeId = e.target.value; localStorage.setItem("sr.mode", modeId);
+  activeLevel = currentLevel(modeId); buildLevelMenu(); updateCur(); previewLevel(); };
+document.getElementById("levelSel").onchange = (e) => { activeLevel = +e.target.value; previewLevel(); };
+document.getElementById("resetAll").onclick = () => {
+  if (!confirm("Reset all game progress and powerups?")) return;
+  progress = {}; powerEarned = 0; localStorage.setItem("sr.progress", "{}"); localStorage.setItem("sr.power", "0");
+  activeLevel = 1; buildLevelMenu(); updateCur(); renderChips(); previewLevel();
+};
 document.getElementById("modebtn").onclick = () => {
   mode = mode === "letters" ? "piano" : "letters";
-  document.getElementById("modebtn").textContent = "Mode: " + mode;
+  document.getElementById("modebtn").textContent = "Keys: " + mode;
   renderKeymap();
 };
 document.getElementById("keysbtn").onclick = () => {
@@ -342,48 +434,38 @@ const EAT_DIST = 0.05, CATCH_VMAX = 0.6, DIGEST = 0.22, EJECT_VEL = 1.6;
 const SEP_R = 0.12, SEP_K = 6.0, VACUUM_R = 0.45, VACUUM_PULL = 5.0;
 function midiToName(m){ const N=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]; m=Math.round(m); return N[((m%12)+12)%12]+(Math.floor(m/12)-1); }
 
-// ── superpowers (progression: earn perfect rounds, unlock abilities) ──────
-let rounds = +(localStorage.getItem("sr.rounds") || 0);
+// ── superpowers: one unlocked per level beaten; shown as chips in the header ──
 const POWERS = [
-  { id:"transpose", name:"Pitch Transposer", impl:true,  unlock:3, on:false, interval:3, blurb:"Digested notes come out shifted by an interval." },
-  { id:"vacuum",    name:"Vacuum Mode",       impl:true,  unlock:1, on:false, blurb:"Marge's mouth becomes an attractor, pulling notes in." },
-  { id:"homing",    name:"Homing Beak",       impl:true,  unlock:2, on:false, blurb:"Auto-find — she flies straight to notes, fast." },
-  { id:"repeat",    name:"Note Repeater",     impl:false, unlock:4, on:false, blurb:"Each digested note repeats N times on the grid." },
-  { id:"swing",     name:"Swing",             impl:false, unlock:5, on:false, blurb:"Adjustable swing feel on the grid." },
-  { id:"chord",     name:"Chord Swallow",     impl:false, unlock:6, on:false, blurb:"Eat overlapping notes together as a chord." },
-  { id:"warp",      name:"Time Warp",         impl:false, unlock:7, on:false, blurb:"Speed the whole playground up or down." },
-  { id:"fx",        name:"FX Processor",      impl:false, unlock:8, on:false, blurb:"Run digested notes through audio effects." },
-  { id:"fling",     name:"Note Flinger",      impl:false, unlock:9, on:false, blurb:"Click / tap a note to fling it around." },
-  { id:"three_d",   name:"3D Mode",           impl:false, unlock:10, on:false, blurb:"Tilt the field into three dimensions." },
+  { id:"transpose", name:"Pitch Transposer", short:"Transpose", impl:true,  on:false, interval:3, blurb:"Digested notes come out shifted by an interval." },
+  { id:"vacuum",    name:"Vacuum Mode",       short:"Vacuum",    impl:true,  on:false, blurb:"Marge's mouth becomes an attractor, pulling notes in." },
+  { id:"homing",    name:"Homing Beak",       short:"Homing",    impl:true,  on:false, blurb:"Auto-find — she flies straight to notes, fast." },
+  { id:"repeat",    name:"Note Repeater",     short:"Repeat",    impl:false, on:false, blurb:"Each digested note repeats N times on the grid." },
+  { id:"swing",     name:"Swing",             short:"Swing",     impl:false, on:false, blurb:"Adjustable swing feel on the grid." },
+  { id:"chord",     name:"Chord Swallow",     short:"Chord",     impl:false, on:false, blurb:"Eat overlapping notes together as a chord." },
+  { id:"warp",      name:"Time Warp",         short:"Warp",      impl:false, on:false, blurb:"Speed the whole playground up or down." },
+  { id:"fx",        name:"FX Processor",      short:"FX",        impl:false, on:false, blurb:"Run digested notes through audio effects." },
+  { id:"fling",     name:"Note Flinger",      short:"Fling",     impl:false, on:false, blurb:"Click / tap a note to fling it around." },
+  { id:"three_d",   name:"3D Mode",           short:"3D",        impl:false, on:false, blurb:"Tilt the field into three dimensions." },
 ];
 const pow = id => POWERS.find(p => p.id === id);
-const powOn = id => { const p = pow(id); return !!(p && p.impl && rounds >= p.unlock && p.on); };
+const powOn = id => { const i = POWERS.findIndex(p => p.id === id); return i >= 0 && i < powerEarned && POWERS[i].impl && POWERS[i].on; };
 
-function buildPowers() {
-  const el = document.getElementById("powers");
-  el.innerHTML = `<div class="ptitle">Superpowers <span class="rounds"></span></div>`;
-  POWERS.forEach(p => { const r = document.createElement("div"); r.className = "prow"; r.dataset.id = p.id; r.title = p.blurb; el.appendChild(r); });
-  const onChange = (e) => {
-    const row = e.target.closest(".prow"); if (!row) return; const p = pow(row.dataset.id);
-    if (e.target.classList.contains("en")) p.on = e.target.checked;
-    if (e.target.classList.contains("iv")) { p.interval = +e.target.value; const v = row.querySelector(".ivv"); if (v) v.textContent = (p.interval > 0 ? "+" : "") + p.interval + " st"; }
-  };
-  el.addEventListener("input", onChange); el.addEventListener("change", onChange);
-  refreshPowers();
-}
-function refreshPowers() {
-  const rd = document.querySelector("#powers .rounds"); if (rd) rd.textContent = "· " + rounds + (rounds === 1 ? " round" : " rounds");
-  POWERS.forEach(p => {
-    const row = document.querySelector(`#powers .prow[data-id="${p.id}"]`); if (!row) return;
-    const unlocked = rounds >= p.unlock;
-    let html = `<span class="pname">${p.name}</span>`;
-    if (!p.impl) html += ` <span class="ptag">(not implemented)</span>`;
-    if (!unlocked) html += ` <span class="plock">🔒 ${p.unlock}</span>`;
-    else if (p.impl) {
-      html += ` <label class="pen"><input type="checkbox" class="en" ${p.on ? "checked" : ""}> on</label>`;
-      if (p.id === "transpose") html += `<input type="range" class="iv" min="-12" max="12" value="${p.interval}"><span class="ivv">${p.interval > 0 ? "+" : ""}${p.interval} st</span>`;
+function renderChips() {
+  const el = document.getElementById("powerchips"); el.innerHTML = `<span class="cur">powers ${powerEarned}/10</span>`;
+  POWERS.forEach((p, i) => {
+    const earned = i < powerEarned;
+    const chip = document.createElement("span");
+    chip.className = "chip" + (earned ? " earned" : "") + (!p.impl ? " notimpl" : "") + (earned && p.impl && p.on ? " on" : "");
+    chip.textContent = p.short + (p.impl ? "" : "*");
+    chip.title = p.name + (p.impl ? "" : " (not implemented yet)") + " — " + p.blurb + (earned ? "" : "  · locked");
+    if (earned && p.impl) chip.onclick = () => { p.on = !p.on; renderChips(); };
+    el.appendChild(chip);
+    if (p.id === "transpose" && earned && p.impl && p.on) {
+      const iv = document.createElement("input"); iv.type = "number"; iv.className = "iv"; iv.value = p.interval; iv.min = -12; iv.max = 12;
+      iv.title = "transpose interval (semitones)";
+      iv.onchange = (e) => { p.interval = +e.target.value; };
+      el.appendChild(iv);
     }
-    row.innerHTML = html; row.classList.toggle("locked", !unlocked || !p.impl);
   });
 }
 
@@ -617,8 +699,8 @@ function stopFinale() {
 }
 
 // boot
-renderKeymap(); buildPowers();
-makeSequence(); renderStaff(); renderNotes(); notes.forEach(n => n.dot = null); paint(); updateStats();
+renderKeymap(); buildModeMenu(); buildLevelMenu(); updateCur(); renderChips();
+genSequence(); renderStaff(); renderNotes(); notes.forEach(n => n.dot = null); paint(); updateStats();
 </script>
 </body>
 </html>
