@@ -23,8 +23,8 @@
   label { font-size:13px; color:#b6bcc6; display:flex; gap:8px; align-items:center; }
   #bpm { width:300px; }
 
-  .toprow { display:flex; gap:26px; align-items:flex-start; margin:0 0 16px; flex-wrap:wrap; }
-  .presets { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12.5px; color:#8b909a; }
+  .toprow { display:flex; gap:18px; align-items:center; margin:0 0 16px; flex-wrap:wrap; }
+  .presets { display:flex; align-items:center; gap:7px; flex-wrap:wrap; font-size:12.5px; color:#8b909a; }
   .pbox { width:26px; height:26px; border:1px solid #3a3f4a; background:#23262d; border-radius:6px;
           display:flex; align-items:center; justify-content:center; font-size:12px; color:#8b909a; cursor:pointer; font-variant-numeric:tabular-nums; }
   .pbox.full { background:#2f5a39; border-color:#3e7a4c; color:#cdeccd; }
@@ -144,50 +144,43 @@
 <script>
 const VF = Vex.Flow;
 
-// ── tuning systems ──────────────────────────────────────────────────────────
-const MAJOR = [0, 2, 4, 5, 7, 9, 11];
-const PCN = ["c","c","d","d","e","f","f","g","g","a","a","b"];
-const R = 261.63;                                   // ~C4 root for cents-based scales
+// ── tuning systems (each has its full note complement per octave) ────────────
+const R = 261.63;                                   // ~C4 root
+const c12 = Array.from({ length: 12 }, (_, i) => i * 100);
 const cents24 = Array.from({ length: 24 }, (_, i) => i * 50);
+const just12 = [0,111.73,203.91,315.64,386.31,498.04,590.22,701.96,813.69,884.36,1017.60,1088.27];
+const pyth12 = [0,113.685,203.91,294.135,407.82,498.045,611.73,701.955,815.64,905.865,996.09,1109.775];
+const meantone12 = [0,76.05,193.16,310.27,386.31,503.42,579.47,696.58,772.63,889.74,1006.84,1082.89];
+const werck12 = [0,90.225,192.18,294.135,390.225,498.045,588.27,696.09,792.18,888.27,996.09,1092.18];
 const partch43 = [0,21.51,53.27,84.47,111.73,150.64,165.00,182.40,203.91,231.17,266.87,294.13,315.64,347.41,386.31,
   417.51,435.08,470.78,498.04,519.55,551.32,582.51,617.49,648.68,680.45,701.96,729.22,764.92,782.49,813.69,852.59,
   884.36,905.87,933.13,968.83,996.09,1017.60,1035.00,1049.36,1088.27,1115.53,1146.73,1178.49];
 const TUNINGS = {
-  "12-TET":             { type:"et" },
-  "Just (5-limit)":     { type:"cents", scale:{ rootHz:R, cents:[0,203.91,386.31,498.04,701.96,884.36,1088.27] } },
-  "Pythagorean":        { type:"cents", scale:{ rootHz:R, cents:[0,203.91,407.82,498.045,701.955,905.865,1109.775] } },
-  "1/4-comma meantone": { type:"cents", scale:{ rootHz:R, cents:[0,193.16,386.31,503.42,696.58,889.74,1082.89] } },
-  "Werckmeister III":   { type:"cents", scale:{ rootHz:R, cents:[0,192.18,390.23,498.05,696.09,888.27,1092.18] } },
-  "24-TET":             { type:"cents", scale:{ rootHz:R, cents:cents24 } },
-  "Partch 43":          { type:"cents", scale:{ rootHz:R, cents:partch43 } },
-  "Pélog":              { type:"cents", scale: Tunings.PELOG },
-  "Sléndro":            { type:"cents", scale: Tunings.SLENDRO },
+  "12-TET":             { scale:{ rootHz:R, cents:c12 } },
+  "Just (5-limit)":     { scale:{ rootHz:R, cents:just12 } },
+  "Pythagorean":        { scale:{ rootHz:R, cents:pyth12 } },
+  "1/4-comma meantone": { scale:{ rootHz:R, cents:meantone12 } },
+  "Werckmeister III":   { scale:{ rootHz:R, cents:werck12 } },
+  "24-TET":             { scale:{ rootHz:R, cents:cents24 } },
+  "Partch 43":          { scale:{ rootHz:R, cents:partch43 } },
+  "Pélog":              { scale: Tunings.PELOG },
+  "Sléndro":            { scale: Tunings.SLENDRO },
 };
 let curTuning = "12-TET";
 let degCache = {};
-function degMidi12(deg) { const i = ((deg - 1) % 7 + 7) % 7, oct = Math.floor((deg - 1) / 7); return 60 + MAJOR[i] + 12 * oct; }
-function degFreq(deg, octOff) {
-  octOff = octOff || 0; const T = TUNINGS[curTuning];
-  if (T.type === "et") return Tunings.mtof(degMidi12(deg) + 12 * octOff);
-  return Tunings.scaleFreq(T.scale, deg, octOff);
-}
+function degFreq(deg, octOff) { return Tunings.scaleFreq(TUNINGS[curTuning].scale, deg, octOff || 0); }
 function degInfo(deg, octOff) {
   octOff = octOff || 0; const ck = curTuning + ":" + deg + ":" + octOff;
   if (degCache[ck]) return degCache[ck];
-  const T = TUNINGS[curTuning]; let info;
-  if (T.type === "et") {
-    const m = degMidi12(deg) + 12 * octOff, pc = ((m % 12) + 12) % 12, octave = Math.floor(m / 12) - 1;
-    info = { key: PCN[pc] + "/" + octave, acc: "n", cents: 0 };
-  } else info = describe(degFreq(deg, octOff));
-  degCache[ck] = info; return info;
+  const info = describe(degFreq(deg, octOff)); degCache[ck] = info; return info;
 }
-function degCount() { const T = TUNINGS[curTuning]; return T.type === "et" ? 7 : T.scale.cents.length; }
+function degCount() { return TUNINGS[curTuning].scale.cents.length; }
 
 // ── cells ─────────────────────────────────────────────────────────────────
 const CELLS = [
-  { name:"A", clef:"treble", oct: 0,  seq:[5,3,1] },
-  { name:"B", clef:"treble", oct: 0,  seq:[1,2,3,5,4] },
-  { name:"C", clef:"bass",   oct:-1, seq:[1,3,5,1,3,5], dur:8 },
+  { name:"A", clef:"treble", oct: 0,  seq:[1,5,8] },              // C E G
+  { name:"B", clef:"treble", oct: 0,  seq:[1,3,5,6,8] },          // C D E F G
+  { name:"C", clef:"bass",   oct:-1, seq:[1,5,8,1,5,8], dur:8 },  // C E G arpeggio, half notes
 ];
 const PPB = 56;
 const DUR = { 16:"w", 8:"h", 4:"q", 2:"8", 1:"16" };
@@ -240,12 +233,14 @@ function buildCell(cell, container) {
     `<span class="tag">Cell ${cell.name}</span>` +
     `<span class="len"></span><button class="mini lenm">−</button><button class="mini lenp">+</button>` +
     `<button class="mini rand" title="randomize pitches">🎲</button>` +
+    `<span class="off">clef <select class="clef"><option value="treble">treble</option><option value="alto">alto</option><option value="bass">bass</option></select>` +
+    ` 8ve <button class="mini octm">−</button><button class="mini octp">+</button></span>` +
     `<span class="off">shift <select class="unit"><option value="1">1/16</option><option value="2" selected>1/8</option>` +
     `<option value="4">1/4</option><option value="8">1/2</option></select> ` +
     `<button class="mini" data-d="-1">◀</button><span class="offval">0</span><button class="mini" data-d="1">▶</button></span>` +
     `<label class="phase">phase <input type="range" class="ph" min="-100" max="100" step="1" value="0"><span class="phval">0%</span></label>`;
   cellDiv.appendChild(head);
-  const wrap = document.createElement("div"); wrap.className = "stagewrap"; wrap.style.height = "118px";
+  const wrap = document.createElement("div"); wrap.className = "stagewrap"; wrap.style.height = "150px";
   const scroller = document.createElement("div");
   const playhead = document.createElement("div"); playhead.className = "playhead";
   const overlay = document.createElement("div"); overlay.style.cssText = "position:absolute;top:0;left:0;pointer-events:none;";
@@ -257,11 +252,15 @@ function buildCell(cell, container) {
   cell.offval = head.querySelector(".offval"); cell.lenEl = head.querySelector(".len");
   cell.unitSel = head.querySelector(".unit"); cell.phSlider = head.querySelector(".ph"); cell.phVal = head.querySelector(".phval");
 
+  cell.clefSel = head.querySelector(".clef"); cell.clefSel.value = cell.clef;
   cell.tag.onclick = () => { cell.muted = !cell.muted; cell.tag.classList.toggle("muted", cell.muted); };
   cell.unitSel.onchange = (e) => { cell.shiftUnit = +e.target.value; };
+  cell.clefSel.onchange = (e) => { cell.clef = e.target.value; drawNotation(cell); };
+  head.querySelector(".octm").onclick = () => { cell.oct--; drawNotation(cell); cell.seek = true; };
+  head.querySelector(".octp").onclick = () => { cell.oct++; drawNotation(cell); cell.seek = true; };
   head.querySelector(".rand").onclick = () => randomizeCell(cell);
   head.querySelector(".lenm").onclick = () => { if (cell.notes.length > 1) { cell.notes.pop(); if (sel.cell === cell) sel.idx = Math.min(sel.idx, cell.notes.length - 1); drawNotation(cell); cell.seek = true; } };
-  head.querySelector(".lenp").onclick = () => { const d = cell.notes.length ? cell.notes[cell.notes.length - 1].dur16 : 4; cell.notes.push({ deg: 1, dur16: d, rest: true, dyn: null }); drawNotation(cell); cell.seek = true; };
+  head.querySelector(".lenp").onclick = () => { cell.notes.push({ deg: 1, dur16: cell.shiftUnit, rest: true, dyn: null }); drawNotation(cell); cell.seek = true; };
   head.querySelectorAll("button[data-d]").forEach(b => {
     b.onclick = () => { cell.shift16 += (+b.dataset.d) * cell.shiftUnit;
       cell.offval.textContent = (cell.shift16 > 0 ? "+" : "") + cell.shift16 + "/16"; drawNotation(cell); cell.seek = true; };
@@ -297,13 +296,13 @@ function drawNotation(cell) {
   cell.scroller.innerHTML = "";
   const width = 90 + cell.beats * PPB + 30;
   const renderer = new VF.Renderer(cell.scroller, VF.Renderer.Backends.SVG);
-  renderer.resize(width, 118);
+  renderer.resize(width, 150);
   const ctx = renderer.getContext();
-  const stave = new VF.Stave(10, 12, width - 20);
+  const stave = new VF.Stave(10, 16, width - 20);
   stave.addClef(cell.clef);
   stave.setContext(ctx).draw();
 
-  const restKey = cell.clef === "bass" ? "d/3" : "b/4";
+  const restKey = cell.clef === "bass" ? "d/3" : cell.clef === "alto" ? "c/4" : "b/4";
   const notes = [];
   cell.events.forEach(ev => {
     ev.noteStart = notes.length;
@@ -451,12 +450,24 @@ function subCell() {
 // ── pitch-mapping ────────────────────────────────────────────────────────────
 function describe(freq) {
   const midi = 69 + 12 * Math.log2(freq / 440);
-  const q = Math.round(midi * 2) / 2, cents = Math.round((midi - q) * 100);
-  const semi = Math.floor(q + 1e-9), isQuarter = (q - semi) >= 0.25;
-  const ACC = ["n","#","n","#","n","n","#","n","#","n","#","n"];
-  const pc = ((semi % 12) + 12) % 12, octave = Math.floor(semi / 12) - 1;
-  let acc = ACC[pc]; if (isQuarter) acc = (acc === "#") ? "++" : "+";
-  return { key: PCN[pc] + "/" + octave, acc, cents };
+  const q = Math.round(midi * 2) / 2;                 // nearest quarter-tone
+  const cents = Math.round((midi - q) * 100);
+  // spell with the nearest letter, preferring flats / quarter-flats going up
+  const BASE = { 0:["c","n"],1:["c","#"],2:["d","n"],3:["e","b"],4:["e","n"],5:["f","n"],
+                 6:["f","#"],7:["g","n"],8:["g","#"],9:["a","n"],10:["b","b"],11:["b","n"] };
+  const ALT = { n:0, "#":1, b:-1 };
+  const ACCQ = { "-1.5":"db","-1":"b","-0.5":"d","0":"n","0.5":"+","1":"#","1.5":"++" };
+  let best = null;
+  for (const s of [Math.floor(q), Math.ceil(q)]) {
+    const pc = ((s % 12) + 12) % 12, base = BASE[pc], total = (q - s) + ALT[base[1]];
+    if (Math.abs(total) > 1.5 + 1e-6) continue;
+    if (!best || Math.abs(total) < Math.abs(best.total) - 1e-6 ||
+        (Math.abs(total) <= Math.abs(best.total) + 1e-6 && total < best.total))
+      best = { letter: base[0], total: Math.round(total * 2) / 2, octave: Math.floor(s / 12) - 1 };
+  }
+  if (!best) { const s = Math.round(q), pc = ((s % 12) + 12) % 12, base = BASE[pc];
+    best = { letter: base[0], total: ALT[base[1]], octave: Math.floor(s / 12) - 1 }; }
+  return { key: best.letter + "/" + best.octave, acc: ACCQ[String(best.total)] || "n", cents };
 }
 function renderMiniStaff(div, key, acc) {
   const r = new VF.Renderer(div, VF.Renderer.Backends.SVG); r.resize(120, 92);
@@ -466,7 +477,7 @@ function renderMiniStaff(div, key, acc) {
   VF.Formatter.FormatAndDraw(c, stave, [note]);
 }
 function buildTuningTable() {
-  const T = TUNINGS[curTuning], micro = T.type !== "et";
+  const T = TUNINGS[curTuning], micro = curTuning !== "12-TET";
   document.getElementById("tunecaption").innerHTML = micro
     ? `<b>${curTuning}</b> — notated at the <i>nearest quarter-tone</i>; cents = deviation of the exact pitch from the notated note.`
     : `<b>12-tone equal temperament</b> — standard diatonic notation, no microtones.`;
@@ -520,14 +531,14 @@ function cellHeadSync(c) {
 }
 const persistSlots = () => localStorage.setItem(SLOT_KEY, JSON.stringify(slots));
 const persistBanks = () => localStorage.setItem(BANK_KEY, JSON.stringify(banks));
-function factoryET() {
+function factoryGen(maxDeg) {            // 10 presets, simple -> complex; every cell a different length
   const out = [];
   for (let k = 1; k <= 10; k++) {
-    const cells = CELLS.map((c, ci) => {
-      const baseLen = (ci === 2 ? 2 : 3) + Math.floor(k * (ci === 2 ? 0.5 : 0.9));
+    const cells = [0, 1, 2].map(ci => {
+      const count = 2 + ci + Math.floor(k * 0.9);          // distinct per cell (ci) and grows with k
+      const span = Math.min(maxDeg, 3 + Math.floor(k * 1.5));
       const notes = [];
-      for (let i = 0; i < baseLen; i++) {
-        const span = 3 + Math.min(4, Math.floor(k / 2));
+      for (let i = 0; i < count; i++) {
         const deg = 1 + ((i * (1 + (k % 3))) % span);
         let dur = ci === 2 ? 8 : 4;
         if (ci !== 2 && k > 6 && i % 3 === 2) dur = 2;
@@ -557,8 +568,6 @@ function buildPresets() {
   const saveBtn = document.createElement("button"); saveBtn.className = "mini"; saveBtn.textContent = "save bank";
   saveBtn.onclick = () => { const n = (nameIn.value || "").trim(); if (!n) return; banks[n] = { tuning: curTuning, slots: JSON.parse(JSON.stringify(slots)) }; persistBanks(); refreshBanks(); bankSel.value = n; };
   el.appendChild(bankSel); el.appendChild(nameIn); el.appendChild(saveBtn);
-  const hint = document.createElement("span"); hint.className = "phint"; hint.textContent = "shift-click to save · click to recall";
-  el.appendChild(hint);
 }
 
 // ── dynamics tool rail ───────────────────────────────────────────────────────
@@ -582,7 +591,9 @@ const tsel = document.getElementById("tuningsel");
 tsel.innerHTML = Object.keys(TUNINGS).map(n => `<option ${n === curTuning ? "selected" : ""}>${n}</option>`).join("");
 tsel.onchange = (e) => setTuning(e.target.value);
 buildTuningTable();
-if (!banks["factory ET"]) { banks["factory ET"] = { tuning: "12-TET", slots: factoryET() }; persistBanks(); }
+banks["factory ET"] = { tuning: "12-TET", slots: factoryGen(12) };   // factory banks always refreshed
+banks["factory 24"] = { tuning: "24-TET", slots: factoryGen(24) };
+persistBanks();
 buildPresets(); buildTools();
 
 Synth.ensure();
