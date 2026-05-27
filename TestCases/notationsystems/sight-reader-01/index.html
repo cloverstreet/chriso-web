@@ -71,6 +71,16 @@
   #powers .ptag { color:#7a7f88; font-size:10.5px; } #powers .plock { color:#c9a24a; font-size:11px; }
   #powers .pen { display:flex; align-items:center; gap:3px; color:#8b909a; cursor:pointer; }
   #powers .iv { width:54px; background:#2a2e37; color:#e6e8ec; border:1px solid #3a3f4a; border-radius:5px; }
+  #leader { display:none; margin-top:16px; max-width:620px; color:#b6bcc6; font-size:13px; }
+  #leader h3 { font-size:14px; color:#e6e8ec; margin:10px 0 4px; }
+  #leader table { border-collapse:collapse; margin-top:4px; font-size:12.5px; }
+  #leader td, #leader th { border:1px solid #2f343d; padding:3px 9px; text-align:left; }
+  #rankings { position:fixed; inset:0; z-index:53; display:none; align-items:center; justify-content:center; background:rgba(8,9,12,0.82); }
+  #rankings .rcard { text-align:center; }
+  #rankings .rh { font-size:30px; font-weight:700; color:#dfeede; margin-bottom:14px; }
+  #rankings .rcols { display:flex; gap:34px; justify-content:center; flex-wrap:wrap; }
+  #rankings .rcol { font-size:13px; color:#b6bcc6; line-height:1.6; } #rankings .rcol b { color:#e6e8ec; }
+  #rankings .rsub { margin-top:16px; color:#7a7f88; font-size:12px; }
 </style>
 </head>
 <body>
@@ -82,11 +92,12 @@
       <span class="cur">to&nbsp;beat <b id="curLevel">1</b></span>
       <span class="who">player <b id="who">—</b></span>
       <button id="aboutBtn">About the levels</button>
+      <button id="leaderBtn">Leaderboard</button>
       <button id="resetAll">Reset</button>
     </div>
     <div class="controls">
       <button id="start">Play</button>
-      <span class="stat">✓ <span class="ok" id="cOk">0</span> · ✗ <span class="no" id="cNo">0</span> · missed <span class="miss" id="cMi">0</span> &nbsp;·&nbsp; <span id="prog">0 / 0</span></span>
+      <span class="stat"><span class="ok" id="cOk">0</span> correct · <span class="no" id="cNo">0</span> wrong · <span class="miss" id="cMi">0</span> missed &nbsp;·&nbsp; <span id="prog">0 / 0</span></span>
       <label>Notes <input type="number" id="notesN" min="4" max="60" value="24" style="width:54px"></label>
       <button id="modebtn">Keys: piano</button>
     </div>
@@ -101,8 +112,10 @@
 
     <div id="inst"></div>
     <div id="about"></div>
+    <div id="leader"></div>
   </div>
 
+  <div id="rankings"></div>
   <canvas id="fx"></canvas>
   <canvas id="guy"></canvas>
   <div id="fxhint">notes roam on their own — toggle a superpower (top-right) · Esc to return</div>
@@ -117,14 +130,15 @@ function idxOf(k){ const [L,o]=k.split("/"); return LADDER.indexOf(L)+7*(+o); }
 function fromIdx(i){ return LADDER[((i%7)+7)%7]+"/"+Math.floor(i/7); }
 function stepKey(k,n){ return fromIdx(idxOf(k)+n); }
 function range(lo,hi){ const a=idxOf(lo),b=idxOf(hi),out=[]; for(let i=a;i<=b;i++) out.push(fromIdx(i)); return out; }
-const PIANO = { a:"c/4", w:"c#/4", s:"d/4", e:"d#/4", d:"e/4", r:"f/4", f:"f/4", t:"f#/4", g:"g/4", y:"g#/4", h:"a/4", u:"a#/4", j:"b/4", i:"c/5", k:"c/5", o:"c#/5" };
+const PIANO = { a:"c/4", w:"c#/4", s:"d/4", e:"d#/4", d:"e/4", r:"f/4", f:"f/4", t:"f#/4", g:"g/4", y:"g#/4", h:"a/4", u:"a#/4", j:"b/4", i:"c/5", k:"c/5", o:"c#/5", l:"d/5", p:"d#/5", ";":"e/5" };
 function pcOf(k){ const m=/^([a-g])(#|b)?\//.exec(k); const base={c:0,d:2,e:4,f:5,g:7,a:9,b:11}[m[1]]; return ((base+(m[2]==="#"?1:m[2]==="b"?-1:0))%12+12)%12; }
 function notePc(n){ const base={c:0,d:2,e:4,f:5,g:7,a:9,b:11}[n.letter]; return ((base+(n.acc==="#"?1:n.acc==="b"?-1:0))%12+12)%12; }
 function noteFreqAcc(n){ let f=Tunings.noteFreq(n.key.replace("/","")); if(n.acc==="#")f*=Math.pow(2,1/12); else if(n.acc==="b")f/=Math.pow(2,1/12); return f; }
 
 // ── levels ───────────────────────────────────────────────────────────────────
-const TSLOW=56, TMED=80, TFAST=104;
-const TEMPOS=[["Slow",TSLOW],["Medium",TMED],["Fast",TFAST]];
+const TSLOW=50, TMED=80, TFAST=110;
+function tempoName(b){ return b<=54?"Largo":b<=63?"Larghetto":b<=76?"Adagio":b<=108?"Andante":b<=120?"Moderato":b<=156?"Allegro":"Presto"; }
+const TEMPOS=[TSLOW,TMED,TFAST];
 const bassPrim=["g/2","c/3","f/3","c/4"], bassRange=range("g/2","c/4"), bassLedger=range("c/2","e/4");
 const trebPrim=["c/4","e/4","g/4","c/5"], trebRange=range("c/4","f/5"), trebLedger=range("a/3","c/6");
 function L(clef,pool,bpm,accid){ return {clef,pool,bpm,accid:!!accid}; }
@@ -234,8 +248,8 @@ function buildInstrument() {
   document.getElementById("modebtn").textContent = "Keys: " + mode;
   if (mode === "piano") {
     const WK = 56, BK = 34;
-    const whites = [["a","C"],["s","D"],["d","E"],["f","F"],["g","G"],["h","A"],["j","B"],["k","C"]];
-    const blacks = [{ after:0,k:"w",n:"C♯" },{ after:1,k:"e",n:"D♯" },{ after:3,k:"t",n:"F♯" },{ after:4,k:"y",n:"G♯" },{ after:5,k:"u",n:"A♯" }];
+    const whites = [["a","C"],["s","D"],["d","E"],["f","F"],["g","G"],["h","A"],["j","B"],["k","C"],["l","D"],[";","E"]];
+    const blacks = [{ after:0,k:"w",n:"C♯" },{ after:1,k:"e",n:"D♯" },{ after:3,k:"t",n:"F♯" },{ after:4,k:"y",n:"G♯" },{ after:5,k:"u",n:"A♯" },{ after:7,k:"o",n:"C♯" },{ after:8,k:"p",n:"D♯" }];
     const p = document.createElement("div"); p.className = "piano"; p.style.width = (whites.length*WK)+"px";
     whites.forEach((w,i)=>{ const d=document.createElement("div"); d.className="wk"; d.style.cssText=`left:${i*WK}px;width:${WK}px;height:120px`;
       d.dataset.k=w[0]; d.innerHTML=`<b>${w[0].toUpperCase()}</b><span>${w[1]}</span>`; p.appendChild(d); });
@@ -282,11 +296,15 @@ function finish() {
   const total = cOk + cNo + cMi, acc = total ? Math.round(100 * cOk / total) : 0;
   const passed = (cMi === 0);
   const pl = players[player], rec = pl.plays[activeLevel] || { acc:0, bpm:0 };
-  if (passed) { rec.acc = Math.max(rec.acc, acc); rec.bpm = Math.max(rec.bpm, tempoBpm); pl.plays[activeLevel] = rec;
-    if (activeLevel === currentLevel()) pl.level = activeLevel;     // advance progression
-    savePlayers(); buildLevelMenu(); updateCur(); }
-  if (passed) runFinale();
-  else { elMsg.textContent = `missed ${cMi} — try again`; elMsg.style.display = "flex"; }
+  if (passed) {
+    rec.acc = Math.max(rec.acc, acc); rec.bpm = Math.max(rec.bpm, tempoBpm); pl.plays[activeLevel] = rec;
+    const advanced = (activeLevel === currentLevel());
+    if (advanced) pl.level = activeLevel;
+    savePlayers();
+    if (advanced && currentLevel() > activeLevel) { activeLevel = currentLevel(); tempoBpm = LEVELS[activeLevel - 1].bpm; }  // next Play starts the next level
+    buildLevelMenu(); buildTempoMenu(); updateCur();
+    runFinale();      // celebrate with the just-played notes (notes[] left intact)
+  } else { elMsg.textContent = `missed ${cMi} — try again`; elMsg.style.display = "flex"; }
 }
 
 document.addEventListener("keydown", (e) => {
@@ -310,7 +328,7 @@ function buildLevelMenu() {
 }
 function buildTempoMenu() {
   const sel = document.getElementById("tempoSel"); sel.innerHTML = "";
-  TEMPOS.forEach(([nm, v]) => { const o = document.createElement("option"); o.value = v; o.textContent = nm; o.selected = (v === tempoBpm); sel.appendChild(o); });
+  TEMPOS.forEach(v => { const o = document.createElement("option"); o.value = v; o.textContent = tempoName(v) + " · " + v; o.selected = (v === tempoBpm); sel.appendChild(o); });
 }
 function updateCur(){ document.getElementById("curLevel").textContent = currentLevel(); document.getElementById("who").textContent = player; }
 function selectLevel(i){ activeLevel = i; tempoBpm = LEVELS[i-1].bpm; buildTempoMenu();
@@ -319,20 +337,24 @@ function selectLevel(i){ activeLevel = i; tempoBpm = LEVELS[i-1].bpm; buildTempo
 function levelDesc(i){ const L = LEVELS[i-1]; const acc = L.accid ? " + sharps/flats" : "";
   const span = L.pool.length <= 4 ? "landmark notes" : (L.pool[0].toUpperCase().replace("/","") + "–" + L.pool[L.pool.length-1].toUpperCase().replace("/",""));
   return `<b>Level ${i}</b> — ${clefLabel(L.clef)}: ${span}, ${L.bpm} bpm${acc}.`; }
+function leaderRows(){ return Object.entries(players).map(([nm,p]) => { const best = Object.values(p.plays||{});
+  return { nm, level:p.level||0, acc:best.length?Math.max(...best.map(x=>x.acc)):0, fast:best.length?Math.max(...best.map(x=>x.bpm)):0 }; }); }
+function topRows(key,n){ return [...leaderRows()].sort((a,b)=>b[key]-a[key]).slice(0, n||5); }
 function leaderboardHTML(){
-  const rows = Object.entries(players).map(([nm,p]) => { const best = Object.values(p.plays||{});
-    const acc = best.length ? Math.max(...best.map(x=>x.acc)) : 0; const fast = best.length ? Math.max(...best.map(x=>x.bpm)) : 0;
-    return { nm, level:p.level||0, acc, fast }; });
-  const top = (key,unit)=> [...rows].sort((a,b)=>b[key]-a[key]).slice(0,5).map(r=>`<tr><td>${r.nm}</td><td>${r[key]}${unit||""}</td></tr>`).join("") || "<tr><td>—</td><td></td></tr>";
-  return `<h3>Leaderboard</h3><table><tr><th>highest level</th><th></th></tr>${top("level")}</table>` +
-         `<table style="margin-top:8px"><tr><th>most accurate</th><th></th></tr>${top("acc","%")}</table>` +
-         `<table style="margin-top:8px"><tr><th>fastest cleared</th><th></th></tr>${top("fast"," bpm")}</table>`;
+  const tbl=(key,unit,head)=>`<table style="margin-top:8px"><tr><th>${head}</th><th></th></tr>`+
+    (topRows(key).map(r=>`<tr><td>${r.nm}</td><td>${r[key]}${unit||""}</td></tr>`).join("") || "<tr><td>—</td><td></td></tr>")+`</table>`;
+  return tbl("level","","highest level")+tbl("acc","%","most accurate")+tbl("fast"," bpm","fastest cleared");
 }
+function leaderTop(){
+  const col=(key,unit,head)=>`<div class="rcol"><b>${head}</b><br>`+(topRows(key,3).map((r,i)=>`${i+1}. ${r.nm} — ${r[key]}${unit||""}`).join("<br>")||"—")+`</div>`;
+  return col("level","","Highest level")+col("acc","%","Most accurate")+col("fast"," bpm","Fastest");
+}
+function buildLeader(){ document.getElementById("leader").innerHTML = `<h3>Leaderboard</h3>` + leaderboardHTML(); }
 function buildAbout() {
   const el = document.getElementById("about"); const editable = (player === "ChristopherO");
   let html = `<h3>About the levels</h3><div class="lvls">`;
   for (let i = 1; i <= NLEVELS; i++) html += `<div>${levelDesc(i)}</div>`;
-  html += `</div>${leaderboardHTML()}<h3>Notes ${editable ? "(you can edit — saved on your device)" : ""}</h3>`;
+  html += `</div><h3>Notes ${editable ? "(you can edit — saved on your device)" : ""}</h3>`;
   const notesVal = localStorage.getItem("sr.aboutnotes") || "";
   if (editable) html += `<textarea id="aboutnotes">${notesVal.replace(/</g,"&lt;")}</textarea>`;
   else html += `<div style="white-space:pre-wrap;color:#9aa1ad">${notesVal ? notesVal.replace(/</g,"&lt;") : "(no notes yet)"}</div>`;
@@ -345,14 +367,41 @@ document.getElementById("levelSel").onchange = e => selectLevel(+e.target.value)
 document.getElementById("tempoSel").onchange = e => { tempoBpm = +e.target.value; };
 document.getElementById("notesN").onchange = e => { notesN = Math.max(4, Math.min(60, +e.target.value || 24)); selectLevel(activeLevel); };
 document.getElementById("modebtn").onclick = () => { mode = mode === "piano" ? "letters" : "piano"; buildInstrument(); };
-document.getElementById("aboutBtn").onclick = () => { const a = document.getElementById("about"); const open = a.style.display !== "block"; a.style.display = open ? "block" : "none"; if (open) buildAbout(); };
+document.getElementById("aboutBtn").onclick = () => { document.getElementById("leader").style.display = "none"; const a = document.getElementById("about"); const open = a.style.display !== "block"; a.style.display = open ? "block" : "none"; if (open) buildAbout(); };
+document.getElementById("leaderBtn").onclick = () => { document.getElementById("about").style.display = "none"; const a = document.getElementById("leader"); const open = a.style.display !== "block"; a.style.display = open ? "block" : "none"; if (open) buildLeader(); };
 document.getElementById("resetAll").onclick = () => { if (!confirm("Reset " + player + "'s progress?")) return;
   players[player] = { level:0, plays:{} }; savePlayers(); activeLevel = 1; buildLevelMenu(); updateCur(); selectLevel(1); };
 
 /* ───────────────── 100% finale — the note-eater playground (Marge) ──────────── */
-let fx = null, hideTimer = null;
+let fx = null, hideTimer = null, transTimer = null;
 function midiOf(key) { return Tunings.nameToMidi(key.replace("/", "")); }
-function runFinale() { renderPowers(); try { startPlayground(); } catch (e) {} }
+// the original "play all the notes" sweep — used during the transition into the playground
+function playAvantGarde() {
+  const c = Synth.context(); let t = c.currentTime + 0.1;
+  const mids = notes.map(n => midiOf(n.key)); const timbres = ["gamelan","mallet","sine"]; let step = 0.15;
+  for (let pass = 0; pass < 3; pass++) {
+    const order = pass % 2 ? [...mids].reverse() : mids;
+    order.forEach((m, i) => {
+      const oct = Math.random() < 0.3 ? (Math.random() < 0.5 ? -12 : 12) : 0;
+      const cents = (Math.random() - 0.5) * (pass === 2 ? 70 : 25);
+      const hz = 440 * Math.pow(2, (m + oct - 69) / 12 + cents / 1200);
+      Synth.playFreq(hz, { timbre: timbres[(i + pass) % 3], decay: 0.5 + Math.random() * 1.1, gain: 0.09 + Math.random() * 0.05, when: t });
+      if (Math.random() < 0.18) Synth.playFreq(hz * Math.pow(2, 3/12), { timbre: timbres[i % 3], decay: 0.8, gain: 0.06, when: t });
+      t += step; step = Math.max(0.05, step * 0.985);
+    });
+  }
+  Synth.playFreq(440 * Math.pow(2, (mids[0] - 24 - 69) / 12), { timbre: "gamelan", decay: 3.5, gain: 0.18, when: t + 0.1 });
+  return (t - c.currentTime) * 1000;
+}
+function startTransition() {
+  const rk = document.getElementById("rankings");
+  rk.innerHTML = `<div class="rcard"><div class="rh">★ Level cleared!</div><div class="rcols">${leaderTop()}</div><div class="rsub">entering the playground…</div></div>`;
+  rk.style.display = "flex";
+  const dur = playAvantGarde();
+  clearTimeout(transTimer);
+  transTimer = setTimeout(() => { rk.style.display = "none"; try { startPlayground(); } catch (e) {} }, Math.min(6500, dur + 500));
+}
+function runFinale() { renderPowers(); startTransition(); }
 const CRUISE = 1.15, CRUISE_HOMING = 3.3, SEEK = 9.0, SEEK_HOMING = 16.0;
 const EAT_DIST = 0.05, CATCH_VMAX = 0.6, DIGEST = 0.22, EJECT_VEL = 1.6;
 const SEP_R = 0.12, SEP_K = 6.0, VACUUM_R = 0.45, VACUUM_PULL = 5.0;
@@ -498,6 +547,7 @@ function drawGuy(c, x, y, face, mouth, sp, head, butt) {
 function stopFinale() {
   const cv=document.getElementById("fx"), gc=document.getElementById("guy"), hint=document.getElementById("fxhint"), pw=document.getElementById("powers");
   if(fx){ fx.stop(); fx=null; } cv.style.opacity="0"; hint.style.display="none"; pw.style.display="none";
+  clearTimeout(transTimer); document.getElementById("rankings").style.display="none";
   clearTimeout(hideTimer); hideTimer=setTimeout(()=>{ cv.style.display="none"; gc.style.display="none"; }, 1000);
 }
 
