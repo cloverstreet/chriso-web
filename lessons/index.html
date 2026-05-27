@@ -2,29 +2,56 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>lessons — chriso.org</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { background:#081818; width:100vw; height:100vh; overflow:hidden;
-         font-family:'Courier New',monospace; color:#ede3c8; }
-  canvas { display:block; position:fixed; top:0; left:0; }
+  html, body {
+    width:100vw; height:100vh; overflow:hidden;
+    touch-action:none; overscroll-behavior:none;
+    -webkit-user-select:none; user-select:none;
+  }
+  body {
+    background: radial-gradient(ellipse at 50% 56%, #122120 0%, #081414 70%, #050c0c 100%);
+    font-family:'Courier New',monospace; color:#ede3c8;
+  }
+  canvas#strings { display:block; position:fixed; inset:0; z-index:1; pointer-events:none; }
+
   #back {
     position:fixed; top:24px; left:28px;
-    font-size:.72rem;
-    letter-spacing:.14em; color:#7a7468; text-decoration:none;
-    text-transform:lowercase; transition:color .25s;
-    z-index:5;
+    font-size:.72rem; letter-spacing:.14em; color:#7a7468;
+    text-decoration:none; text-transform:lowercase; transition:color .25s; z-index:10;
   }
   #back:hover { color:#dccfae; }
-  #label {
-    position:fixed; bottom:32px; left:50%; transform:translateX(-50%);
-    font-size:.68rem;
-    letter-spacing:.22em; color:#3d3a32; text-transform:lowercase;
-    pointer-events:none;
+
+  #wordmark {
+    position:fixed; top:22px; left:50%; transform:translateX(-50%); z-index:8;
+    font-style:italic; letter-spacing:.42em; font-size:clamp(13px,1.5vw,19px);
+    color:rgba(237,227,200,0.5); text-transform:lowercase; pointer-events:none;
+    white-space:nowrap;
   }
 
-  /* ── Recommended shows teaser ─────────────────────────────── */
+  #hint {
+    position:fixed; bottom:70px; left:50%; transform:translateX(-50%); z-index:8;
+    font-size:.62rem; letter-spacing:.22em; color:rgba(237,227,200,0.4);
+    text-transform:lowercase; pointer-events:none; transition:opacity 1.2s; white-space:nowrap;
+  }
+  #hint.faded { opacity:0; }
+
+  /* The clickable lesson content — lives above the playable strings */
+  #lesson-links {
+    position:fixed; bottom:28px; left:50%; transform:translateX(-50%); z-index:10;
+    display:flex; gap:28px; align-items:baseline; flex-wrap:wrap; justify-content:center;
+    max-width:90vw;
+  }
+  #lesson-links a {
+    color:#b09a78; text-decoration:none;
+    font-size:clamp(14px,1.6vw,18px); letter-spacing:.14em; text-transform:lowercase;
+    transition:color .3s, text-shadow .3s; white-space:nowrap;
+  }
+  #lesson-links a:hover { color:#f0e0c0; text-shadow:0 0 14px rgba(220,200,160,0.5); }
+
+  /* ── Recommended shows teaser — owned by the calendar Claude; preserved ── */
   #rec-teaser {
     position:fixed; top:24px; right:28px;
     max-width: 320px;
@@ -66,86 +93,243 @@
     text-transform:lowercase;
   }
   #rec-teaser .see-all:hover { color:#dccfae; border-color:#dccfae; }
+
+  @media (max-width: 599px) {
+    #rec-teaser { max-width: 150px; font-size:.6rem; top:18px; right:14px; }
+    #back { top:16px; left:16px; }
+    #hint { bottom:74px; }
+  }
 </style>
 </head>
 <body>
-<canvas id="c"></canvas>
+<canvas id="strings"></canvas>
 <a id="back" href="/glitchpage/">← chriso.org</a>
-<div id="label">coming soon</div>
+<div id="wordmark">lessons</div>
+<div id="hint">drag across the strings · pluck to play</div>
+
+<div id="lesson-links">
+  <a href="/TestCases/notationsystems/">exploring notation systems →</a>
+</div>
 
 <aside id="rec-teaser" aria-label="Recommended shows">
   <div class="heading">recommended shows</div>
   <div id="rec-list"><!-- populated by JS --></div>
   <a class="see-all" href="/calendar/">see all ↗</a>
 </aside>
+
 <script>
-const canvas = document.getElementById('c');
-const ctx    = canvas.getContext('2d');
-const off    = document.createElement('canvas');
-const octx   = off.getContext('2d');
+// ════════════════════════════════════════════════════════════════════════
+// /lessons/ — a playable string instrument (front page)
+// ════════════════════════════════════════════════════════════════════════
+// A row of pluckable strings. Drag across them → a glissando (instant
+// satisfaction); pluck them one at a time, with dynamics from how fast you
+// cross → melodies / chords (room for virtuosity). Sound is Karplus-Strong:
+// a noise burst injected into a tuned delay+lowpass feedback loop, which
+// rings and decays like a real plucked string — sonically distinct from the
+// granular / drone / particle front pages. Tuning is A-minor pentatonic so
+// any combination sounds good. The recommended-shows teaser (calendar
+// Claude's) is preserved untouched. Follows the front-page audio standards:
+// gesture-unlock with resume(), and fade+suspend when back-grounded.
+// ════════════════════════════════════════════════════════════════════════
+
+const cv  = document.getElementById('strings');
+const ctx = cv.getContext('2d');
+const dpr = Math.min(window.devicePixelRatio || 1, 2);
+let W, H;
+
+// A-minor pentatonic, low enough that every delay period clears the Web
+// Audio feedback-loop quantum (so the strings stay in tune): A2 C3 D3 E3 G3
+// A3 C4 D4 E4.
+const FREQS = [110.0, 130.81, 146.83, 164.81, 196.0, 220.0, 261.63, 293.66, 329.63];
+const N = FREQS.length;
+const strings = [];   // { freq, x, amp, t0, visFreq, lastPluck, ...audio }
 
 function resize() {
-  canvas.width = off.width  = window.innerWidth;
-  canvas.height= off.height = window.innerHeight;
-  renderText();
-}
-
-function renderText() {
-  octx.clearRect(0, 0, off.width, off.height);
-  const fs = Math.min(off.width * 0.11, 110);
-  octx.font = `900 ${fs}px 'Courier New', monospace`;
-  octx.textAlign = 'center';
-  octx.textBaseline = 'middle';
-  octx.fillStyle = '#f0f0f0';
-  octx.fillText('lessons', off.width / 2, off.height / 2);
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  for (let i = 0; i < N; i++) {
+    if (!strings[i]) strings[i] = { freq: FREQS[i], amp: 0, t0: -9, visFreq: 1.6 + i * 0.35, lastPluck: 0 };
+    strings[i].x = (i + 0.5) / N * W;
+  }
 }
 resize();
 window.addEventListener('resize', resize);
 
-let energy = 0, mx = 0, my = 0, lx = 0, ly = 0;
-document.addEventListener('mousemove', e => { mx=e.clientX; my=e.clientY; });
+// ── Audio: Karplus-Strong string bank ─────────────────────────────────
+let actx = null, master = null, started = false;
+const MASTER_LEVEL = 0.34;
+let pageVisible = (document.visibilityState !== 'hidden');
+let bgHidden = false;
 
-let frame = 0;
-function loop() {
-  requestAnimationFrame(loop);
-  const vx = mx-lx, vy = my-ly; lx=mx; ly=my;
-  energy = Math.min(1, energy*0.92 + Math.sqrt(vx*vx+vy*vy)*0.004);
-  frame++;
+function startAudio() {
+  if (started) return;
+  started = true;
+  actx = new (window.AudioContext || window.webkitAudioContext)();
+  master = actx.createGain();
+  master.gain.value = MASTER_LEVEL;
+  master.connect(actx.destination);
 
-  const W = canvas.width, H = canvas.height;
-  ctx.fillStyle = 'rgba(8,24,24,0.18)';
-  ctx.fillRect(0,0,W,H);
+  // A gentle bus compressor keeps stacked plucks from clipping
+  const comp = actx.createDynamicsCompressor();
+  comp.threshold.value = -18; comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.25;
+  comp.connect(master);
 
-  const slices = Math.floor(energy * 10);
-  for (let i=0; i<slices; i++) {
-    const sy = Math.random()*H;
-    const sh = 2 + Math.random()*12;
-    const sx = (Math.random()-0.5) * energy * 60;
-    ctx.drawImage(off, 0,sy,W,sh, sx,sy,W,sh);
+  for (const s of strings) {
+    // delay → lpf → feedback → delay  (the ringing string)
+    const delay = actx.createDelay(0.05);
+    delay.delayTime.value = 1 / s.freq;
+    const lpf = actx.createBiquadFilter();
+    lpf.type = 'lowpass';
+    lpf.frequency.value = 2600;          // string damping (higher harmonics die first)
+    const fb = actx.createGain();
+    fb.gain.value = 0.986;               // decay: ~1–2 s ring
+    const out = actx.createGain();
+    out.gain.value = 0.55;
+    delay.connect(lpf); lpf.connect(fb); fb.connect(delay);
+    delay.connect(out); out.connect(comp);
+    s.delay = delay; s.lpf = lpf; s.fb = fb; s.out = out;
   }
-  // chromatic split
-  if (energy > 0.05) {
-    const ab = energy * 6;
-    ctx.globalCompositeOperation='screen';
-    ctx.globalAlpha = 0.15 * energy;
-    ctx.drawImage(off, -ab, 0);
-    ctx.drawImage(off,  ab, 0);
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation='source-over';
-  }
-  ctx.drawImage(off, 0, 0);
 }
-loop();
+
+function pluck(s, vel) {
+  if (!actx) return;
+  const now = performance.now();
+  if (now - s.lastPluck < 55) return;   // debounce a single crossing
+  s.lastPluck = now;
+
+  const v = Math.max(0.12, Math.min(1, vel));
+  // Visual response
+  s.amp = (W * 0.012) + v * (W * 0.05);
+  s.t0  = now;
+
+  if (!actx) return;
+  // Excite the loop with a short noise burst (~one period of energy)
+  const dur = Math.min(0.012, 1 / s.freq);
+  const len = Math.max(2, Math.floor(actx.sampleRate * dur));
+  const buf = actx.createBuffer(1, len, actx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1);
+  const src = actx.createBufferSource(); src.buffer = buf;
+  const g = actx.createGain(); g.gain.value = 0.25 + v * 0.75;
+  src.connect(g); g.connect(s.delay);
+  src.start(); src.stop(actx.currentTime + dur + 0.05);
+  // Harder plucks open the damping filter briefly → brighter attack
+  s.lpf.frequency.setTargetAtTime(1800 + v * 5200, actx.currentTime, 0.02);
+  s.lpf.frequency.setTargetAtTime(2600, actx.currentTime + 0.08, 0.25);
+}
+
+// ── Pointer → pluck on string-crossing (drag = glissando) ───────────────
+let lastX = -1, lastY = -1, lastT = 0;
+function handleMove(x, y) {
+  const now = performance.now();
+  const dt = Math.max(1, now - lastT);
+  const speed = (lastX >= 0) ? Math.hypot(x - lastX, y - lastY) / dt : 0;  // px/ms
+  const vel = Math.min(1, speed * 0.9 + 0.12);
+  if (lastX >= 0) {
+    for (const s of strings) {
+      const crossed = (lastX < s.x && x >= s.x) || (lastX > s.x && x <= s.x);
+      if (crossed) pluck(s, vel);
+    }
+  }
+  lastX = x; lastY = y; lastT = now;
+  fadeHint();
+}
+function pluckAt(x, y) {            // direct tap/click → pluck nearest string firmly
+  let best = strings[0], bd = 1e9;
+  for (const s of strings) { const d = Math.abs(s.x - x); if (d < bd) { bd = d; best = s; } }
+  pluck(best, 0.85);
+  fadeHint();
+}
+
+const hintEl = document.getElementById('hint');
+let hintFaded = false;
+function fadeHint() { if (!hintFaded) { hintFaded = true; hintEl.classList.add('faded'); } }
+
+// ── Render: vibrating strings (standing wave, decaying amplitude) ───────
+function draw() {
+  requestAnimationFrame(draw);
+  if (!pageVisible) return;
+  const now = performance.now();
+
+  ctx.clearRect(0, 0, W, H);
+  for (const s of strings) {
+    const age = (now - s.t0) / 1000;              // seconds since pluck
+    const env = s.amp * Math.exp(-age * 1.6);     // visual decay
+    const lit = Math.min(1, env / (W * 0.02));
+    const osc = Math.sin(2 * Math.PI * s.visFreq * age);
+
+    ctx.lineWidth = 1 + lit * 1.6;
+    const r = 200 + lit * 55, g = 175 + lit * 45, b = 130 + lit * 30;
+    ctx.strokeStyle = `rgba(${r|0},${g|0},${b|0},${0.30 + lit * 0.6})`;
+    if (lit > 0.02) { ctx.shadowColor = `rgba(${r|0},${g|0},${b|0},0.7)`; ctx.shadowBlur = 4 + lit * 16; }
+    else ctx.shadowBlur = 0;
+
+    ctx.beginPath();
+    const seg = 22;
+    for (let k = 0; k <= seg; k++) {
+      const yy = (k / seg) * H;
+      const shape = Math.sin(Math.PI * (yy / H));   // fixed at top + bottom, max in middle
+      const xx = s.x + env * shape * osc;
+      if (k === 0) ctx.moveTo(xx, yy); else ctx.lineTo(xx, yy);
+    }
+    ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
+}
+draw();
+
+// ── Input wiring (mouse + touch, via pointer events) ────────────────────
+cv.style.pointerEvents = 'none';   // strings canvas never eats events
+document.addEventListener('pointermove', e => { startAudioOnce(); handleMove(e.clientX, e.clientY); });
+document.addEventListener('pointerdown', e => {
+  startAudioOnce();
+  // Don't pluck when the gesture starts on a real link / the teaser
+  if (e.target.closest('a')) return;
+  pluckAt(e.clientX, e.clientY);
+  lastX = e.clientX; lastY = e.clientY; lastT = performance.now();
+});
+
+// ── First-gesture audio unlock (front-page standard) ────────────────────
+function startAudioOnce() {
+  startAudio();
+  if (!actx) return;
+  if (actx.state !== 'running') actx.resume();
+}
+['pointerdown','pointermove','touchstart','touchend','click','keydown'].forEach(ev =>
+  document.addEventListener(ev, startAudioOnce, { passive: true }));
+
+// ── Background fade + disable (front-page standard) ─────────────────────
+function applyBackgroundState() {
+  const hidden = (document.visibilityState === 'hidden') || !document.hasFocus();
+  pageVisible = !hidden;
+  if (hidden === bgHidden) return;
+  bgHidden = hidden;
+  if (!actx || !master) return;
+  const t = actx.currentTime;
+  master.gain.cancelScheduledValues(t);
+  master.gain.setValueAtTime(master.gain.value, t);
+  if (hidden) {
+    master.gain.linearRampToValueAtTime(0, t + 0.3);
+    setTimeout(() => { if (bgHidden && actx) actx.suspend(); }, 360);
+  } else {
+    actx.resume();
+    master.gain.linearRampToValueAtTime(MASTER_LEVEL, t + 0.4);
+  }
+}
+document.addEventListener('visibilitychange', applyBackgroundState);
+window.addEventListener('blur',  applyBackgroundState);
+window.addEventListener('focus', applyBackgroundState);
 
 // ── Recommended shows teaser — fetch from /calendar/events.json ──
+// (Preserved verbatim — owned by the calendar Claude.)
 (async () => {
   try {
     const res = await fetch('/calendar/events.json', { cache: 'no-store' });
     if (!res.ok) return;
     const data = await res.json();
     const now = Date.now();
-    // New schema uses date_start; old seed used date. De-emphasize own
-    // performances if present (christopher_performing: true). Show next 2.
     const upcoming = (data.events || [])
       .filter(e => {
         const iso = e.date_start || e.date;
@@ -167,7 +351,7 @@ loop();
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
     for (const ev of upcoming) {
-      const dateIso = ev.date_start || ev.date;     // old manual seed used 'date'
+      const dateIso = ev.date_start || ev.date;
       if (!dateIso) continue;
       const d = new Date(dateIso);
       const dateStr = d.toLocaleDateString('en-US', { month:'short', day:'numeric' }) +
