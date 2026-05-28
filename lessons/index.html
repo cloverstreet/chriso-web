@@ -159,7 +159,7 @@ window.addEventListener('resize', resize);
 
 // ── Audio: Karplus-Strong string bank ─────────────────────────────────
 let actx = null, master = null, started = false;
-const MASTER_LEVEL = 0.34;
+const MASTER_LEVEL = 0.28;
 let pageVisible = (document.visibilityState !== 'hidden');
 let bgHidden = false;
 
@@ -171,22 +171,30 @@ function startAudio() {
   master.gain.value = MASTER_LEVEL;
   master.connect(actx.destination);
 
-  // A gentle bus compressor keeps stacked plucks from clipping
+  // Hard-ish limiter on the bus — tweeter saver. Catches any transient
+  // before it reaches the speakers, independent of the loop-gain math below.
   const comp = actx.createDynamicsCompressor();
-  comp.threshold.value = -18; comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.25;
+  comp.threshold.value = -8; comp.knee.value = 0; comp.ratio.value = 20;
+  comp.attack.value = 0.002; comp.release.value = 0.12;
   comp.connect(master);
 
   for (const s of strings) {
     // delay → lpf → feedback → delay  (the ringing string)
+    // STABILITY: the loop gain must stay < 1 at EVERY frequency or the string
+    // explodes. Two things guarantee that here:
+    //   • lpf Q = 0.5 (no resonant peak — a default Q=1 lowpass peaks ~+1.2dB
+    //     above unity, which × fb pushed the loop over 1.0 and blew up).
+    //   • fb gain 0.95 → loop gain ≤ 0.95 everywhere. Decays in ~0.6–0.9 s.
     const delay = actx.createDelay(0.05);
     delay.delayTime.value = 1 / s.freq;
     const lpf = actx.createBiquadFilter();
     lpf.type = 'lowpass';
-    lpf.frequency.value = 2600;          // string damping (higher harmonics die first)
+    lpf.frequency.value = 2200;          // string damping (higher harmonics die first)
+    lpf.Q.value = 0.5;                   // ⇐ no peak; keeps filter gain ≤ 1
     const fb = actx.createGain();
-    fb.gain.value = 0.986;               // decay: ~1–2 s ring
+    fb.gain.value = 0.95;                // ⇐ loop headroom; decay ~0.6–0.9 s
     const out = actx.createGain();
-    out.gain.value = 0.55;
+    out.gain.value = 0.38;
     delay.connect(lpf); lpf.connect(fb); fb.connect(delay);
     delay.connect(out); out.connect(comp);
     s.delay = delay; s.lpf = lpf; s.fb = fb; s.out = out;
@@ -212,12 +220,13 @@ function pluck(s, vel) {
   const d = buf.getChannelData(0);
   for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1);
   const src = actx.createBufferSource(); src.buffer = buf;
-  const g = actx.createGain(); g.gain.value = 0.25 + v * 0.75;
+  const g = actx.createGain(); g.gain.value = 0.18 + v * 0.42;   // excitation only; loop never amplifies it
   src.connect(g); g.connect(s.delay);
   src.start(); src.stop(actx.currentTime + dur + 0.05);
-  // Harder plucks open the damping filter briefly → brighter attack
-  s.lpf.frequency.setTargetAtTime(1800 + v * 5200, actx.currentTime, 0.02);
-  s.lpf.frequency.setTargetAtTime(2600, actx.currentTime + 0.08, 0.25);
+  // Harder plucks open the damping filter briefly → brighter attack.
+  // (Q stays 0.5, so opening the cutoff never creates a resonant peak.)
+  s.lpf.frequency.setTargetAtTime(1500 + v * 2600, actx.currentTime, 0.02);
+  s.lpf.frequency.setTargetAtTime(2200, actx.currentTime + 0.09, 0.25);
 }
 
 // ── Pointer → pluck on string-crossing (drag = glissando) ───────────────
