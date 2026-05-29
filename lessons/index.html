@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>lessons — chriso.org</title>
+<title>lessons — the harmonic series — chriso.org</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   html, body {
@@ -12,44 +12,72 @@
     -webkit-user-select:none; user-select:none;
   }
   body {
-    background: radial-gradient(ellipse at 50% 56%, #122120 0%, #081414 70%, #050c0c 100%);
+    background: radial-gradient(ellipse at 50% 52%, #122120 0%, #081414 70%, #050c0c 100%);
     font-family:'Courier New',monospace; color:#ede3c8;
   }
   canvas#strings { display:block; position:fixed; inset:0; z-index:1; pointer-events:none; }
 
   #back {
-    position:fixed; top:24px; left:28px;
+    position:fixed; top:20px; left:24px;
     font-size:.72rem; letter-spacing:.14em; color:#7a7468;
     text-decoration:none; text-transform:lowercase; transition:color .25s; z-index:10;
   }
   #back:hover { color:#dccfae; }
 
   #wordmark {
-    position:fixed; top:22px; left:50%; transform:translateX(-50%); z-index:8;
-    font-style:italic; letter-spacing:.42em; font-size:clamp(13px,1.5vw,19px);
-    color:rgba(237,227,200,0.5); text-transform:lowercase; pointer-events:none;
-    white-space:nowrap;
+    position:fixed; top:18px; left:50%; transform:translateX(-50%); z-index:8;
+    text-align:center; pointer-events:none; white-space:nowrap;
   }
+  #wordmark .t { font-style:italic; letter-spacing:.42em; font-size:clamp(13px,1.5vw,19px);
+    color:rgba(237,227,200,0.55); text-transform:lowercase; }
+  #wordmark .s { display:block; margin-top:5px; font-size:.6rem; letter-spacing:.26em;
+    color:rgba(237,227,200,0.4); text-transform:lowercase; }
 
   #hint {
-    position:fixed; bottom:70px; left:50%; transform:translateX(-50%); z-index:8;
-    font-size:.62rem; letter-spacing:.22em; color:rgba(237,227,200,0.4);
+    position:fixed; bottom:64px; left:50%; transform:translateX(-50%); z-index:8;
+    font-size:.62rem; letter-spacing:.2em; color:rgba(237,227,200,0.4);
     text-transform:lowercase; pointer-events:none; transition:opacity 1.2s; white-space:nowrap;
   }
   #hint.faded { opacity:0; }
 
-  /* The clickable lesson content — lives above the playable strings */
   #lesson-links {
-    position:fixed; bottom:28px; left:50%; transform:translateX(-50%); z-index:10;
-    display:flex; gap:28px; align-items:baseline; flex-wrap:wrap; justify-content:center;
-    max-width:90vw;
+    position:fixed; bottom:26px; left:50%; transform:translateX(-50%); z-index:10;
+    display:flex; gap:28px; align-items:baseline; flex-wrap:wrap; justify-content:center; max-width:90vw;
   }
   #lesson-links a {
     color:#b09a78; text-decoration:none;
-    font-size:clamp(14px,1.6vw,18px); letter-spacing:.14em; text-transform:lowercase;
+    font-size:clamp(13px,1.5vw,17px); letter-spacing:.14em; text-transform:lowercase;
     transition:color .3s, text-shadow .3s; white-space:nowrap;
   }
   #lesson-links a:hover { color:#f0e0c0; text-shadow:0 0 14px rgba(220,200,160,0.5); }
+
+  /* ── Synth params panel ───────────────────────────────────────────── */
+  #synth-btn {
+    position:fixed; right:22px; bottom:22px; z-index:11;
+    appearance:none; border:1px solid rgba(220,200,160,0.18); background:rgba(0,0,0,0.4);
+    color:#8a7c64; font-family:'Courier New',monospace; font-size:11px; letter-spacing:.18em;
+    text-transform:lowercase; padding:6px 16px; border-radius:16px; cursor:pointer;
+    backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); transition:color .3s, background .3s;
+  }
+  #synth-btn:hover { color:#c8b894; }
+  #synth-btn.active { color:#f0e0c0; background:rgba(220,200,160,0.18); border-color:rgba(220,200,160,0.32); }
+  #synth-panel {
+    position:fixed; right:22px; bottom:60px; z-index:11; display:none;
+    width:248px; padding:16px 16px 14px; border-radius:14px;
+    background:rgba(8,16,16,0.86); border:1px solid rgba(220,200,160,0.16);
+    backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+    font-family:'Courier New',monospace; color:#cdbf9e;
+  }
+  #synth-panel.open { display:block; }
+  #synth-panel h4 { font-size:.66rem; letter-spacing:.2em; text-transform:lowercase;
+    color:#d9c79a; margin-bottom:12px; font-weight:400; }
+  #synth-panel .row { display:flex; align-items:center; gap:9px; margin-bottom:11px; }
+  #synth-panel .row label { font-size:.62rem; letter-spacing:.1em; width:64px; color:#9a8c70; text-transform:lowercase; }
+  #synth-panel .row input[type=range] { flex:1; height:3px; -webkit-appearance:none; appearance:none;
+    background:#2a3330; border-radius:2px; outline:none; }
+  #synth-panel .row input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:13px; height:13px;
+    border-radius:50%; background:#d9c79a; cursor:pointer; }
+  #synth-panel .row .val { font-size:.6rem; width:48px; text-align:right; color:rgba(237,227,200,0.6); }
 
   /* ── Recommended shows teaser — owned by the calendar Claude; preserved ── */
   #rec-teaser {
@@ -61,54 +89,38 @@
     z-index:5;
     pointer-events:auto;
   }
-  #rec-teaser .heading {
-    color: #e07394;
-    letter-spacing:.18em;
-    text-transform:lowercase;
-    font-weight:700;
-    font-size:.66rem;
-    margin-bottom: 10px;
-  }
-  #rec-teaser a {
-    display:block;
-    color: rgba(237,227,200,0.75);
-    text-decoration:none;
-    margin-bottom: 10px;
-    transition: color .25s;
-  }
-  #rec-teaser a:hover { color: #f2d8dd; }
-  #rec-teaser .ev-date {
-    font-size:.6rem;
-    color: rgba(237,227,200,0.45);
-    letter-spacing:.16em;
-  }
-  #rec-teaser .see-all {
-    display:inline-block;
-    margin-top:6px;
-    font-size:.62rem;
-    letter-spacing:.2em;
-    color: rgba(237,227,200,0.45);
-    border-bottom: 1px solid rgba(237,227,200,0.2);
-    padding-bottom: 2px;
-    text-transform:lowercase;
-  }
+  #rec-teaser .heading { color:#e07394; letter-spacing:.18em; text-transform:lowercase; font-weight:700; font-size:.66rem; margin-bottom:10px; }
+  #rec-teaser a { display:block; color:rgba(237,227,200,0.75); text-decoration:none; margin-bottom:10px; transition:color .25s; }
+  #rec-teaser a:hover { color:#f2d8dd; }
+  #rec-teaser .ev-date { font-size:.6rem; color:rgba(237,227,200,0.45); letter-spacing:.16em; }
+  #rec-teaser .see-all { display:inline-block; margin-top:6px; font-size:.62rem; letter-spacing:.2em;
+    color:rgba(237,227,200,0.45); border-bottom:1px solid rgba(237,227,200,0.2); padding-bottom:2px; text-transform:lowercase; }
   #rec-teaser .see-all:hover { color:#dccfae; border-color:#dccfae; }
 
   @media (max-width: 599px) {
-    #rec-teaser { max-width: 150px; font-size:.6rem; top:18px; right:14px; }
-    #back { top:16px; left:16px; }
-    #hint { bottom:74px; }
+    #rec-teaser { max-width: 132px; font-size:.58rem; top:16px; right:12px; }
+    #back { top:14px; left:12px; }
+    #synth-panel { width: 210px; }
   }
 </style>
 </head>
 <body>
 <canvas id="strings"></canvas>
 <a id="back" href="/glitchpage/">← chriso.org</a>
-<div id="wordmark">lessons</div>
-<div id="hint">drag across the strings · pluck to play</div>
+<div id="wordmark"><span class="t">lessons</span><span class="s">the harmonic series · pluck the modes</span></div>
+<div id="hint">pluck a string · drag down the column to glissando · string n vibrates in n parts</div>
 
 <div id="lesson-links">
   <a href="/TestCases/notationsystems/">exploring notation systems →</a>
+</div>
+
+<button id="synth-btn">synth</button>
+<div id="synth-panel">
+  <h4>synth</h4>
+  <div class="row"><label>decay</label><input type="range" id="p-decay" min="0.6" max="9" step="0.1" value="4"><span class="val" id="v-decay">4.0 s</span></div>
+  <div class="row"><label>brightness</label><input type="range" id="p-bright" min="600" max="9000" step="50" value="3200"><span class="val" id="v-bright">3.2k</span></div>
+  <div class="row"><label>timbre</label><input type="range" id="p-timbre" min="0" max="1" step="0.01" value="0.25"><span class="val" id="v-timbre">0.25</span></div>
+  <div class="row"><label>volume</label><input type="range" id="p-vol" min="0" max="0.5" step="0.01" value="0.26"><span class="val" id="v-vol">0.26</span></div>
 </div>
 
 <aside id="rec-teaser" aria-label="Recommended shows">
@@ -119,17 +131,16 @@
 
 <script>
 // ════════════════════════════════════════════════════════════════════════
-// /lessons/ — a playable string instrument (front page)
+// /lessons/ — the harmonic series, made playable & visible
 // ════════════════════════════════════════════════════════════════════════
-// A row of pluckable strings. Drag across them → a glissando (instant
-// satisfaction); pluck them one at a time, with dynamics from how fast you
-// cross → melodies / chords (room for virtuosity). Sound is Karplus-Strong:
-// a noise burst injected into a tuned delay+lowpass feedback loop, which
-// rings and decays like a real plucked string — sonically distinct from the
-// granular / drone / particle front pages. Tuning is A-minor pentatonic so
-// any combination sounds good. The recommended-shows teaser (calendar
-// Claude's) is preserved untouched. Follows the front-page audio standards:
-// gesture-unlock with resume(), and fade+suspend when back-grounded.
+// 16 strings tuned to integer multiples of 55 Hz (harmonic 1..16) — i.e.
+// just intonation by construction. Each string animates as a standing wave
+// with n antinodes (the Melde / "slinky" standing-wave modes): harmonic n
+// literally vibrates in n parts, which is *why* the ratios are what they
+// are. Sound is feedback-free (cannot run away). Note names + the ~ flag
+// (>12¢ off equal temperament) are computed, so you can see how the upper
+// harmonics drift from the piano (the 7th ≈ ~G, the 11th ≈ neutral, etc.).
+// Recommended-shows teaser (calendar Claude's) preserved verbatim.
 // ════════════════════════════════════════════════════════════════════════
 
 const cv  = document.getElementById('strings');
@@ -137,157 +148,187 @@ const ctx = cv.getContext('2d');
 const dpr = Math.min(window.devicePixelRatio || 1, 2);
 let W, H;
 
-// A-minor pentatonic, low enough that every delay period clears the Web
-// Audio feedback-loop quantum (so the strings stay in tune): A2 C3 D3 E3 G3
-// A3 C4 D4 E4.
-const FREQS = [110.0, 130.81, 146.83, 164.81, 196.0, 220.0, 261.63, 293.66, 329.63];
-const N = FREQS.length;
-const strings = [];   // { freq, x, amp, t0, visFreq, lastPluck, ...audio }
+const FUND = 55;               // harmonic 1 = 55 Hz = A1 (scientific pitch notation)
+const NH = 16;                 // harmonics 1..16
 
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+function noteLabel(freq) {
+  const midi  = 69 + 12 * Math.log2(freq / 440);
+  const r     = Math.round(midi);
+  const cents = Math.round((midi - r) * 100);
+  const name  = NOTE_NAMES[((r % 12) + 12) % 12] + (Math.floor(r / 12) - 1);
+  return (Math.abs(cents) > 12 ? '~' : '') + name;
+}
+
+// strings[i] is harmonic n = i+1
+const strings = [];
+for (let i = 0; i < NH; i++) {
+  const n = i + 1, freq = FUND * n;
+  strings.push({
+    n, freq, label: noteLabel(freq),
+    y: 0, amp: 0, t0: -9,
+    visRate: Math.min(6, 0.32 * n),   // mode n vibrates faster (n × fundamental, slowed + capped)
+    lastPluck: 0
+  });
+}
+
+// Layout band (clears the teaser up top + the links down low)
+let bandTop, bandBottom, xStart, xEnd;
+function layout() {
+  bandTop    = Math.max(120, H * 0.16);
+  bandBottom = H - Math.max(86, H * 0.13);
+  xStart = Math.min(120, W * 0.16);
+  xEnd   = W - 26;
+  for (let i = 0; i < NH; i++) {
+    // harmonic 1 at the bottom (low), harmonic 16 at the top (high)
+    strings[i].y = bandBottom - (i / (NH - 1)) * (bandBottom - bandTop);
+  }
+}
 function resize() {
   W = window.innerWidth; H = window.innerHeight;
   cv.width = W * dpr; cv.height = H * dpr;
   cv.style.width = W + 'px'; cv.style.height = H + 'px';
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  for (let i = 0; i < N; i++) {
-    if (!strings[i]) strings[i] = { freq: FREQS[i], amp: 0, t0: -9, visFreq: 1.6 + i * 0.35, lastPluck: 0 };
-    strings[i].x = (i + 0.5) / N * W;
-  }
+  layout();
 }
 resize();
 window.addEventListener('resize', resize);
 
-// ── Audio: Karplus-Strong string bank ─────────────────────────────────
-let actx = null, master = null, started = false, busLimiter = null;
-const MASTER_LEVEL = 0.28;
+// ── Audio: feedback-free harmonic voices (no loop → cannot run away) ────
+let actx = null, master = null, busLimiter = null, started = false;
+const MASTER_LEVEL = 0.26;
 let pageVisible = (document.visibilityState !== 'hidden');
 let bgHidden = false;
+// Adjustable params
+let pDecay = 4.0, pBright = 3200, pTimbre = 0.25, pVol = 0.26;
 
 function startAudio() {
   if (started) return;
   started = true;
   actx = new (window.AudioContext || window.webkitAudioContext)();
   master = actx.createGain();
-  master.gain.value = MASTER_LEVEL;
+  master.gain.value = pVol;
   master.connect(actx.destination);
-
-  // Hard-ish limiter on the bus — tweeter saver / backstop.
   busLimiter = actx.createDynamicsCompressor();
   busLimiter.threshold.value = -10; busLimiter.knee.value = 0; busLimiter.ratio.value = 20;
   busLimiter.attack.value = 0.002; busLimiter.release.value = 0.12;
   busLimiter.connect(master);
-  // NOTE: no persistent feedback loops. Karplus-Strong via a DelayNode
-  // feedback path kept running away across browsers, so each pluck is now a
-  // self-contained enveloped voice built in pluck() — the synthesis has no
-  // feedback anywhere and physically cannot explode.
 }
 
 function pluck(s, vel) {
   if (!actx) return;
   const now = performance.now();
-  if (now - s.lastPluck < 55) return;   // debounce a single crossing
+  if (now - s.lastPluck < 50) return;
   s.lastPluck = now;
-
   const v = Math.max(0.12, Math.min(1, vel));
-  s.amp = (W * 0.012) + v * (W * 0.05);  // visual response
+  s.amp = 1;          // normalized visual amplitude (scaled to lane in draw)
   s.t0  = now;
 
-  // ── Feedback-free plucked-string voice (cannot run away) ──────────────
-  // Harmonic partials (triangle = soft/harp-like), each with its own decay —
-  // higher partials die sooner, mimicking string damping — through a lowpass
-  // that closes over time (bright attack → mellow tail), plus a tiny noise
-  // transient for the pluck "bite". One amp envelope, exponential decay.
+  // Mostly a pure tone at the harmonic's exact frequency (so the pitch/ratio
+  // reads clearly); `timbre` adds a little of the string's own 2nd/3rd
+  // partials for warmth. No feedback anywhere.
   const t    = actx.currentTime;
-  const dur  = 1.3 + v * 0.7;
-  const peak = 0.13 + v * 0.32;
+  const dur  = pDecay * (0.75 + 0.25 * v);
+  const peak = 0.09 + v * 0.20;
 
   const amp = actx.createGain();
   amp.gain.setValueAtTime(0.0001, t);
-  amp.gain.exponentialRampToValueAtTime(peak, t + 0.004);   // fast attack
-  amp.gain.exponentialRampToValueAtTime(0.0001, t + dur);   // exponential decay
+  amp.gain.exponentialRampToValueAtTime(peak, t + 0.006);
+  amp.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
   const lp = actx.createBiquadFilter();
   lp.type = 'lowpass'; lp.Q.value = 0.7;
-  lp.frequency.setValueAtTime(1400 + v * 4200, t);          // bright attack
-  lp.frequency.exponentialRampToValueAtTime(Math.max(320, s.freq * 2.2), t + dur * 0.55);
+  lp.frequency.setValueAtTime(Math.max(s.freq * 1.2, pBright), t);
+  lp.frequency.exponentialRampToValueAtTime(Math.max(s.freq * 1.1, pBright * 0.5), t + dur * 0.6);
   lp.connect(amp); amp.connect(busLimiter);
 
-  const partials = [[1, 1.0, -3], [1, 0.7, 3], [2, 0.32, 0], [3, 0.14, 0], [4, 0.06, 0]];
+  const partials = [[1, 1.0, 0], [2, 0.18 * pTimbre, 0], [3, 0.08 * pTimbre, 0]];
   for (const [mult, a, det] of partials) {
+    if (a <= 0.0005) continue;
     const o = actx.createOscillator();
-    o.type = 'triangle';
+    o.type = 'sine';
     o.frequency.value = s.freq * mult;
     o.detune.value = det;
     const pg = actx.createGain();
     pg.gain.setValueAtTime(a, t);
-    pg.gain.exponentialRampToValueAtTime(0.0001, t + dur * (mult > 1 ? 0.5 / mult : 1));  // higher = shorter
+    pg.gain.exponentialRampToValueAtTime(0.0001, t + dur * (mult > 1 ? 0.6 / mult : 1));
     o.connect(pg); pg.connect(lp);
     o.start(t); o.stop(t + dur + 0.05);
   }
-
-  // Short pluck-attack noise transient
-  const nlen = Math.floor(actx.sampleRate * 0.006);
+  // tiny attack transient
+  const nlen = Math.floor(actx.sampleRate * 0.005);
   const nbuf = actx.createBuffer(1, nlen, actx.sampleRate);
   const nd = nbuf.getChannelData(0);
   for (let i = 0; i < nlen; i++) nd[i] = (Math.random() * 2 - 1) * (1 - i / nlen);
   const nsrc = actx.createBufferSource(); nsrc.buffer = nbuf;
-  const ng = actx.createGain(); ng.gain.value = 0.10 + v * 0.16;
+  const ng = actx.createGain(); ng.gain.value = (0.05 + v * 0.10) * (0.4 + pTimbre);
   nsrc.connect(ng); ng.connect(lp);
   nsrc.start(t); nsrc.stop(t + 0.02);
 }
 
-// ── Pointer → pluck on string-crossing (drag = glissando) ───────────────
+// ── Pointer → pluck (tap a string, or drag down/up the column) ──────────
+const hintEl = document.getElementById('hint');
+let hintFaded = false;
+function fadeHint() { if (!hintFaded) { hintFaded = true; hintEl.classList.add('faded'); } }
+
 let lastX = -1, lastY = -1, lastT = 0;
+function nearestString(y) {
+  let best = strings[0], bd = 1e9;
+  for (const s of strings) { const d = Math.abs(s.y - y); if (d < bd) { bd = d; best = s; } }
+  return best;
+}
 function handleMove(x, y) {
   const now = performance.now();
   const dt = Math.max(1, now - lastT);
-  const speed = (lastX >= 0) ? Math.hypot(x - lastX, y - lastY) / dt : 0;  // px/ms
-  const vel = Math.min(1, speed * 0.9 + 0.12);
-  if (lastX >= 0) {
+  const vel = (lastY >= 0) ? Math.min(1, Math.hypot(x - lastX, y - lastY) / dt * 0.7 + 0.1) : 0.4;
+  if (lastY >= 0 && x > xStart - 40 && x < xEnd + 40) {
     for (const s of strings) {
-      const crossed = (lastX < s.x && x >= s.x) || (lastX > s.x && x <= s.x);
+      const crossed = (lastY < s.y && y >= s.y) || (lastY > s.y && y <= s.y);
       if (crossed) pluck(s, vel);
     }
   }
   lastX = x; lastY = y; lastT = now;
   fadeHint();
 }
-function pluckAt(x, y) {            // direct tap/click → pluck nearest string firmly
-  let best = strings[0], bd = 1e9;
-  for (const s of strings) { const d = Math.abs(s.x - x); if (d < bd) { bd = d; best = s; } }
-  pluck(best, 0.85);
-  fadeHint();
-}
 
-const hintEl = document.getElementById('hint');
-let hintFaded = false;
-function fadeHint() { if (!hintFaded) { hintFaded = true; hintEl.classList.add('faded'); } }
-
-// ── Render: vibrating strings (standing wave, decaying amplitude) ───────
+// ── Render: 16 standing waves with n antinodes + labels ─────────────────
 function draw() {
   requestAnimationFrame(draw);
   if (!pageVisible) return;
   const now = performance.now();
-
   ctx.clearRect(0, 0, W, H);
+  const laneH = (bandBottom - bandTop) / (NH - 1);
+  const maxAmp = Math.min(laneH * 0.46, 26);
+  const span = xEnd - xStart;
+
   for (const s of strings) {
-    const age = (now - s.t0) / 1000;              // seconds since pluck
-    const env = s.amp * Math.exp(-age * 1.6);     // visual decay
-    const lit = Math.min(1, env / (W * 0.02));
-    const osc = Math.sin(2 * Math.PI * s.visFreq * age);
+    const age = (now - s.t0) / 1000;
+    const env = s.amp * Math.exp(-age * (1.6 / pDecay) * 2.2);   // visual decay tracks audio decay
+    const lit = Math.min(1, env);
+    const A = maxAmp * env;
+    const osc = Math.sin(2 * Math.PI * s.visRate * age);
 
+    // label: harmonic number + note name (left margin)
+    const r = 190 + lit * 60, g = 170 + lit * 50, b = 120 + lit * 40;
+    ctx.font = '600 12px "Courier New",monospace';
+    ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+    ctx.fillStyle = `rgba(${r|0},${g|0},${b|0},${0.45 + lit * 0.5})`;
+    ctx.fillText(String(s.n).padStart(2, ' '), 12, s.y);
+    ctx.font = '11px "Courier New",monospace';
+    ctx.fillStyle = `rgba(${r|0},${g|0},${b|0},${0.35 + lit * 0.5})`;
+    ctx.fillText(s.label, 42, s.y);
+
+    // the string itself — standing wave with n antinodes
     ctx.lineWidth = 1 + lit * 1.6;
-    const r = 200 + lit * 55, g = 175 + lit * 45, b = 130 + lit * 30;
-    ctx.strokeStyle = `rgba(${r|0},${g|0},${b|0},${0.30 + lit * 0.6})`;
-    if (lit > 0.02) { ctx.shadowColor = `rgba(${r|0},${g|0},${b|0},0.7)`; ctx.shadowBlur = 4 + lit * 16; }
+    ctx.strokeStyle = `rgba(${r|0},${g|0},${b|0},${0.22 + lit * 0.65})`;
+    if (lit > 0.02) { ctx.shadowColor = `rgba(${r|0},${g|0},${b|0},0.7)`; ctx.shadowBlur = 3 + lit * 14; }
     else ctx.shadowBlur = 0;
-
     ctx.beginPath();
-    const seg = 22;
+    const seg = Math.max(40, s.n * 10);
     for (let k = 0; k <= seg; k++) {
-      const yy = (k / seg) * H;
-      const shape = Math.sin(Math.PI * (yy / H));   // fixed at top + bottom, max in middle
-      const xx = s.x + env * shape * osc;
+      const xx = xStart + (k / seg) * span;
+      const shape = Math.sin(s.n * Math.PI * (k / seg));   // n half-waves → n antinodes
+      const yy = s.y + A * shape * osc;
       if (k === 0) ctx.moveTo(xx, yy); else ctx.lineTo(xx, yy);
     }
     ctx.stroke();
@@ -296,16 +337,35 @@ function draw() {
 }
 draw();
 
-// ── Input wiring (mouse + touch, via pointer events) ────────────────────
-cv.style.pointerEvents = 'none';   // strings canvas never eats events
+// ── Input wiring ────────────────────────────────────────────────────────
 document.addEventListener('pointermove', e => { startAudioOnce(); handleMove(e.clientX, e.clientY); });
 document.addEventListener('pointerdown', e => {
   startAudioOnce();
-  // Don't pluck when the gesture starts on a real link / the teaser
-  if (e.target.closest('a')) return;
-  pluckAt(e.clientX, e.clientY);
+  if (e.target.closest('a') || e.target.closest('#synth-panel') || e.target.closest('#synth-btn')) return;
+  if (e.clientY > bandTop - 30 && e.clientY < bandBottom + 30) pluck(nearestString(e.clientY), 0.85);
   lastX = e.clientX; lastY = e.clientY; lastT = performance.now();
 });
+
+// ── Synth params panel ──────────────────────────────────────────────────
+const synthBtn = document.getElementById('synth-btn');
+const synthPanel = document.getElementById('synth-panel');
+synthBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  const open = !synthPanel.classList.contains('open');
+  synthPanel.classList.toggle('open', open);
+  synthBtn.classList.toggle('active', open);
+});
+function bindParam(id, valId, fmt, set) {
+  const sl = document.getElementById(id), vEl = document.getElementById(valId);
+  const update = () => { const v = parseFloat(sl.value); set(v); vEl.textContent = fmt(v); };
+  sl.addEventListener('input', e => { e.stopPropagation(); update(); });
+  sl.addEventListener('pointerdown', e => e.stopPropagation());
+  update();
+}
+bindParam('p-decay',  'v-decay',  v => v.toFixed(1) + ' s', v => pDecay = v);
+bindParam('p-bright', 'v-bright', v => (v / 1000).toFixed(1) + 'k', v => pBright = v);
+bindParam('p-timbre', 'v-timbre', v => v.toFixed(2), v => pTimbre = v);
+bindParam('p-vol',    'v-vol',    v => v.toFixed(2), v => { pVol = v; if (master) master.gain.setTargetAtTime(v, actx.currentTime, 0.05); });
 
 // ── First-gesture audio unlock (front-page standard) ────────────────────
 function startAudioOnce() {
@@ -331,7 +391,7 @@ function applyBackgroundState() {
     setTimeout(() => { if (bgHidden && actx) actx.suspend(); }, 360);
   } else {
     actx.resume();
-    master.gain.linearRampToValueAtTime(MASTER_LEVEL, t + 0.4);
+    master.gain.linearRampToValueAtTime(pVol, t + 0.4);
   }
 }
 document.addEventListener('visibilitychange', applyBackgroundState);
