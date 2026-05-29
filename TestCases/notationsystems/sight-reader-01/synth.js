@@ -110,10 +110,11 @@ window.Synth = (function () {
     voice.gain.linearRampToValueAtTime(peak, t0 + attack);
     voice.gain.setTargetAtTime(0, t0 + attack, decay);
 
+    const wave = opts.wave || "sine";
     const oscs = [];
     for (const [ratio, amp] of partials) {
       const o = c.createOscillator();
-      o.type = "sine";
+      o.type = wave;
       o.frequency.value = hz * ratio;
       const g = c.createGain();
       g.gain.value = amp;
@@ -123,6 +124,59 @@ window.Synth = (function () {
       oscs.push(o);
     }
     return t0;
+  }
+
+  // --- Held / sustaining voice (ADSR) for instrument keys --------------
+  // noteOn returns a handle; call noteOff(handle) to release. Use this for
+  // playable keys so holding a key SUSTAINS instead of re-triggering, and
+  // pads (sustain>0) ring on until release. playFreq stays the one-shot path
+  // (metronome / wrong-note / finale sweep). opts:
+  //   {timbre, wave, gain(=peak), attack, decay(=time-const toward sustain),
+  //    sustain(0..1 fraction of peak held while gated), release(time-const)}
+  function noteOn(hz, opts) {
+    opts = opts || {};
+    const c = ensure();
+    const t0 = c.currentTime + 0.001;
+    const peak = opts.gain != null ? opts.gain : 0.22;
+    const attack = opts.attack != null ? opts.attack : 0.005;
+    const decay = opts.decay != null ? opts.decay : 0.4;
+    const sustain = Math.max(0, Math.min(1, opts.sustain != null ? opts.sustain : 0));
+    const release = opts.release != null ? opts.release : 0.12;
+    const partials = TIMBRES[opts.timbre] || TIMBRES.mallet;
+    const wave = opts.wave || "sine";
+
+    const voice = c.createGain();
+    voice.gain.value = 0;
+    voice.connect(master);
+    voice.gain.setValueAtTime(0, t0);
+    voice.gain.linearRampToValueAtTime(peak, t0 + attack);
+    voice.gain.setTargetAtTime(peak * sustain, t0 + attack, decay);
+
+    const oscs = [];
+    for (const [ratio, amp] of partials) {
+      const o = c.createOscillator();
+      o.type = wave;
+      o.frequency.value = hz * ratio;
+      const g = c.createGain();
+      g.gain.value = amp;
+      o.connect(g).connect(voice);
+      o.start(t0);
+      oscs.push(o);
+    }
+    // Safety stop so a never-released voice can't leak: struck sounds die on
+    // their own ring-down; pads get a generous cap.
+    const cap = t0 + attack + (sustain > 0.02 ? 30 : decay * 8 + 1);
+    oscs.forEach(o => o.stop(cap));
+    return { voice, oscs, release, cap, ended: false };
+  }
+  function noteOff(handle) {
+    if (!handle || handle.ended) return;
+    handle.ended = true;
+    const c = ensure();
+    const tr = c.currentTime + 0.001;
+    handle.voice.gain.setTargetAtTime(0, tr, handle.release); // glide from wherever it is
+    const end = tr + handle.release * 8 + 0.05;
+    if (end < handle.cap) handle.oscs.forEach(o => { try { o.stop(end); } catch (e) {} });
   }
 
   // Short noise/blip for "wrong answer" feedback.
@@ -148,6 +202,8 @@ window.Synth = (function () {
     ensure,
     now: () => ensure().currentTime,
     playFreq,
+    noteOn,
+    noteOff,
     buzz,
     timbres: () => Object.keys(TIMBRES),
     context: () => ensure(),

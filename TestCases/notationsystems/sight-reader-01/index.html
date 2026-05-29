@@ -73,16 +73,31 @@
   #powers .ptag { color:#7a7f88; font-size:10.5px; } #powers .plock { color:#c9a24a; font-size:11px; }
   #powers .pen { display:flex; align-items:center; gap:3px; color:#8b909a; cursor:pointer; }
   #powers .iv { width:54px; background:#2a2e37; color:#e6e8ec; border:1px solid #3a3f4a; border-radius:5px; }
-  #leader { display:none; margin-top:16px; max-width:620px; color:#b6bcc6; font-size:13px; }
-  #leader h3 { font-size:14px; color:#e6e8ec; margin:10px 0 4px; }
-  #leader table { border-collapse:collapse; margin-top:4px; font-size:12.5px; }
-  #leader td, #leader th { border:1px solid #2f343d; padding:3px 9px; text-align:left; }
   #rankings { position:fixed; inset:0; z-index:53; display:none; align-items:center; justify-content:center; background:rgba(8,9,12,0.82); }
   #rankings .rcard { text-align:center; }
   #rankings .rh { font-size:30px; font-weight:700; color:#dfeede; margin-bottom:14px; }
   #rankings .rcols { display:flex; gap:34px; justify-content:center; flex-wrap:wrap; }
   #rankings .rcol { font-size:13px; color:#b6bcc6; line-height:1.6; } #rankings .rcol b { color:#e6e8ec; }
   #rankings .rsub { margin-top:16px; color:#7a7f88; font-size:12px; }
+
+  /* ── player stats tab (profile card + tiles + timing + standings) ── */
+  .stat .tim { color:#8b909a; }
+  #stats { display:none; margin-top:16px; max-width:680px; color:#b6bcc6; font-size:13px; }
+  #stats h3 { font-size:14px; color:#e6e8ec; margin:15px 0 6px; }
+  #stats .pmeta { color:#9aa1ad; font-size:12px; }
+  .profcard { display:flex; align-items:center; gap:16px; background:#1c1f26; border:1px solid #2f343d; border-radius:12px; padding:14px 16px; }
+  .profcard .pname { font-size:20px; font-weight:700; color:#e6e8ec; }
+  .profcard .rank { margin-left:auto; text-align:center; background:#23262d; border-radius:10px; padding:7px 15px; }
+  .profcard .rank b { font-size:22px; color:#dfb24a; line-height:1; } .profcard .rank span { display:block; font-size:11px; color:#8b909a; margin-top:2px; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:8px; margin-top:8px; }
+  .tile { background:#1c1f26; border:1px solid #2f343d; border-radius:10px; padding:9px 11px; }
+  .tile .tv { font-size:19px; font-weight:700; color:#e6e8ec; } .tile .tl { font-size:11px; color:#8b909a; margin-top:2px; }
+  .tbar { display:flex; height:12px; border-radius:6px; overflow:hidden; margin-top:4px; background:#23262d; }
+  .tbar i { display:block; height:100%; } .tbar .e{background:#5a8cd8;} .tbar .o{background:#67d98b;} .tbar .l{background:#f0a06a;}
+  #stats table { border-collapse:collapse; margin-top:4px; font-size:12.5px; width:100%; max-width:520px; }
+  #stats td, #stats th { border:1px solid #2f343d; padding:3px 9px; text-align:left; }
+  #stats th { color:#8b909a; font-weight:600; }
+  #stats tr.me td { background:#222630; color:#e6e8ec; font-weight:600; }
 
   /* ── phone: ask for landscape, and compact the layout on short screens ── */
   #rotate { position:fixed; inset:0; z-index:200; display:none; flex-direction:column;
@@ -109,14 +124,15 @@
       <label>Level <select id="levelSel"></select></label>
       <label>Tempo <select id="tempoSel"></select></label>
       <span class="cur">to&nbsp;beat <b id="curLevel">1</b></span>
+      <span class="cur" title="practice-day streak">🔥&nbsp;<b id="streak">0</b></span>
       <span class="who">player <b id="who">—</b></span>
+      <button id="statsBtn">Player stats</button>
       <button id="aboutBtn">About the levels</button>
-      <button id="leaderBtn">Leaderboard</button>
       <button id="resetAll">Reset</button>
     </div>
     <div class="controls">
       <button id="start">Play</button>
-      <span class="stat"><span class="ok" id="cOk">0</span> correct · <span class="no" id="cNo">0</span> wrong · <span class="miss" id="cMi">0</span> missed &nbsp;·&nbsp; <span id="prog">0 / 0</span></span>
+      <span class="stat"><span class="ok" id="cOk">0</span> correct · <span class="no" id="cNo">0</span> wrong · <span class="miss" id="cMi">0</span> missed &nbsp;·&nbsp; <span id="prog">0 / 0</span> &nbsp;·&nbsp; <span class="tim" id="tim"></span></span>
       <label>Notes <input type="number" id="notesN" min="4" max="60" value="24" style="width:54px"></label>
       <button id="modebtn">Keys: piano</button>
     </div>
@@ -131,8 +147,8 @@
 
     <div id="instbar"><label>Sound <select id="soundSel"></select></label></div>
     <div id="inst"></div>
+    <div id="stats"></div>
     <div id="about"></div>
-    <div id="leader"></div>
   </div>
 
   <div id="rankings"></div>
@@ -187,29 +203,45 @@ let player = localStorage.getItem("sr.player") || "";
 function ensurePlayer() {
   if (!player) { player = (prompt("What's your name? (saved with your scores)") || "Player").trim() || "Player"; localStorage.setItem("sr.player", player); }
   if (!players[player]) players[player] = { level: 0, plays: {} };       // level = highest beaten
+  if (players[player].practiceMs == null) players[player].practiceMs = 0;
   savePlayers();
 }
 function savePlayers(){ localStorage.setItem("sr.players", JSON.stringify(players)); }
 const beaten = () => players[player] ? players[player].level : 0;
 const currentLevel = () => Math.min(NLEVELS, beaten() + 1);
 function powerEarned(){ const lv = beaten(); return POWER_LEVELS.filter(m => m <= lv).length; }
+// per-level + timing records (created lazily so old saves keep working)
+function ensurePlay(lvl){ const pl = players[player]; if (!pl.plays[lvl]) pl.plays[lvl] = { acc:0, bpm:0, attempts:0, passes:0, firstPass:0 }; return pl.plays[lvl]; }
+function ensureTiming(){ const pl = players[player]; if (!pl.timing) pl.timing = { n:0, sumMs:0, sumAbsMs:0, early:0, late:0, onTime:0, recent:[] }; return pl.timing; }
+function esc(s){ return String(s).replace(/[<&]/g, c => c === "<" ? "&lt;" : "&amp;"); }
+function fmtTime(ms){ const s = Math.round((ms||0)/1000); if (s < 60) return s + "s"; const m = Math.floor(s/60); if (m < 60) return m + "m " + (s%60) + "s"; return Math.floor(m/60) + "h " + (m%60) + "m"; }
+function median(arr){ if (!arr.length) return 0; const a = [...arr].sort((x,y)=>x-y); const m = a.length>>1; return a.length%2 ? a[m] : (a[m-1]+a[m])/2; }
+function playerSummary(nm){ const p = players[nm]; const plays = Object.values(p.plays||{});
+  const cleared = plays.filter(x => (x.passes||0) > 0);
+  return { nm, level:p.level||0,
+    acc: plays.length ? Math.max(...plays.map(x=>x.acc||0)) : 0,
+    fast: plays.length ? Math.max(...plays.map(x=>x.bpm||0)) : 0,
+    practiceMs: p.practiceMs||0,
+    avgAtt: cleared.length ? cleared.reduce((a,x)=>a+(x.firstPass||0),0)/cleared.length : 0,
+    tm: p.timing || { n:0, sumMs:0, sumAbsMs:0, early:0, late:0, onTime:0, recent:[] } }; }
 
 let activeLevel = 1, tempoBpm = TSLOW, notesN = 24, mode = "piano";
 
-// ── instrument voices (one synth, a dozen colors) — {timbre, decay=ring-out, gain} ──
+// ── instrument voices (ONE synth, distinct colors via waveform + ADSR) ──
+// struck (sustain 0) ring down even if held; pads (sustain>0) hold until release.
 const SOUNDS = [
-  { name:"Piano",      timbre:"piano",    decay:0.30, gain:0.20 },
-  { name:"Mallet",     timbre:"mallet",   decay:0.45, gain:0.20 },
-  { name:"Music box",  timbre:"musicbox", decay:0.55, gain:0.19 },
-  { name:"Marimba",    timbre:"marimba",  decay:0.26, gain:0.20 },
-  { name:"Vibes/bell", timbre:"bell",     decay:1.40, gain:0.16 },
-  { name:"Gamelan",    timbre:"gamelan",  decay:0.80, gain:0.16 },
-  { name:"Glass",      timbre:"glass",    decay:1.00, gain:0.17 },
-  { name:"Pluck",      timbre:"pluck",    decay:0.22, gain:0.20 },
-  { name:"E-piano",    timbre:"tine",     decay:0.60, gain:0.18 },
-  { name:"Organ",      timbre:"organ",    decay:1.60, gain:0.14 },
-  { name:"Reed",       timbre:"reed",     decay:0.70, gain:0.15 },
-  { name:"Sine",       timbre:"sine",     decay:0.60, gain:0.20 },
+  { name:"Piano",      timbre:"piano",    wave:"sine",     attack:.004, decay:0.30, sustain:0.0,  release:0.12, gain:0.20 },
+  { name:"E-piano",    timbre:"tine",     wave:"sine",     attack:.004, decay:1.10, sustain:0.10, release:0.30, gain:0.18 },
+  { name:"Music box",  timbre:"musicbox", wave:"sine",     attack:.002, decay:0.55, sustain:0.0,  release:0.12, gain:0.19 },
+  { name:"Marimba",    timbre:"marimba",  wave:"sine",     attack:.003, decay:0.26, sustain:0.0,  release:0.08, gain:0.20 },
+  { name:"Vibraphone", timbre:"bell",     wave:"sine",     attack:.003, decay:1.60, sustain:0.0,  release:0.50, gain:0.16 },
+  { name:"Gamelan",    timbre:"gamelan",  wave:"sine",     attack:.003, decay:0.90, sustain:0.0,  release:0.35, gain:0.16 },
+  { name:"Glass pad",  timbre:"glass",    wave:"sine",     attack:.05,  decay:0.80, sustain:0.45, release:0.45, gain:0.16 },
+  { name:"Pluck",      timbre:"pluck",    wave:"triangle", attack:.002, decay:0.22, sustain:0.0,  release:0.06, gain:0.20 },
+  { name:"Organ",      timbre:"organ",    wave:"sine",     attack:.012, decay:0.30, sustain:0.85, release:0.12, gain:0.13 },
+  { name:"Clarinet",   timbre:"sine",     wave:"square",   attack:.018, decay:0.30, sustain:0.80, release:0.10, gain:0.10 },
+  { name:"Strings",    timbre:"sine",     wave:"sawtooth", attack:.10,  decay:0.50, sustain:0.75, release:0.30, gain:0.10 },
+  { name:"Sine",       timbre:"sine",     wave:"sine",     attack:.006, decay:0.60, sustain:0.35, release:0.20, gain:0.20 },
 ];
 let soundIdx = Math.max(0, SOUNDS.findIndex(s => s.name === localStorage.getItem("sr.sound")));
 const curSound = () => SOUNDS[soundIdx] || SOUNDS[0];
@@ -218,9 +250,12 @@ const curSound = () => SOUNDS[soundIdx] || SOUNDS[0];
 let notes = [], activeIdx = 0, cOk = 0, cNo = 0, cMi = 0;
 let beatPos = 0, lastT = 0, lastBeat = -1, running = false, raf = null;
 let N = 24;
+let runTiming = [], practiceAccum = 0;    // this-run note timing (ms, +late/−early) + active play seconds
+const heldVoices = {};                    // id -> sustaining Synth voice handle (held key)
 const SPACING = 88, FAILX = 120, LEADIN = 4;
 let SVG_H = 230, STAVE_Y = 92;            // adapt on small/landscape-phone screens
 const GRACE_SEC = 0.10;                   // late-hit leeway past the downbeat (never need to be early)
+const ONTIME_MS = 80;                     // |error| under this counts as "on time" (not scored yet)
 
 const stage = document.getElementById("stage"), staffEl = document.getElementById("staff");
 const clipEl = document.getElementById("clip"), trackEl = document.getElementById("track");
@@ -269,20 +304,36 @@ function paint(){
     ringEl.style.left = notes[activeIdx].xRel + "px"; ringEl.style.top = notes[activeIdx].y + "px"; } else ringEl.style.display = "none";
 }
 function updateStats(){ document.getElementById("cOk").textContent = cOk; document.getElementById("cNo").textContent = cNo;
-  document.getElementById("cMi").textContent = cMi; document.getElementById("prog").textContent = Math.min(activeIdx, N) + " / " + N; }
+  document.getElementById("cMi").textContent = cMi; document.getElementById("prog").textContent = Math.min(activeIdx, N) + " / " + N;
+  const t = document.getElementById("tim");
+  if (t) { if (!runTiming.length) t.textContent = "";
+    else { const m = runTiming.reduce((a,b)=>a+b,0) / runTiming.length;
+      t.textContent = Math.abs(m) < ONTIME_MS ? "⏱ on time" : "⏱ " + Math.round(Math.abs(m)) + "ms " + (m > 0 ? "late" : "early"); } } }
 
-// ── input (physical + on-screen + touch) — always playable ───────────────────
-function pressPitch(pitchKey) {
+// ── input (physical + on-screen + touch) — always playable, held = sustained ──
+function voiceOpts(s){ return { timbre:s.timbre, wave:s.wave, attack:s.attack, decay:s.decay, sustain:s.sustain, release:s.release, gain:s.gain }; }
+// signed timing error of the active note at the moment it's correctly hit:
+// + = late (note has passed the downbeat), − = early. Stored ms, not scored yet.
+function recordTiming(){ const errMs = (FAILX - screenX(activeIdx)) / (SPACING * tempoBpm / 60) * 1000; runTiming.push(errMs); }
+function startNote(id, pitchKey) {
+  if (heldVoices[id]) return;                 // already sounding → ignore OS key-repeat / double-down
   const freq = Tunings.noteFreq(pitchKey.replace("/", "")); const s = curSound();
-  if (!running || activeIdx >= N) { Synth.playFreq(freq, { timbre: s.timbre, decay: s.decay, gain: s.gain }); return; }
-  const n = notes[activeIdx];
-  const correct = (mode === "letters") ? (pitchKey[0] === n.letter) : (pcOf(pitchKey) === notePc(n));
-  if (correct) { n.state = "correct"; placeDot(activeIdx); Synth.playFreq(noteFreqAcc(n), { timbre:s.timbre, decay:s.decay, gain:s.gain });
-    cOk++; activeIdx++; if (activeIdx >= N) finish(); }
-  else { cNo++; Synth.playFreq(freq, { timbre:"wrong", decay:0.5, gain:0.18 });
-    ringEl.animate([{ borderColor:"rgba(220,70,70,0.95)" }, { borderColor:"rgba(40,110,220,0.85)" }], { duration:220 }); }
-  updateStats();
+  if (running && activeIdx < N) {
+    const n = notes[activeIdx];
+    const correct = (mode === "letters") ? (pitchKey[0] === n.letter) : (pcOf(pitchKey) === notePc(n));
+    if (correct) {
+      recordTiming(); n.state = "correct"; placeDot(activeIdx);
+      heldVoices[id] = Synth.noteOn(noteFreqAcc(n), voiceOpts(s));
+      cOk++; activeIdx++; updateStats(); if (activeIdx >= N) finish();
+      return;
+    }
+    cNo++; Synth.playFreq(freq, { timbre:"wrong", decay:0.5, gain:0.18 });   // wrong = one-shot
+    ringEl.animate([{ borderColor:"rgba(220,70,70,0.95)" }, { borderColor:"rgba(40,110,220,0.85)" }], { duration:220 });
+    updateStats(); return;
+  }
+  heldVoices[id] = Synth.noteOn(freq, voiceOpts(s));                         // free play
 }
+function stopNote(id){ const v = heldVoices[id]; if (v) { Synth.noteOff(v); delete heldVoices[id]; } }
 function buildInstrument() {
   const el = document.getElementById("inst"); el.innerHTML = "";
   document.getElementById("modebtn").textContent = "Keys: " + mode;
@@ -305,9 +356,11 @@ function buildInstrument() {
     el.appendChild(row);
   }
   el.querySelectorAll("[data-k],[data-letter]").forEach(key=>{
-    key.addEventListener("pointerdown", (ev)=>{ ev.preventDefault();
-      const pk = key.dataset.letter ? key.dataset.letter + "/4" : PIANO[key.dataset.k];
-      key.classList.add("lit"); setTimeout(()=>key.classList.remove("lit"), 120); pressPitch(pk); });
+    const pk = () => key.dataset.letter ? key.dataset.letter + "/4" : PIANO[key.dataset.k];
+    key.addEventListener("pointerdown", (ev)=>{ ev.preventDefault(); try{ key.setPointerCapture(ev.pointerId); }catch(e){}
+      key.classList.add("lit"); startNote("p:" + ev.pointerId, pk()); });
+    const up = (ev)=>{ key.classList.remove("lit"); stopNote("p:" + ev.pointerId); };
+    key.addEventListener("pointerup", up); key.addEventListener("pointercancel", up);
   });
 }
 
@@ -315,6 +368,7 @@ function buildInstrument() {
 function metroClick(){ Synth.playFreq(1760, { timbre:"sine", decay:0.018, gain:0.07 }); }
 function loop() {
   const t = Synth.now(); let dt = t - lastT; lastT = t; if (dt < 0 || dt > 0.5) dt = 0;
+  practiceAccum += dt;                      // actual gameplay time (RAF pauses when tab hidden)
   beatPos += dt * (tempoBpm / 60);
   const b = Math.floor(beatPos);
   if (b > lastBeat) { lastBeat = b; metroClick(); }
@@ -330,38 +384,70 @@ function loop() {
   paint(); updateStats(); raf = requestAnimationFrame(loop);
 }
 function start() {
-  Synth.ensure(); stopFinale(); elMsg.style.display = "none";
+  Synth.ensure(); commitRun();                  // bank practice/timing from any prior (aborted) run
+  stopFinale(); elMsg.style.display = "none";
   fbEl.querySelectorAll(".dot").forEach(d => d.remove());
   genSequence(); renderStaff(); renderNotes(); notes.forEach(n => n.dot = null);
+  const pl = players[player]; ensurePlay(activeLevel).attempts++;
+  const today = new Date().toISOString().slice(0, 10);
+  if (pl.lastDay !== today) {                    // practice-day streak
+    const yest = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    pl.streak = (pl.lastDay === yest) ? (pl.streak || 0) + 1 : 1; pl.lastDay = today; updateCur();
+  }
+  savePlayers();
+  runTiming = []; practiceAccum = 0;
   beatPos = 0; lastBeat = -1; lastT = Synth.now(); running = true;
   if (raf) cancelAnimationFrame(raf); paint(); updateStats(); raf = requestAnimationFrame(loop);
+}
+function commitRun() {                            // fold this run's practice time + note timing into the player record
+  const pl = players[player];
+  if (practiceAccum > 0) { pl.practiceMs = (pl.practiceMs || 0) + practiceAccum * 1000; practiceAccum = 0; }
+  if (runTiming.length) {
+    const tm = ensureTiming();
+    for (const e of runTiming) {
+      tm.n++; tm.sumMs += e; tm.sumAbsMs += Math.abs(e);
+      if (e < -ONTIME_MS) tm.early++; else if (e > ONTIME_MS) tm.late++; else tm.onTime++;
+      tm.recent.push(Math.round(e)); if (tm.recent.length > 200) tm.recent.shift();
+    }
+    runTiming = [];
+  }
 }
 function finish() {
   running = false; if (raf) cancelAnimationFrame(raf); countEl.style.display = "none"; paint();
   const total = cOk + cNo + cMi, acc = total ? Math.round(100 * cOk / total) : 0;
   const passed = (cMi === 0);
-  const pl = players[player], rec = pl.plays[activeLevel] || { acc:0, bpm:0 };
+  const pl = players[player], rec = ensurePlay(activeLevel);
+  commitRun();
+  (pl.sessions = pl.sessions || []).push({ acc, lvl: activeLevel, ts: Date.now() }); if (pl.sessions.length > 30) pl.sessions.shift();
   if (passed) {
-    rec.acc = Math.max(rec.acc, acc); rec.bpm = Math.max(rec.bpm, tempoBpm); pl.plays[activeLevel] = rec;
+    rec.acc = Math.max(rec.acc, acc); rec.bpm = Math.max(rec.bpm, tempoBpm);
+    rec.passes = (rec.passes || 0) + 1; if (!rec.firstPass) rec.firstPass = rec.attempts;   // attempts to first clear
     const advanced = (activeLevel === currentLevel());
     if (advanced) pl.level = activeLevel;
     savePlayers();
     if (advanced && currentLevel() > activeLevel) { activeLevel = currentLevel(); tempoBpm = LEVELS[activeLevel - 1].bpm; }  // next Play starts the next level
     buildLevelMenu(); buildTempoMenu(); updateCur();
     runFinale();      // celebrate with the just-played notes (notes[] left intact)
-  } else { elMsg.textContent = `missed ${cMi} — try again`; elMsg.style.display = "flex"; }
+  } else { savePlayers(); elMsg.textContent = `missed ${cMi} — try again`; elMsg.style.display = "flex"; }
 }
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") { stopFinale(); return; }
   if (/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
+  if (e.repeat) { e.preventDefault(); return; }    // ignore OS auto-repeat → holding sustains, no machine-gun
   const k = e.key.toLowerCase(); let pk = null;
   if (mode === "letters") { if (!/^[a-g]$/.test(k)) return; pk = k + "/4"; }
   else { pk = PIANO[k]; if (!pk) return; }
   e.preventDefault();
   const ke = document.querySelector(`#inst [data-k="${k}"], #inst [data-letter="${k}"]`);
-  if (ke) { ke.classList.add("lit"); setTimeout(()=>ke.classList.remove("lit"), 120); }
-  pressPitch(pk);
+  if (ke) ke.classList.add("lit");
+  startNote("k:" + k, pk);
+});
+document.addEventListener("keyup", (e) => {
+  const k = e.key.toLowerCase();
+  const ke = document.querySelector(`#inst [data-k="${k}"], #inst [data-letter="${k}"]`);
+  if (ke) ke.classList.remove("lit");
+  stopNote("k:" + k);
 });
 
 // ── menus / about / leaderboard ──────────────────────────────────────────────
@@ -379,7 +465,8 @@ function buildSoundMenu() {
   const sel = document.getElementById("soundSel"); sel.innerHTML = "";
   SOUNDS.forEach((s, i) => { const o = document.createElement("option"); o.value = i; o.textContent = s.name; o.selected = (i === soundIdx); sel.appendChild(o); });
 }
-function updateCur(){ document.getElementById("curLevel").textContent = currentLevel(); document.getElementById("who").textContent = player; }
+function updateCur(){ document.getElementById("curLevel").textContent = currentLevel(); document.getElementById("who").textContent = player;
+  const s = document.getElementById("streak"); if (s) s.textContent = (players[player] && players[player].streak) || 0; }
 function selectLevel(i){ activeLevel = i; tempoBpm = LEVELS[i-1].bpm; buildTempoMenu();
   genSequence(); renderStaff(); renderNotes(); notes.forEach(n=>n.dot=null); fbEl.querySelectorAll(".dot").forEach(d=>d.remove()); paint(); updateStats(); }
 
@@ -389,16 +476,49 @@ function levelDesc(i){ const L = LEVELS[i-1]; const acc = L.accid ? " + sharps/f
 function leaderRows(){ return Object.entries(players).map(([nm,p]) => { const best = Object.values(p.plays||{});
   return { nm, level:p.level||0, acc:best.length?Math.max(...best.map(x=>x.acc)):0, fast:best.length?Math.max(...best.map(x=>x.bpm)):0 }; }); }
 function topRows(key,n){ return [...leaderRows()].sort((a,b)=>b[key]-a[key]).slice(0, n||5); }
-function leaderboardHTML(){
-  const tbl=(key,unit,head)=>`<table style="margin-top:8px"><tr><th>${head}</th><th></th></tr>`+
-    (topRows(key).map(r=>`<tr><td>${r.nm}</td><td>${r[key]}${unit||""}</td></tr>`).join("") || "<tr><td>—</td><td></td></tr>")+`</table>`;
-  return tbl("level","","highest level")+tbl("acc","%","most accurate")+tbl("fast"," bpm","fastest cleared");
-}
 function leaderTop(){
   const col=(key,unit,head)=>`<div class="rcol"><b>${head}</b><br>`+(topRows(key,3).map((r,i)=>`${i+1}. ${r.nm} — ${r[key]}${unit||""}`).join("<br>")||"—")+`</div>`;
   return col("level","","Highest level")+col("acc","%","Most accurate")+col("fast"," bpm","Fastest");
 }
-function buildLeader(){ document.getElementById("leader").innerHTML = `<h3>Leaderboard</h3>` + leaderboardHTML(); }
+function sparkline(vals,w,h){ if (vals.length < 2) return "";
+  const mn=Math.min(...vals), mx=Math.max(...vals), rng=(mx-mn)||1;
+  const pts=vals.map((v,i)=>`${(i/(vals.length-1)*w).toFixed(1)},${(h-((v-mn)/rng)*(h-4)-2).toFixed(1)}`).join(" ");
+  return `<svg width="${w}" height="${h}" style="vertical-align:middle"><polyline points="${pts}" fill="none" stroke="#67d98b" stroke-width="2"/></svg>`; }
+// Player-stats tab: Wordle-style headline tiles + a positive timing bar +
+// one trend sparkline + the leaderboard folded in (local cohort).
+function buildStats(){
+  const me = playerSummary(player);
+  const all = Object.keys(players).map(playerSummary).sort((a,b)=> b.level-a.level || b.acc-a.acc);
+  const rank = all.findIndex(r=>r.nm===player) + 1;
+  const tm = me.tm, tot = (tm.early+tm.onTime+tm.late) || 1;
+  const med = Math.round(median(tm.recent)), onPct = Math.round(100*tm.onTime/tot);
+  const slower = all.filter(r => r.nm!==player && r.fast < me.fast).length;
+  const sess = (players[player].sessions||[]).slice(-10).map(s=>s.acc);
+  let h = `<div class="profcard"><div><div class="pname">${esc(player)}</div>
+    <div class="pmeta">Level ${me.level} / ${NLEVELS} · 🔥 ${players[player].streak||0}-day streak · ${fmtTime(me.practiceMs)} practiced</div></div>
+    <div class="rank"><b>#${rank||"—"}</b><span>of ${all.length}</span></div></div>`;
+  h += `<div class="tiles">
+    <div class="tile"><div class="tv">${me.level}</div><div class="tl">Highest level</div></div>
+    <div class="tile"><div class="tv">${me.acc}%</div><div class="tl">Best accuracy</div></div>
+    <div class="tile"><div class="tv">${me.fast||"—"}</div><div class="tl">Fastest tempo (bpm)</div></div>
+    <div class="tile"><div class="tv">${fmtTime(me.practiceMs)}</div><div class="tl">Practice time</div></div></div>`;
+  h += `<h3>Timing <span class="pmeta">(not scored yet — just tracking)</span></h3>`;
+  if (tm.n) {
+    h += `<div class="tbar"><i class="e" style="width:${100*tm.early/tot}%"></i><i class="o" style="width:${100*tm.onTime/tot}%"></i><i class="l" style="width:${100*tm.late/tot}%"></i></div>
+      <div class="pmeta" style="margin-top:5px"><b style="color:#67d98b">${onPct}% on time</b> · median ${med>0?"+":""}${med}ms${med>0?" (late)":med<0?" (early)":""} · <span style="color:#5a8cd8">${tm.early} early</span> / <span style="color:#67d98b">${tm.onTime} on-time</span> / <span style="color:#f0a06a">${tm.late} late</span> · ±${ONTIME_MS}ms window, ${tm.n} notes</div>`;
+  } else h += `<div class="pmeta">Play a level — each correct note's timing gets logged here.</div>`;
+  if (sess.length >= 2) h += `<h3>Accuracy trend <span class="pmeta">(last ${sess.length})</span></h3>${sparkline(sess,180,34)} <span class="pmeta">&nbsp;${sess[0]}% → ${sess[sess.length-1]}%</span>`;
+  h += `<h3>Standings <span class="pmeta">(players on this device)</span></h3>`;
+  if (me.fast>0 && all.length>1) h += `<div class="pmeta" style="margin-bottom:5px">Faster tempo than ${slower} of ${all.length-1} other player${all.length-1===1?"":"s"}.</div>`;
+  h += `<table><tr><th>#</th><th>Player</th><th>Level</th><th>Acc</th><th>Fastest</th></tr>`;
+  all.forEach((r,i)=>{ h += `<tr class="${r.nm===player?"me":""}"><td>${i+1}</td><td>${esc(r.nm)}</td><td>${r.level}</td><td>${r.acc}%</td><td>${r.fast||"—"} bpm</td></tr>`; });
+  h += `</table>`;
+  const lvls = Object.keys(players[player].plays||{}).map(Number).sort((a,b)=>a-b);
+  if (lvls.length) { h += `<h3>Per-level</h3><table><tr><th>Lvl</th><th>Clef</th><th>Attempts</th><th>Cleared in</th><th>Best acc</th><th>Best bpm</th></tr>`;
+    lvls.forEach(l=>{ const r=players[player].plays[l]; h += `<tr><td>${l}</td><td>${clefLabel(LEVELS[l-1].clef)}</td><td>${r.attempts||0}</td><td>${r.firstPass?r.firstPass+" tries":"—"}</td><td>${r.acc||0}%</td><td>${r.bpm||"—"}</td></tr>`; });
+    h += `</table>`; }
+  document.getElementById("stats").innerHTML = h;
+}
 function buildAbout() {
   const el = document.getElementById("about"); const editable = (player === "ChristopherO");
   let html = `<h3>About the levels</h3><div class="lvls">`;
@@ -414,15 +534,25 @@ function buildAbout() {
 document.getElementById("start").onclick = start;
 stage.addEventListener("pointerdown", () => { if (!running) start(); });   // click the staff to (re)start
 document.getElementById("soundSel").onchange = e => { soundIdx = +e.target.value; localStorage.setItem("sr.sound", curSound().name);
-  const s = curSound(); Synth.playFreq(Tunings.noteFreq("c4"), { timbre:s.timbre, decay:s.decay, gain:s.gain }); };  // preview
+  e.target.blur();                                            // return focus so the keyboard plays right away
+  const v = Synth.noteOn(Tunings.noteFreq("c4"), voiceOpts(curSound())); setTimeout(()=>Synth.noteOff(v), 600); };  // preview
 document.getElementById("levelSel").onchange = e => selectLevel(+e.target.value);
 document.getElementById("tempoSel").onchange = e => { tempoBpm = +e.target.value; };
 document.getElementById("notesN").onchange = e => { notesN = Math.max(4, Math.min(60, +e.target.value || 24)); selectLevel(activeLevel); };
 document.getElementById("modebtn").onclick = () => { mode = mode === "piano" ? "letters" : "piano"; buildInstrument(); };
-document.getElementById("aboutBtn").onclick = () => { document.getElementById("leader").style.display = "none"; const a = document.getElementById("about"); const open = a.style.display !== "block"; a.style.display = open ? "block" : "none"; if (open) buildAbout(); };
-document.getElementById("leaderBtn").onclick = () => { document.getElementById("about").style.display = "none"; const a = document.getElementById("leader"); const open = a.style.display !== "block"; a.style.display = open ? "block" : "none"; if (open) buildLeader(); };
+function showPanel(which){
+  const stats = document.getElementById("stats"), about = document.getElementById("about");
+  const openStats = which === "stats" && stats.style.display !== "block";
+  const openAbout = which === "about" && about.style.display !== "block";
+  stats.style.display = "none"; about.style.display = "none";
+  if (openStats) { buildStats(); stats.style.display = "block"; }
+  if (openAbout) { buildAbout(); about.style.display = "block"; }
+}
+document.getElementById("statsBtn").onclick = () => showPanel("stats");
+document.getElementById("aboutBtn").onclick = () => showPanel("about");
 document.getElementById("resetAll").onclick = () => { if (!confirm("Reset " + player + "'s progress?")) return;
-  players[player] = { level:0, plays:{} }; savePlayers(); activeLevel = 1; buildLevelMenu(); updateCur(); selectLevel(1); };
+  players[player] = { level:0, plays:{}, practiceMs:0 }; savePlayers(); activeLevel = 1; buildLevelMenu(); updateCur(); selectLevel(1);
+  if (document.getElementById("stats").style.display === "block") buildStats(); };
 
 /* ───────────────── 100% finale — the note-eater playground (Marge) ──────────── */
 let fx = null, hideTimer = null, transTimer = null;
