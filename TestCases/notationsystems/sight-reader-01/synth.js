@@ -69,6 +69,18 @@ window.Synth = (function () {
     mallet: [[1, 1], [2, 0.4], [3, 0.15]],
     sine: [[1, 1]],
     gamelan: [[1, 1], [2.8, 0.55], [5.25, 0.32], [8.9, 0.16], [12.1, 0.08]],
+    // Extra melodic "colors" for the sight-reader sound menu. These are just
+    // partial recipes — the page picks the decay (ring-out) and level per
+    // sound, so one engine covers a dozen voices without a dozen synths.
+    piano:    [[1, 1], [2, 0.5], [3, 0.26], [4, 0.12], [5, 0.06]],
+    musicbox: [[1, 1], [3, 0.3], [4, 0.55], [8, 0.22], [11, 0.08]],
+    bell:     [[1, 1], [2.76, 0.5], [5.4, 0.25], [8.9, 0.12], [13.3, 0.05]],
+    marimba:  [[1, 1], [3.9, 0.45], [9.6, 0.12]],
+    organ:    [[1, 1], [2, 0.55], [3, 0.4], [4, 0.28], [6, 0.15]],
+    pluck:    [[1, 1], [2, 0.3], [3, 0.16], [5, 0.07]],
+    glass:    [[1, 1], [3.4, 0.45], [6.1, 0.2], [9.8, 0.08]],
+    tine:     [[1, 1], [3, 0.4], [5, 0.14], [14, 0.04]],
+    reed:     [[1, 1], [3, 0.5], [5, 0.32], [7, 0.18], [9, 0.08]],
     // "wrong": fundamental stays dominant so the pitch is still recognizable,
     // but a beating detune + a minor-2nd cluster make it sound sour/off.
     wrong: [[1, 1], [0.99, 0.7], [1.0595, 0.6], [1.005, 0.5], [2.04, 0.18]],
