@@ -81,9 +81,10 @@ window.Synth = (function () {
     glass:    [[1, 1], [3.4, 0.45], [6.1, 0.2], [9.8, 0.08]],
     tine:     [[1, 1], [3, 0.4], [5, 0.14], [14, 0.04]],
     reed:     [[1, 1], [3, 0.5], [5, 0.32], [7, 0.18], [9, 0.08]],
-    // "wrong": fundamental stays dominant so the pitch is still recognizable,
+    // "wrong": dissonant cluster (m2 above + m2 below + tritone). Fundamental still
+    // present so pitch is recognizable, but it CLANGS. Pair with wave:"sawtooth" for buzz.
     // but a beating detune + a minor-2nd cluster make it sound sour/off.
-    wrong: [[1, 1], [0.99, 0.7], [1.0595, 0.6], [1.005, 0.5], [2.04, 0.18]],
+    wrong: [[1, 1], [1.0595, 0.85], [0.9438, 0.7], [1.4142, 0.55], [2.0, 0.18]],
   };
 
   // Play a single frequency. opts: {decay, timbre, gain, when}

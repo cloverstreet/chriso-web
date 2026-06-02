@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Sight-Reading Trainer · notation test case 01</title>
 <script src="https://cdn.jsdelivr.net/npm/vexflow@4.2.2/build/cjs/vexflow.js"></script>
-<script src="./synth.js"></script>
-<script src="./tunings.js"></script>
+<script src="./synth.js?v=3"></script>
+<script src="./tunings.js?v=3"></script>
 <style>
   :root { color-scheme: dark; }
   body { margin:0; font-family:-apple-system, system-ui, sans-serif; background:#15171c; color:#e6e8ec; padding:18px 22px; }
@@ -327,13 +327,14 @@ function startNote(id, pitchKey) {
       cOk++; activeIdx++; updateStats(); if (activeIdx >= N) finish();
       return;
     }
-    cNo++; Synth.playFreq(freq, { timbre:"wrong", decay:0.5, gain:0.18 });   // wrong = one-shot
+    cNo++; Synth.playFreq(freq, { timbre:"wrong", wave:"sawtooth", decay:0.32, gain:0.16 });   // wrong = one-shot CLANG (dissonant cluster + saw buzz)
     ringEl.animate([{ borderColor:"rgba(220,70,70,0.95)" }, { borderColor:"rgba(40,110,220,0.85)" }], { duration:220 });
     updateStats(); return;
   }
   heldVoices[id] = Synth.noteOn(freq, voiceOpts(s));                         // free play
 }
 function stopNote(id){ const v = heldVoices[id]; if (v) { Synth.noteOff(v); delete heldVoices[id]; } }
+function releaseAllHeld(){ for (const id in heldVoices) { try{ Synth.noteOff(heldVoices[id]); }catch(e){} delete heldVoices[id]; } }
 function buildInstrument() {
   const el = document.getElementById("inst"); el.innerHTML = "";
   document.getElementById("modebtn").textContent = "Keys: " + mode;
@@ -367,6 +368,7 @@ function buildInstrument() {
 // ── transport: fixed tempo, metronome, count-in ──────────────────────────────
 function metroClick(){ Synth.playFreq(1760, { timbre:"sine", decay:0.018, gain:0.07 }); }
 function loop() {
+  if (!running) return;                       // belt-and-suspenders: metronome can't fire after finish/stopFinale
   const t = Synth.now(); let dt = t - lastT; lastT = t; if (dt < 0 || dt > 0.5) dt = 0;
   practiceAccum += dt;                      // actual gameplay time (RAF pauses when tab hidden)
   beatPos += dt * (tempoBpm / 60);
@@ -414,6 +416,7 @@ function commitRun() {                            // fold this run's practice ti
 }
 function finish() {
   running = false; if (raf) cancelAnimationFrame(raf); countEl.style.display = "none"; paint();
+  releaseAllHeld();                            // kill any sustaining held key so the level-end is silent (no organ hanging into the finale, no metronome reads-as-stuck)
   const total = cOk + cNo + cMi, acc = total ? Math.round(100 * cOk / total) : 0;
   const passed = (cMi === 0);
   const pl = players[player], rec = ensurePlay(activeLevel);
@@ -731,6 +734,7 @@ function stopFinale() {
   if(fx){ fx.stop(); fx=null; } cv.style.opacity="0"; hint.style.display="none"; pw.style.display="none";
   clearTimeout(transTimer); document.getElementById("rankings").style.display="none";
   clearTimeout(hideTimer); hideTimer=setTimeout(()=>{ cv.style.display="none"; gc.style.display="none"; }, 1000);
+  releaseAllHeld();
 }
 
 // ── responsive layout (short / landscape-phone screens) ──────────────────────
