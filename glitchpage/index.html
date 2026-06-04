@@ -1053,6 +1053,14 @@ function updateAudio(dt, rawSpeed) {
 function tryStartAudio() {
   initAudio();
   if (!audioCtx) return;
+  // iOS audio-unlock trick: play a 1-sample silent buffer INSIDE the user
+  // gesture (resume() alone often isn't enough on iOS Safari — it wants
+  // actual audio playback inside the gesture's task).
+  try {
+    const _b = audioCtx.createBuffer(1, 1, 22050);
+    const _s = audioCtx.createBufferSource();
+    _s.buffer = _b; _s.connect(audioCtx.destination); _s.start(0);
+  } catch (e) {}
   audioCtx.resume().then(() => {
     if (audioCtx.state === 'running') {
       for (const ev of ['pointermove','pointerdown','touchstart','touchend','click','keydown'])

@@ -271,25 +271,35 @@ const hintEl = document.getElementById('hint');
 let hintFaded = false;
 function fadeHint() { if (!hintFaded) { hintFaded = true; hintEl.classList.add('faded'); } }
 
-let lastX = -1, lastY = -1, lastT = 0;
+// Per-pointer state so each finger is independent. (Previously one global
+// lastY shared across all pointers → on multi-touch, the apparent "movement"
+// from finger A to finger B would sweep every string between them. Now each
+// pointerId tracks itself; string-crossing only happens within ONE pointer's
+// own motion, so two fingers pluck only what they touch.)
+const pointerState = new Map();   // pointerId → { x, y, t }
 function nearestString(y) {
   let best = strings[0], bd = 1e9;
   for (const s of strings) { const d = Math.abs(s.y - y); if (d < bd) { bd = d; best = s; } }
   return best;
 }
-function handleMove(x, y) {
+function handlePointerMove(ev) {
+  const id = ev.pointerId;
+  const prev = pointerState.get(id);
   const now = performance.now();
-  const dt = Math.max(1, now - lastT);
-  const vel = (lastY >= 0) ? Math.min(1, Math.hypot(x - lastX, y - lastY) / dt * 0.7 + 0.1) : 0.4;
-  if (lastY >= 0 && x > xStart - 40 && x < xEnd + 40) {
-    for (const s of strings) {
-      const crossed = (lastY < s.y && y >= s.y) || (lastY > s.y && y <= s.y);
-      if (crossed) pluck(s, vel);
+  if (prev) {
+    const dt = Math.max(1, now - prev.t);
+    const vel = Math.min(1, Math.hypot(ev.clientX - prev.x, ev.clientY - prev.y) / dt * 0.7 + 0.1);
+    if (ev.clientX > xStart - 40 && ev.clientX < xEnd + 40) {
+      for (const s of strings) {
+        const crossed = (prev.y < s.y && ev.clientY >= s.y) || (prev.y > s.y && ev.clientY <= s.y);
+        if (crossed) pluck(s, vel);
+      }
     }
   }
-  lastX = x; lastY = y; lastT = now;
+  pointerState.set(id, { x: ev.clientX, y: ev.clientY, t: now });
   fadeHint();
 }
+function endPointer(ev) { pointerState.delete(ev.pointerId); }
 
 // ── Render: 16 standing waves with n antinodes + labels ─────────────────
 function draw() {
@@ -337,14 +347,19 @@ function draw() {
 }
 draw();
 
-// ── Input wiring ────────────────────────────────────────────────────────
-document.addEventListener('pointermove', e => { startAudioOnce(); handleMove(e.clientX, e.clientY); });
+// ── Input wiring (pointerId-aware → multi-touch plucks only touched strings) ──
+document.addEventListener('pointermove', e => { startAudioOnce(); handlePointerMove(e); });
 document.addEventListener('pointerdown', e => {
   startAudioOnce();
   if (e.target.closest('a') || e.target.closest('#synth-panel') || e.target.closest('#synth-btn')) return;
+  // Pluck the string this finger lands on. Each finger is tracked
+  // independently by pointerId — no "in-between" strings get plucked when a
+  // second finger touches down somewhere else.
   if (e.clientY > bandTop - 30 && e.clientY < bandBottom + 30) pluck(nearestString(e.clientY), 0.85);
-  lastX = e.clientX; lastY = e.clientY; lastT = performance.now();
+  pointerState.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now() });
 });
+document.addEventListener('pointerup',     endPointer);
+document.addEventListener('pointercancel', endPointer);
 
 // ── Synth params panel ──────────────────────────────────────────────────
 const synthBtn = document.getElementById('synth-btn');
@@ -368,10 +383,24 @@ bindParam('p-timbre', 'v-timbre', v => v.toFixed(2), v => pTimbre = v);
 bindParam('p-vol',    'v-vol',    v => v.toFixed(2), v => { pVol = v; if (master) master.gain.setTargetAtTime(v, actx.currentTime, 0.05); });
 
 // ── First-gesture audio unlock (front-page standard) ────────────────────
+// iOS audio-unlock: resume() alone often isn't enough on iOS Safari — it
+// requires PLAYING audio inside the gesture. The 1-sample silent buffer is
+// the canonical iOS unlock trick; it must execute synchronously in the same
+// task as the user gesture. We try it on each gesture until the context
+// is actually 'running', then stop bothering.
+let _silentUnlocked = false;
 function startAudioOnce() {
   startAudio();
   if (!actx) return;
   if (actx.state !== 'running') actx.resume();
+  if (!_silentUnlocked) {
+    try {
+      const _b = actx.createBuffer(1, 1, 22050);
+      const _s = actx.createBufferSource();
+      _s.buffer = _b; _s.connect(actx.destination); _s.start(0);
+    } catch (e) {}
+    if (actx.state === 'running') _silentUnlocked = true;
+  }
 }
 ['pointerdown','pointermove','touchstart','touchend','click','keydown'].forEach(ev =>
   document.addEventListener(ev, startAudioOnce, { passive: true }));

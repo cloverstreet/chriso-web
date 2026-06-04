@@ -1446,8 +1446,14 @@ const audioHint = document.getElementById('audio-hint');
 function tryStart() {
   startAudio();
   if (!actx) return;
-  // iOS starts the context suspended — resume() inside the gesture,
-  // retry until running, then fade the hint and detach.
+  // iOS audio-unlock trick: play a 1-sample silent buffer INSIDE the gesture
+  // (resume() alone often isn't enough on iOS Safari — it wants actual audio
+  // playback inside the gesture's task). Then resume() + retry until running.
+  try {
+    const _b = actx.createBuffer(1, 1, 22050);
+    const _s = actx.createBufferSource();
+    _s.buffer = _b; _s.connect(actx.destination); _s.start(0);
+  } catch (e) {}
   actx.resume().then(() => {
     if (actx.state === 'running') {
       if (audioHint) audioHint.classList.add('faded');

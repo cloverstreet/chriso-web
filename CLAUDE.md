@@ -120,11 +120,20 @@ chriso.org/
 
 These apply to the ambient-audio pages — `glitchpage/`, `index1/2/3`, `Sandbox/`, `TestCases/` — i.e. pages with a generative audio bed, not the interactive instruments (FX Processor, buffer-shuffler, DronorParty, etc.).
 
-**1. Mobile audio unlock (the standard `tryStart` pattern).** iOS/Safari create an `AudioContext` in the `suspended` state; it only produces sound once `actx.resume()` runs *inside a user gesture*. The gesture handler must:
-- call `startAudio()` (create the context, idempotent), then `actx.resume()`;
+**1. Mobile audio unlock (the standard `tryStart` pattern, hardened 2026-05-29).** iOS/Safari create an `AudioContext` in the `suspended` state and won't reliably unlock from `resume()` alone — it wants **actual audio playback** inside the gesture's task. The gesture handler must, synchronously inside the gesture:
+- call `startAudio()` (create the context, idempotent);
+- **play a 1-sample silent buffer** — the canonical iOS unlock trick:
+  ```js
+  const _b = actx.createBuffer(1,1,22050);
+  const _s = actx.createBufferSource(); _s.buffer = _b;
+  _s.connect(actx.destination); _s.start(0);
+  ```
+- then `actx.resume()`;
 - stay attached and retry on every gesture until `actx.state === 'running'`, *then* detach (don't use `{ once: true }` — a stray first event that doesn't fully unlock would otherwise never retry);
 - listen on `pointerdown`, `pointermove`, `touchstart`, **`touchend`, `click`**, `keydown` — touchend + click are the most reliable unlock events on iOS; pointer events alone sometimes don't satisfy Safari's gesture requirement.
-- Symptom when missing: audio only starts after tapping some button (mute/settings) that happens to hit a resume path — exactly the bug reported 2026-05-20.
+- Symptom when missing: on iPad/iPhone, audio only starts after tapping some setting (mute, panel, etc.) — sometimes never. `resume()` without the silent-buffer trick is the cause (bug reported 2026-05-20 and 2026-05-29).
+
+**Multi-touch caveat (for pluck/touch-instrument pages like `/lessons/`):** track pointer state in a `Map` keyed by `event.pointerId` and only do crossing/delta detection within ONE pointer's history. A single shared `lastX/lastY` across all pointers will treat a second finger touching down as "movement from finger A to finger B" and trigger everything in between (e.g. plucking every string between two touches). `pointerup`/`pointercancel` removes the entry.
 
 **2. Background fade + disable (hardened 2026-05-24).** Non-instrument pages fade `master.gain` to 0 over ~0.3s then `actx.suspend()` (halts the audio thread = "disables processing"), and `actx.resume()` + fade back to `MASTER_LEVEL` on return. The trigger is **either** the tab being hidden **or** the window losing focus — a single `applyBackgroundState()` wired to `visibilitychange` **and** `window` `blur`/`focus`, with `hidden = (visibilityState==='hidden') || !document.hasFocus()` and a `bgHidden` latch so it only fires on transitions. `visibilitychange` alone misses app/window switches on desktop, hence blur/focus. `pageVisible` (set here) also gates the RAF render loops. Each page defines `MASTER_LEVEL` as its canonical output level (also the unmuted target for the mute button + this handler). Levels bumped 2026-05-20 (glitchpage 0.32; index1 0.27; index2/3 0.28; Sandbox/TestCases 0.27). All six pages (glitchpage, index1/2/3, Sandbox, TestCases) carry this.
 
