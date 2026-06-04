@@ -298,6 +298,27 @@ function renderNotes() {
 }
 function placeDot(i){ const n = notes[i]; if (!n.dot){ n.dot = document.createElement("div"); fbEl.appendChild(n.dot); }
   n.dot.className = "dot " + n.state; n.dot.style.left = n.xRel + "px"; n.dot.style.top = n.y + "px"; }
+function clearStage(){ notesEl.innerHTML = ""; fbEl.querySelectorAll(".dot").forEach(d => d.remove()); ringEl.style.display = "none"; notes = []; activeIdx = 0; }
+// Notes fall from the sky into their staff positions during the count-in.
+// Each note's CSS transform animates from y=-320 to y=0 over the 4-beat lead-in,
+// staggered slightly so they cascade. They land before the scroll starts.
+function dropFall(){
+  const groups = notesEl.querySelectorAll(".vf-stavenote"); if (!groups.length) return;
+  const fallDur = LEADIN * 60 / tempoBpm;                  // total count-in seconds
+  const transDur = Math.max(0.55, fallDur * 0.65);
+  const stagger = Math.min(0.9, fallDur * 0.28);
+  groups.forEach(g => { g.style.transition = "none"; g.style.transform = "translateY(-320px)"; g.style.opacity = "0"; });
+  let armed = false;
+  const arm = () => { if (armed) return; armed = true;
+    groups.forEach((g, i) => {
+      const delay = (groups.length > 1 ? i / (groups.length - 1) : 0) * stagger;
+      g.style.transition = `transform ${transDur}s cubic-bezier(.22,.7,.30,1) ${delay}s, opacity ${Math.min(transDur, 0.5)}s ease-out ${delay}s`;
+      g.style.transform = "translateY(0)"; g.style.opacity = "1";
+    });
+  };
+  requestAnimationFrame(() => requestAnimationFrame(arm));
+  setTimeout(arm, 40);                            // fallback if RAFs are throttled (background tab, low-power mode)
+}
 function paint(){
   trackEl.style.transform = `translateX(${baseOffset() - beatPos * SPACING - FAILX}px)`;
   if (activeIdx < N && notes[activeIdx].state === "pending") { ringEl.style.display = "block";
@@ -340,15 +361,19 @@ function buildInstrument() {
   document.getElementById("modebtn").textContent = "Keys: " + mode;
   const compact = innerHeight < 560 || innerWidth < 600;
   if (mode === "piano") {
-    const WK = compact ? 46 : 56, BK = compact ? 28 : 34, WH = compact ? 84 : 120, BH = Math.round(WH*0.62);
+    // 10 whites; size to fit available width so phones/tablets get touch-friendly keys.
+    const avail = Math.min(innerWidth - 44, 980);
+    const WK = Math.max(60, Math.min(96, Math.floor(avail / 10)));
+    const WH = Math.max(150, Math.round(WK * 2.15)); const BK = Math.round(WK * 0.58); const BH = Math.round(WH * 0.62);
+    const wbFs = Math.round(WK * 0.30), wsFs = Math.round(WK * 0.17), bbFs = Math.round(BK * 0.42), bsFs = Math.round(BK * 0.30);
     // each white key shows the NOTE NAME big, with its computer-key small below
     const whites = [["a","C"],["s","D"],["d","E"],["f","F"],["g","G"],["h","A"],["j","B"],["k","C"],["l","D"],[";","E"]];
     const blacks = [{ after:0,k:"w",n:"C♯" },{ after:1,k:"e",n:"D♯" },{ after:3,k:"t",n:"F♯" },{ after:4,k:"y",n:"G♯" },{ after:5,k:"u",n:"A♯" },{ after:7,k:"o",n:"C♯" },{ after:8,k:"p",n:"D♯" }];
     const p = document.createElement("div"); p.className = "piano"; p.style.cssText = `width:${whites.length*WK}px;height:${WH}px`;
-    whites.forEach((w,i)=>{ const d=document.createElement("div"); d.className="wk"; d.style.cssText=`left:${i*WK}px;width:${WK}px;height:${WH}px`;
-      d.dataset.k=w[0]; d.innerHTML=`<b>${w[1]}</b><span>${w[0].toUpperCase()}</span>`; p.appendChild(d); });
-    blacks.forEach(b=>{ const d=document.createElement("div"); d.className="bk"; d.style.cssText=`left:${(b.after+1)*WK-BK/2}px;width:${BK}px;height:${BH}px`;
-      d.dataset.k=b.k; d.innerHTML=`<b>${b.n}</b><span>${b.k.toUpperCase()}</span>`; p.appendChild(d); });
+    whites.forEach((w,i)=>{ const d=document.createElement("div"); d.className="wk"; d.style.cssText=`left:${i*WK}px;width:${WK}px;height:${WH}px;padding-bottom:${Math.round(WH*0.06)}px`;
+      d.dataset.k=w[0]; d.innerHTML=`<b style="font-size:${wbFs}px">${w[1]}</b><span style="font-size:${wsFs}px">${w[0].toUpperCase()}</span>`; p.appendChild(d); });
+    blacks.forEach(b=>{ const d=document.createElement("div"); d.className="bk"; d.style.cssText=`left:${(b.after+1)*WK-BK/2}px;width:${BK}px;height:${BH}px;padding-bottom:${Math.round(BH*0.07)}px`;
+      d.dataset.k=b.k; d.innerHTML=`<b style="font-size:${bbFs}px">${b.n}</b><span style="font-size:${bsFs}px">${b.k.toUpperCase()}</span>`; p.appendChild(d); });
     el.appendChild(p);
   } else {
     const row = document.createElement("div"); row.className = "letrow";
@@ -390,6 +415,7 @@ function start() {
   stopFinale(); elMsg.style.display = "none";
   fbEl.querySelectorAll(".dot").forEach(d => d.remove());
   genSequence(); renderStaff(); renderNotes(); notes.forEach(n => n.dot = null);
+  dropFall();                                  // notes fall in from above during the count-in
   const pl = players[player]; ensurePlay(activeLevel).attempts++;
   const today = new Date().toISOString().slice(0, 10);
   if (pl.lastDay !== today) {                    // practice-day streak
@@ -471,7 +497,8 @@ function buildSoundMenu() {
 function updateCur(){ document.getElementById("curLevel").textContent = currentLevel(); document.getElementById("who").textContent = player;
   const s = document.getElementById("streak"); if (s) s.textContent = (players[player] && players[player].streak) || 0; }
 function selectLevel(i){ activeLevel = i; tempoBpm = LEVELS[i-1].bpm; buildTempoMenu();
-  genSequence(); renderStaff(); renderNotes(); notes.forEach(n=>n.dot=null); fbEl.querySelectorAll(".dot").forEach(d=>d.remove()); paint(); updateStats(); }
+  renderStaff(); clearStage(); updateStats();   // empty staff (correct clef) until Play is pressed; notes will fall in then
+}
 
 function levelDesc(i){ const L = LEVELS[i-1]; const acc = L.accid ? " + sharps/flats" : "";
   const span = L.pool.length <= 4 ? "landmark notes" : (L.pool[0].toUpperCase().replace("/","") + "–" + L.pool[L.pool.length-1].toUpperCase().replace("/",""));
@@ -563,7 +590,7 @@ function midiOf(key) { return Tunings.nameToMidi(key.replace("/", "")); }
 // the original "play all the notes" sweep — used during the transition into the playground
 function playAvantGarde() {
   const c = Synth.context(); let t = c.currentTime + 0.1;
-  const mids = notes.map(n => midiOf(n.key)); const timbres = ["gamelan","mallet","sine"]; let step = 0.15;
+  const mids = notes.map(n => midiOf(n.key)); const timbres = ["gamelan","mallet","sine"]; let step = 0.075;
   for (let pass = 0; pass < 3; pass++) {
     const order = pass % 2 ? [...mids].reverse() : mids;
     order.forEach((m, i) => {
@@ -572,7 +599,7 @@ function playAvantGarde() {
       const hz = 440 * Math.pow(2, (m + oct - 69) / 12 + cents / 1200);
       Synth.playFreq(hz, { timbre: timbres[(i + pass) % 3], decay: 0.5 + Math.random() * 1.1, gain: 0.09 + Math.random() * 0.05, when: t });
       if (Math.random() < 0.18) Synth.playFreq(hz * Math.pow(2, 3/12), { timbre: timbres[i % 3], decay: 0.8, gain: 0.06, when: t });
-      t += step; step = Math.max(0.05, step * 0.985);
+      t += step; step = Math.max(0.025, step * 0.985);
     });
   }
   Synth.playFreq(440 * Math.pow(2, (mids[0] - 24 - 69) / 12), { timbre: "gamelan", decay: 3.5, gain: 0.18, when: t + 0.1 });
@@ -584,7 +611,7 @@ function startTransition() {
   rk.style.display = "flex";
   const dur = playAvantGarde();
   clearTimeout(transTimer);
-  transTimer = setTimeout(() => { rk.style.display = "none"; try { startPlayground(); } catch (e) {} }, Math.min(6500, dur + 500));
+  transTimer = setTimeout(() => { rk.style.display = "none"; try { startPlayground(); } catch (e) {} }, Math.min(3500, dur + 400));   // ~half the previous wait (victory song shorter; reward sooner)
 }
 function runFinale() { renderPowers(); startTransition(); }
 const CRUISE = 1.15, CRUISE_HOMING = 3.3, SEEK = 9.0, SEEK_HOMING = 16.0;
@@ -735,6 +762,7 @@ function stopFinale() {
   clearTimeout(transTimer); document.getElementById("rankings").style.display="none";
   clearTimeout(hideTimer); hideTimer=setTimeout(()=>{ cv.style.display="none"; gc.style.display="none"; }, 1000);
   releaseAllHeld();
+  clearStage();                                  // empty staff after the finale — notes only show again when Play is pressed
 }
 
 // ── responsive layout (short / landscape-phone screens) ──────────────────────
