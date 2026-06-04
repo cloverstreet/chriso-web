@@ -2,14 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
 <title>Sight-Reading Trainer · notation test case 01</title>
 <script src="https://cdn.jsdelivr.net/npm/vexflow@4.2.2/build/cjs/vexflow.js"></script>
 <script src="./synth.js?v=3"></script>
 <script src="./tunings.js?v=3"></script>
 <style>
   :root { color-scheme: dark; }
-  body { margin:0; font-family:-apple-system, system-ui, sans-serif; background:#15171c; color:#e6e8ec; padding:18px 22px; }
+  body { margin:0; font-family:-apple-system, system-ui, sans-serif; background:#15171c; color:#e6e8ec; padding:18px 22px;
+         touch-action: manipulation; -webkit-touch-callout:none; -webkit-tap-highlight-color:transparent; }   /* iPad: kill double-tap zoom + long-press menu */
   .topbar { display:flex; align-items:center; gap:13px; flex-wrap:wrap; margin-bottom:9px; }
   .topbar .title { font-size:18px; font-weight:600; }
   .topbar label { font-size:13px; color:#b6bcc6; display:flex; gap:6px; align-items:center; }
@@ -23,7 +25,11 @@
   .stat { font-size:14px; color:#b6bcc6; font-variant-numeric:tabular-nums; }
   .stat .ok { color:#67d98b; } .stat .no { color:#f0a06a; } .stat .miss { color:#f06a6a; }
 
-  #stage { position:relative; background:#fbfbf8; border-radius:10px; overflow:hidden; height:230px; }
+  .stagewrap { display:flex; gap:12px; align-items:flex-start; }
+  #stage { position:relative; background:#fbfbf8; border-radius:10px; overflow:hidden; height:230px; flex:1 1 auto; min-width:0; }
+  #answerKey { position:relative; background:#fbfbf8; border-radius:10px; overflow:hidden; height:230px; flex:0 0 220px; max-width:240px; }
+  #answerKey::before { content:"notes used"; position:absolute; top:6px; left:10px; font-size:11px; color:#8b909a; z-index:2; pointer-events:none; }
+  @media (max-width: 760px) { .stagewrap { flex-direction:column; } #answerKey { width:100%; max-width:none; height:130px; flex:0 0 130px; } }
   #staff { position:absolute; inset:0; z-index:1; }
   #clip  { position:absolute; top:0; bottom:0; right:0; overflow:hidden; z-index:2; }
   #track { position:absolute; top:0; left:0; will-change:transform; }
@@ -65,7 +71,10 @@
 
   #fx { position:fixed; inset:0; z-index:50; display:none; opacity:0; }
   #guy { position:fixed; inset:0; z-index:51; display:none; pointer-events:none; }
-  #fxhint { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); z-index:52; display:none; color:#fff; font-size:13px; opacity:0.85; text-shadow:0 1px 4px #000; }
+  #fxhint { position:fixed; left:50%; bottom:18px; transform:translateX(-50%); z-index:55; display:none;
+            color:#fff; font-size:14px; background:rgba(20,22,28,0.72); border:1px solid rgba(255,255,255,0.22);
+            border-radius:12px; padding:9px 18px; cursor:pointer; -webkit-user-select:none; user-select:none; touch-action:manipulation; }
+  #fxhint:hover, #fxhint:active { background:rgba(40,44,52,0.92); }
   #powers { position:fixed; top:14px; right:14px; z-index:60; width:240px; background:rgba(21,23,28,0.93); border:1px solid #2f343d; border-radius:10px; padding:9px 11px; font-size:12px; color:#b6bcc6; display:none; }
   #powers .ptitle { font-weight:600; color:#e6e8ec; margin-bottom:5px; }
   #powers .prow { display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:3px 0; border-top:1px solid #23262d; }
@@ -99,6 +108,17 @@
   #stats th { color:#8b909a; font-weight:600; }
   #stats tr.me td { background:#222630; color:#e6e8ec; font-weight:600; }
 
+  /* ── reward (Marge) physics settings ── */
+  #reward { display:none; margin-top:16px; max-width:560px; color:#b6bcc6; font-size:13px; }
+  #reward h3 { font-size:14px; color:#e6e8ec; margin:0 0 6px; }
+  #reward .pmeta { color:#9aa1ad; font-size:12px; line-height:1.5; }
+  #reward .rfield { margin-top:11px; }
+  #reward .rfield label { display:flex; align-items:center; gap:10px; }
+  #reward .rfield .rl { width:130px; color:#cdd3dd; }
+  #reward .rfield input[type=range] { flex:1; min-width:140px; }
+  #reward .rfield b { color:#e6e8ec; min-width:42px; text-align:right; font-variant-numeric:tabular-nums; }
+  #reward .rh { font-size:11.5px; color:#7a7f88; margin-left:140px; margin-top:2px; }
+
   /* ── phone: ask for landscape, and compact the layout on short screens ── */
   #rotate { position:fixed; inset:0; z-index:200; display:none; flex-direction:column;
             align-items:center; justify-content:center; text-align:center; padding:28px;
@@ -128,6 +148,7 @@
       <span class="who">player <b id="who">—</b></span>
       <button id="statsBtn">Player stats</button>
       <button id="aboutBtn">About the levels</button>
+      <button id="rewardBtn">Reward</button>
       <button id="resetAll">Reset</button>
     </div>
     <div class="controls">
@@ -137,24 +158,28 @@
       <button id="modebtn">Keys: piano</button>
     </div>
 
-    <div id="stage">
-      <div id="staff"></div>
-      <div id="clip"><div id="track"><div id="fb"></div><div id="notes"></div></div></div>
-      <div id="failline"></div>
-      <div id="count"></div>
-      <div id="msg"></div>
+    <div class="stagewrap">
+      <div id="stage">
+        <div id="staff"></div>
+        <div id="clip"><div id="track"><div id="fb"></div><div id="notes"></div></div></div>
+        <div id="failline"></div>
+        <div id="count"></div>
+        <div id="msg"></div>
+      </div>
+      <div id="answerKey" aria-label="notes used in this level"></div>
     </div>
 
     <div id="instbar"><label>Sound <select id="soundSel"></select></label></div>
     <div id="inst"></div>
     <div id="stats"></div>
     <div id="about"></div>
+    <div id="reward"></div>
   </div>
 
   <div id="rankings"></div>
   <canvas id="fx"></canvas>
   <canvas id="guy"></canvas>
-  <div id="fxhint">notes roam on their own — toggle a superpower (top-right) · Esc to return</div>
+  <div id="fxhint" role="button" tabindex="0">← Back to game · or press Esc</div>
   <div id="powers"></div>
 
 <script>
@@ -285,6 +310,29 @@ function renderStaff() {
   const r = new VF.Renderer(staffEl, VF.Renderer.Backends.SVG); r.resize(w, SVG_H);
   const stave = new VF.Stave(8, STAVE_Y, w - 16); stave.addClef(clefOf()); stave.setContext(r.getContext()).draw();
 }
+// "Notes used" reference: small stave with the pool's pitches, each labelled
+// with its letter name. Sharps/flats are intentionally OMITTED on accidental
+// levels so the answer key stays a clean letter-name guide.
+function buildAnswerKey(){
+  const el = document.getElementById("answerKey"); if (!el || !LEVELS[activeLevel-1]) return;
+  const L = LEVELS[activeLevel-1];
+  let pool = L.pool.slice();
+  if (pool.length > 7) {                             // big pools → one example per letter (lowest occurrence)
+    const seen = new Set(); pool = pool.filter(p => { const ltr = p[0]; if (seen.has(ltr)) return false; seen.add(ltr); return true; });
+  }
+  pool.sort((a,b) => idxOf(a) - idxOf(b));
+  el.innerHTML = "";
+  const w = el.clientWidth || 220, h = 230;
+  const r = new VF.Renderer(el, VF.Renderer.Backends.SVG); r.resize(w, h);
+  const ctx = r.getContext(); const stave = new VF.Stave(2, STAVE_Y, w - 4);
+  stave.addClef(L.clef).setContext(ctx).draw();
+  const sn = pool.map(p => { const s = new VF.StaveNote({ keys:[p], duration:"w", clef:L.clef });
+    s.addModifier(new VF.Annotation(p[0].toUpperCase()).setFont("Arial", 14, "bold").setVerticalJustification(VF.Annotation.VerticalJustify.BOTTOM), 0);
+    return s; });
+  const voice = new VF.Voice({ num_beats: pool.length, beat_value: 1 }).setStrict(false); voice.addTickables(sn);
+  new VF.Formatter().joinVoices([voice]).format([voice], Math.max(60, w - 60));
+  voice.draw(ctx, stave);
+}
 function renderNotes() {
   notesEl.innerHTML = ""; const width = N * SPACING + 140;
   const r = new VF.Renderer(notesEl, VF.Renderer.Backends.SVG); r.resize(width, SVG_H);
@@ -301,20 +349,22 @@ function renderNotes() {
 function placeDot(i){ const n = notes[i]; if (!n.dot){ n.dot = document.createElement("div"); fbEl.appendChild(n.dot); }
   n.dot.className = "dot " + n.state; n.dot.style.left = n.xRel + "px"; n.dot.style.top = n.y + "px"; }
 function clearStage(){ notesEl.innerHTML = ""; fbEl.querySelectorAll(".dot").forEach(d => d.remove()); ringEl.style.display = "none"; notes = []; activeIdx = 0; }
-// Notes fall from the sky into their staff positions during the count-in.
-// Each note's CSS transform animates from y=-320 to y=0 over the 4-beat lead-in,
-// staggered slightly so they cascade. They land before the scroll starts.
+// Notes fall from above into their staff positions during the count-in. Each
+// note picks a random delay + fall duration so they arrive at different times,
+// and the easing is a strong ACCELERATING curve (no slow-down at landing — feels
+// like gravity). All notes land well before the count-in ends.
 function dropFall(){
   const groups = notesEl.querySelectorAll(".vf-stavenote"); if (!groups.length) return;
-  const fallDur = LEADIN * 60 / tempoBpm;                  // total count-in seconds
-  const transDur = Math.max(0.55, fallDur * 0.65);
-  const stagger = Math.min(0.9, fallDur * 0.28);
-  groups.forEach(g => { g.style.transition = "none"; g.style.transform = "translateY(-320px)"; g.style.opacity = "0"; });
+  const fallDur = LEADIN * 60 / tempoBpm;                       // total count-in seconds
+  const maxDelay = fallDur * 0.30;                              // last note starts no later than 30% in
+  const minDur = fallDur * 0.18, durRange = fallDur * 0.27;     // each note falls in 18–45% of count-in
+  groups.forEach(g => { g.style.transition = "none"; g.style.transform = "translateY(-380px)"; g.style.opacity = "0"; });
   let armed = false;
   const arm = () => { if (armed) return; armed = true;
-    groups.forEach((g, i) => {
-      const delay = (groups.length > 1 ? i / (groups.length - 1) : 0) * stagger;
-      g.style.transition = `transform ${transDur}s cubic-bezier(.22,.7,.30,1) ${delay}s, opacity ${Math.min(transDur, 0.5)}s ease-out ${delay}s`;
+    groups.forEach((g) => {
+      const delay = Math.random() * maxDelay;
+      const dur = minDur + Math.random() * durRange;            // varied per note
+      g.style.transition = `transform ${dur}s cubic-bezier(.55,.05,.85,.4) ${delay}s, opacity ${Math.min(dur, 0.25)}s ease-in ${delay}s`;
       g.style.transform = "translateY(0)"; g.style.opacity = "1";
     });
   };
@@ -464,6 +514,7 @@ function finish() {
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") { stopFinale(); return; }
+  if (e.key === "Enter" && e.target && e.target.id === "fxhint") { stopFinale(); return; }
   if (/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
   if (e.repeat) { e.preventDefault(); return; }    // ignore OS auto-repeat → holding sustains, no machine-gun
   const k = e.key.toLowerCase(); let pk = null;
@@ -499,7 +550,7 @@ function buildSoundMenu() {
 function updateCur(){ document.getElementById("curLevel").textContent = currentLevel(); document.getElementById("who").textContent = player;
   const s = document.getElementById("streak"); if (s) s.textContent = (players[player] && players[player].streak) || 0; }
 function selectLevel(i){ activeLevel = i; tempoBpm = LEVELS[i-1].bpm; buildTempoMenu();
-  renderStaff(); clearStage(); updateStats();   // empty staff (correct clef) until Play is pressed; notes will fall in then
+  renderStaff(); clearStage(); buildAnswerKey(); updateStats();   // empty staff (correct clef) until Play is pressed; answer-key sidebar reflects this level's pool
 }
 
 function levelDesc(i){ const L = LEVELS[i-1]; const acc = L.accid ? " + sharps/flats" : "";
@@ -573,15 +624,15 @@ document.getElementById("tempoSel").onchange = e => { tempoBpm = +e.target.value
 document.getElementById("notesN").onchange = e => { notesN = Math.max(4, Math.min(60, +e.target.value || 24)); selectLevel(activeLevel); };
 document.getElementById("modebtn").onclick = () => { mode = mode === "piano" ? "letters" : "piano"; buildInstrument(); };
 function showPanel(which){
-  const stats = document.getElementById("stats"), about = document.getElementById("about");
-  const openStats = which === "stats" && stats.style.display !== "block";
-  const openAbout = which === "about" && about.style.display !== "block";
-  stats.style.display = "none"; about.style.display = "none";
-  if (openStats) { buildStats(); stats.style.display = "block"; }
-  if (openAbout) { buildAbout(); about.style.display = "block"; }
+  const panels = { stats: buildStats, about: buildAbout, reward: buildReward };
+  const els = { stats: document.getElementById("stats"), about: document.getElementById("about"), reward: document.getElementById("reward") };
+  const willOpen = which in panels && els[which].style.display !== "block";
+  Object.values(els).forEach(e => e.style.display = "none");
+  if (willOpen) { panels[which](); els[which].style.display = "block"; }
 }
 document.getElementById("statsBtn").onclick = () => showPanel("stats");
 document.getElementById("aboutBtn").onclick = () => showPanel("about");
+document.getElementById("rewardBtn").onclick = () => showPanel("reward");
 document.getElementById("resetAll").onclick = () => { if (!confirm("Reset " + player + "'s progress?")) return;
   players[player] = { level:0, plays:{}, practiceMs:0 }; savePlayers(); activeLevel = 1; buildLevelMenu(); updateCur(); selectLevel(1);
   if (document.getElementById("stats").style.display === "block") buildStats(); };
@@ -617,6 +668,36 @@ function startTransition() {
 }
 function runFinale() { renderPowers(); startTransition(); }
 const CRUISE = 1.15, CRUISE_HOMING = 3.3, SEEK = 9.0, SEEK_HOMING = 16.0;
+
+// Reward-screen physics: mass-spring-damper from Marge toward your finger.
+// Tap within `sensPx` of her to grab; let go and she coasts to a stop.
+// Tunable via the "Reward" settings tab so we can dial it in live.
+const REWARD_DEFAULTS = { spring:22, damping:8, mass:1, sensPx:110 };
+const REWARD = Object.assign({}, REWARD_DEFAULTS, JSON.parse(localStorage.getItem("sr.reward") || "{}"));
+function saveReward(){ localStorage.setItem("sr.reward", JSON.stringify(REWARD)); }
+function buildReward(){
+  const el = document.getElementById("reward"); if (!el) return;
+  const fields = [
+    { k:"spring",  label:"Spring k",      min:1,   max:80,  step:1,   hint:"how strongly Marge is pulled toward your finger" },
+    { k:"damping", label:"Damping c",     min:0,   max:30,  step:0.5, hint:"resists velocity (low = bouncy/oscillates, high = no overshoot)" },
+    { k:"mass",    label:"Mass m",        min:0.3, max:5,   step:0.1, hint:"heavier = slower to respond, harder to whip around" },
+    { k:"sensPx",  label:"Engage radius (px)", min:30, max:300, step:10, hint:"tap must land within this many pixels of her to grab" },
+  ];
+  const critC = 2 * Math.sqrt(REWARD.spring * REWARD.mass);
+  const tag = REWARD.damping < critC * 0.9 ? `<span style="color:#67d98b">under-damped (springy)</span>` : REWARD.damping > critC * 1.1 ? `<span style="color:#f0a06a">over-damped (sluggish)</span>` : `<span style="color:#dfb24a">near-critical (snappy, no bounce)</span>`;
+  el.innerHTML = `<h3>Reward — Marge physics</h3>
+    <div class="pmeta">Mass-spring-damper. Tap within the engage radius and she springs toward your finger; the finger is the end of the spring. Let go and she coasts to a stop.</div>
+    ${fields.map(f => `<div class="rfield">
+      <label><span class="rl">${f.label}</span><input type="range" id="rw_${f.k}" min="${f.min}" max="${f.max}" step="${f.step}" value="${REWARD[f.k]}"><b id="rwv_${f.k}">${REWARD[f.k]}</b></label>
+      <div class="rh">${f.hint}</div></div>`).join("")}
+    <div class="pmeta" style="margin-top:12px">critical damping = 2·√(k·m) = <b style="color:#cdd3dd">${critC.toFixed(2)}</b> · current: ${tag}</div>
+    <button id="rwReset" style="margin-top:10px;">Reset to defaults</button>`;
+  fields.forEach(f => { const r = document.getElementById("rw_"+f.k), v = document.getElementById("rwv_"+f.k);
+    r.oninput = () => { REWARD[f.k] = +r.value; v.textContent = REWARD[f.k]; saveReward(); };
+    r.onchange = () => buildReward();                  // refresh the critical-damping readout on commit
+  });
+  document.getElementById("rwReset").onclick = () => { Object.assign(REWARD, REWARD_DEFAULTS); saveReward(); buildReward(); };
+}
 const EAT_DIST = 0.05, CATCH_VMAX = 0.6, DIGEST = 0.22, EJECT_VEL = 1.6;
 const SEP_R = 0.12, SEP_K = 6.0, VACUUM_R = 0.45, VACUUM_PULL = 5.0;
 function midiToName(m){ const N=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]; m=Math.round(m); return N[((m%12)+12)%12]+(Math.floor(m/12)-1); }
@@ -690,6 +771,20 @@ function startPlayground() {
   const guy = { x:0.5, y:0.5, vx:0, vy:0, cruise:CRUISE, mouth:0, face:0, head:1, butt:1 }; const parts = [];
   function size(){ cv.width = gc.width = innerWidth; cv.height = gc.height = innerHeight; gl.viewport(0,0,cv.width,cv.height); } size();
   window.addEventListener("resize", size);
+  // Drag-with-mass-spring-damper. Tap within REWARD.sensPx of Marge to grab;
+  // her position is the mass, your finger is the end of the spring.
+  const drag = { active:false, pid:-1, tx:0.5, ty:0.5 };
+  const ptToNorm = (ev) => { const r = gc.getBoundingClientRect(); return { x:(ev.clientX - r.left)/r.width, y: 1 - (ev.clientY - r.top)/r.height }; };
+  const onPD = (ev) => { const p = ptToNorm(ev);
+    const dpx = Math.hypot((p.x - guy.x) * gc.width, (p.y - guy.y) * gc.height);
+    if (dpx > REWARD.sensPx) return;                      // out of range — reserved for future gestures (shoot, etc.)
+    drag.active = true; drag.pid = ev.pointerId; drag.tx = p.x; drag.ty = p.y;
+    try { gc.setPointerCapture(ev.pointerId); } catch(e){} ev.preventDefault(); };
+  const onPM = (ev) => { if (!drag.active || ev.pointerId !== drag.pid) return; const p = ptToNorm(ev); drag.tx = p.x; drag.ty = p.y; };
+  const onPU = (ev) => { if (drag.pid === ev.pointerId) { drag.active = false; drag.pid = -1; } };
+  gc.style.pointerEvents = "auto"; gc.style.touchAction = "none";
+  gc.addEventListener("pointerdown", onPD); gc.addEventListener("pointermove", onPM);
+  gc.addEventListener("pointerup", onPU);   gc.addEventListener("pointercancel", onPU);
   const sh=(t,s)=>{const x=gl.createShader(t);gl.shaderSource(x,s);gl.compileShader(x);return x;};
   const prog=gl.createProgram(); gl.attachShader(prog,sh(gl.VERTEX_SHADER,VERT)); gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,FRAG)); gl.linkProgram(prog); gl.useProgram(prog);
   const buf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,buf); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
@@ -716,15 +811,28 @@ function startPlayground() {
     for(let i=0;i<blobs.length;i++)for(let j=i+1;j<blobs.length;j++){ const a=blobs[i],c=blobs[j]; if(a.state!=="free"||c.state!=="free")continue;
       const dx=c.x-a.x,dy=c.y-a.y,d=Math.hypot(dx,dy)||1e-3; if(d<SEP_R){ const f=(1-d/SEP_R)*SEP_K*dt/d; a.vx-=dx*f;a.vy-=dy*f;c.vx+=dx*f;c.vy+=dy*f; } }
     for(const b of blobs){ if(b.state!=="free")continue; b.vx*=0.93;b.vy*=0.93;b.x+=b.vx*dt;b.y+=b.vy*dt; b.x=Math.max(0.05,Math.min(0.95,b.x)); b.y=Math.max(0.12,Math.min(0.9,b.y)); }
-    const openBoost=Math.max(0,1-tt/2.6)*2.0; const baseCruise=homing?CRUISE_HOMING:CRUISE, seek=homing?SEEK_HOMING:SEEK;
-    guy.cruise+=((baseCruise+openBoost)-guy.cruise)*Math.min(1,dt*1.5);
-    let tgt=null,best=1e9; for(const b of blobs){ if(b.state!=="free")continue; const d=Math.hypot(b.x-guy.x,b.y-guy.y); if(d<best){best=d;tgt=b;} }
-    if(tgt){ guy.vx+=(tgt.x-guy.x)*seek*dt; guy.vy+=(tgt.y-guy.y)*seek*dt; }
-    const wob=homing?0.15:0.6; guy.vx+=wob*(Math.sin(tt*1.7)+0.6*Math.sin(tt*0.53+1.3))*dt; guy.vy+=wob*(Math.cos(tt*1.31)+0.6*Math.sin(tt*0.91+2.1))*dt;
-    guy.vx*=0.9; guy.vy*=0.9; const sp=Math.hypot(guy.vx,guy.vy); if(sp>guy.cruise&&sp>1e-4){ guy.vx*=guy.cruise/sp; guy.vy*=guy.cruise/sp; }
-    guy.x+=guy.vx*dt; guy.y+=guy.vy*dt; if(guy.x<0.04||guy.x>0.96)guy.vx*=-0.6; if(guy.y<0.08||guy.y>0.92)guy.vy*=-0.6;
-    guy.x=Math.max(0.04,Math.min(0.96,guy.x)); guy.y=Math.max(0.08,Math.min(0.92,guy.y)); if(sp>1e-3)guy.face=Math.atan2(guy.vy,guy.vx); guy.mouth=Math.max(0,guy.mouth-dt);
-    if(tgt&&best<EAT_DIST&&tgt.state==="free"&&Math.hypot(tgt.vx,tgt.vy)<CATCH_VMAX) eat(tgt);
+    // ── MSD-driven movement (replaces the old autonomous AI seek/wander) ──
+    // While engaged: F = -k·(pos − target) − c·v, a = F/m. Otherwise: damp toward zero.
+    if (drag.active) {
+      const fx = REWARD.spring * (drag.tx - guy.x) - REWARD.damping * guy.vx;
+      const fy = REWARD.spring * (drag.ty - guy.y) - REWARD.damping * guy.vy;
+      guy.vx += (fx / REWARD.mass) * dt; guy.vy += (fy / REWARD.mass) * dt;
+    } else if (REWARD.damping > 0) {
+      const decay = Math.exp(-REWARD.damping * dt / REWARD.mass);
+      guy.vx *= decay; guy.vy *= decay;
+    }
+    const sp = Math.hypot(guy.vx, guy.vy);
+    guy.x += guy.vx * dt; guy.y += guy.vy * dt;
+    if (guy.x < 0.04 || guy.x > 0.96) guy.vx *= -0.6;
+    if (guy.y < 0.08 || guy.y > 0.92) guy.vy *= -0.6;
+    guy.x = Math.max(0.04, Math.min(0.96, guy.x));
+    guy.y = Math.max(0.08, Math.min(0.92, guy.y));
+    if (sp > 1e-3) guy.face = Math.atan2(guy.vy, guy.vx);
+    guy.mouth = Math.max(0, guy.mouth - dt);
+    // eat-on-collision (no autonomous seek anymore)
+    let tgt = null, best = 1e9;
+    for (const b of blobs) { if (b.state !== "free") continue; const d = Math.hypot(b.x - guy.x, b.y - guy.y); if (d < best) { best = d; tgt = b; } }
+    if (tgt && best < EAT_DIST && Math.hypot(tgt.vx, tgt.vy) < CATCH_VMAX) eat(tgt);
     guy.head+=(1-guy.head)*Math.min(1,dt*4); guy.butt+=(1-guy.butt)*Math.min(1,dt*5);
     const pos=new Float32Array(64),scl=new Float32Array(32);
     blobs.forEach((b,i)=>{ if(i<32){ pos[i*2]=b.x; pos[i*2+1]=b.y; scl[i]=b.scale; pit[i]=(b.midi-lo)/Math.max(1,hi-lo); } });
@@ -739,7 +847,10 @@ function startPlayground() {
     drawGuy(g2, guy.x*gc.width, (1-guy.y)*gc.height, guy.face, guy.mouth, sp, guy.head, guy.butt);
     fx.r=requestAnimationFrame(frame);
   }
-  fx = { stop(){ alive=false; if(fx.r)cancelAnimationFrame(fx.r); window.removeEventListener("resize",size); } };
+  fx = { stop(){ alive=false; if(fx.r)cancelAnimationFrame(fx.r); window.removeEventListener("resize",size);
+    gc.style.pointerEvents="none"; gc.style.touchAction="";
+    gc.removeEventListener("pointerdown",onPD); gc.removeEventListener("pointermove",onPM);
+    gc.removeEventListener("pointerup",onPU);   gc.removeEventListener("pointercancel",onPU); } };
   frame();
 }
 function drawGuy(c, x, y, face, mouth, sp, head, butt) {
@@ -777,10 +888,11 @@ function layout() {
   paint();
 }
 let resizeTimer = null;
-window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { layout(); buildInstrument(); }, 180); });
+window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { layout(); buildInstrument(); buildAnswerKey(); }, 180); });
 
 // ── boot ──────────────────────────────────────────────────────────────────────
 ensurePlayer();
+document.getElementById("fxhint").addEventListener("click", stopFinale);   // tappable back button on touch devices (no Esc key on iPad/phone)
 activeLevel = currentLevel(); tempoBpm = LEVELS[activeLevel - 1].bpm;
 buildLevelMenu(); buildTempoMenu(); buildSoundMenu(); updateCur(); buildInstrument();
 selectLevel(activeLevel);
