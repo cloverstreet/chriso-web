@@ -172,30 +172,32 @@ function notePc(n){ const base={c:0,d:2,e:4,f:5,g:7,a:9,b:11}[n.letter]; return 
 function noteFreqAcc(n){ let f=Tunings.noteFreq(n.key.replace("/","")); if(n.acc==="#")f*=Math.pow(2,1/12); else if(n.acc==="b")f/=Math.pow(2,1/12); return f; }
 
 // ── levels ───────────────────────────────────────────────────────────────────
-const TSLOW=50, TMED=80, TFAST=110;
+const TSLOW=45, TMED=72, TFAST=100;       // all tempos a notch slower than before (50/80/110)
 function tempoName(b){ return b<=54?"Largo":b<=63?"Larghetto":b<=76?"Adagio":b<=108?"Andante":b<=120?"Moderato":b<=156?"Allegro":"Presto"; }
 const TEMPOS=[TSLOW,TMED,TFAST];
-const bassPrim=["g/2","c/3","f/3","c/4"], bassRange=range("g/2","c/4"), bassLedger=range("c/2","e/4");
-const trebPrim=["c/4","e/4","g/4","c/5"], trebRange=range("c/4","f/5"), trebLedger=range("a/3","c/6");
+// Each clef-block starts with a 3-note LANDMARK level, then a 5-note level, then
+// full-range slow→med→fast, then ledger. Same 6 contents repeated with accidentals.
+const bassLand=["c/3","f/3","c/4"],            bass5=["g/2","c/3","f/3","a/3","c/4"], bassRange=range("g/2","c/4"), bassLedger=range("c/2","e/4");
+const trebLand=["c/4","g/4","c/5"],            treb5=["c/4","e/4","g/4","b/4","c/5"], trebRange=range("c/4","f/5"), trebLedger=range("a/3","c/6");
 function L(clef,pool,bpm,accid){ return {clef,pool,bpm,accid:!!accid}; }
 const LEVELS = [
-  L("bass",bassPrim,TSLOW),  L("bass",bassRange,TSLOW),  L("bass",bassRange,TMED),  L("bass",bassRange,TFAST),
-  L("treble",trebPrim,TSLOW),L("treble",trebRange,TSLOW),L("treble",trebRange,TMED),L("treble",trebRange,TFAST),
+  L("bass",bassLand,TSLOW), L("bass",bass5,TSLOW), L("bass",bassRange,TSLOW), L("bass",bassRange,TMED), L("bass",bassRange,TFAST),
+  L("treble",trebLand,TSLOW),L("treble",treb5,TSLOW),L("treble",trebRange,TSLOW),L("treble",trebRange,TMED),L("treble",trebRange,TFAST),
   L("bass",bassLedger,TFAST),L("treble",trebLedger,TFAST),
-  L("bass",bassPrim,TSLOW,1),  L("bass",bassRange,TSLOW,1),  L("bass",bassRange,TMED,1),  L("bass",bassRange,TFAST,1),
-  L("treble",trebPrim,TSLOW,1),L("treble",trebRange,TSLOW,1),L("treble",trebRange,TMED,1),L("treble",trebRange,TFAST,1),
+  L("bass",bassLand,TSLOW,1), L("bass",bass5,TSLOW,1), L("bass",bassRange,TSLOW,1), L("bass",bassRange,TMED,1), L("bass",bassRange,TFAST,1),
+  L("treble",trebLand,TSLOW,1),L("treble",treb5,TSLOW,1),L("treble",trebRange,TSLOW,1),L("treble",trebRange,TMED,1),L("treble",trebRange,TFAST,1),
   L("bass",bassLedger,TFAST,1),L("treble",trebLedger,TFAST,1),
 ];
-// remaining clefs, one block (10 levels) at a time
-function clefBlock(clef, prim, rng, ledger){ return [
-  L(clef,prim,TSLOW),  L(clef,rng,TSLOW),  L(clef,rng,TMED),  L(clef,rng,TFAST), L(clef,ledger,TFAST),
-  L(clef,prim,TSLOW,1),L(clef,rng,TSLOW,1),L(clef,rng,TMED,1),L(clef,rng,TFAST,1),L(clef,ledger,TFAST,1) ]; }
-LEVELS.push(...clefBlock("soprano",["c/4","g/4","c/5"], range("c/4","d/5"), range("a/3","f/5")));
-LEVELS.push(...clefBlock("alto",   ["f/3","c/4","g/4"], range("f/3","g/4"), range("b/2","d/5")));
-LEVELS.push(...clefBlock("tenor",  ["d/3","a/3","c/4"], range("d/3","e/4"), range("g/2","b/4")));
-LEVELS.push(...clefBlock("baritone-f",["b/2","f/3","c/4"], range("b/2","c/4"), range("e/2","g/4")));
-const NLEVELS = LEVELS.length;
-const POWER_LEVELS = [4,8,10,14,18,20];   // levels that grant the next powerup
+// remaining clefs, one block (12 levels) at a time — landmark + 5-note + range×3 + ledger, ×2 (no-accid, then with accid)
+function clefBlock(clef, land, five, rng, ledger){ return [
+  L(clef,land,TSLOW), L(clef,five,TSLOW), L(clef,rng,TSLOW), L(clef,rng,TMED), L(clef,rng,TFAST), L(clef,ledger,TFAST),
+  L(clef,land,TSLOW,1),L(clef,five,TSLOW,1),L(clef,rng,TSLOW,1),L(clef,rng,TMED,1),L(clef,rng,TFAST,1),L(clef,ledger,TFAST,1) ]; }
+LEVELS.push(...clefBlock("soprano",   ["c/4","g/4","c/5"], ["c/4","e/4","g/4","b/4","c/5"], range("c/4","d/5"), range("a/3","f/5")));
+LEVELS.push(...clefBlock("alto",      ["f/3","c/4","g/4"], ["f/3","a/3","c/4","e/4","g/4"], range("f/3","g/4"), range("b/2","d/5")));
+LEVELS.push(...clefBlock("tenor",     ["d/3","a/3","c/4"], ["d/3","f/3","a/3","b/3","c/4"], range("d/3","e/4"), range("g/2","b/4")));
+LEVELS.push(...clefBlock("baritone-f",["b/2","f/3","c/4"], ["b/2","d/3","f/3","a/3","c/4"], range("b/2","c/4"), range("e/2","g/4")));
+const NLEVELS = LEVELS.length;            // 24 grand-staff + 4×12 = 72 (was 60)
+const POWER_LEVELS = [5, 10, 12, 17, 22, 24];   // bass-fast, treble-fast, both-ledgers, then the same with accidentals — shifted for the new 12-per-block layout
 
 // ── player + progress (per name) ─────────────────────────────────────────────
 let players = JSON.parse(localStorage.getItem("sr.players") || "{}");
@@ -501,7 +503,7 @@ function selectLevel(i){ activeLevel = i; tempoBpm = LEVELS[i-1].bpm; buildTempo
 }
 
 function levelDesc(i){ const L = LEVELS[i-1]; const acc = L.accid ? " + sharps/flats" : "";
-  const span = L.pool.length <= 4 ? "landmark notes" : (L.pool[0].toUpperCase().replace("/","") + "–" + L.pool[L.pool.length-1].toUpperCase().replace("/",""));
+  const span = L.pool.length <= 5 ? `${L.pool.length} landmark notes` : (L.pool[0].toUpperCase().replace("/","") + "–" + L.pool[L.pool.length-1].toUpperCase().replace("/",""));
   return `<b>Level ${i}</b> — ${clefLabel(L.clef)}: ${span}, ${L.bpm} bpm${acc}.`; }
 function leaderRows(){ return Object.entries(players).map(([nm,p]) => { const best = Object.values(p.plays||{});
   return { nm, level:p.level||0, acc:best.length?Math.max(...best.map(x=>x.acc)):0, fast:best.length?Math.max(...best.map(x=>x.bpm)):0 }; }); }
