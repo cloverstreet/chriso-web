@@ -44,6 +44,10 @@ RedirectMatch 301 ^/Sandbox/glitch_replay(/.*)?$           /Sandbox/AVBufShuf$1
 # lives at /TestCases/spatialAudio/binaural-explorer/ (2026-05-24).
 RedirectMatch 301 ^/Sandbox/binaural-explorer(/.*)?$      /TestCases/spatialAudio/binaural-explorer$1
 
+# Sandbox/exploring-notation-systems surfaces the notation hub in Sandbox's
+# auto-populated nav. The real page is /TestCases/notationsystems/ (2026-05-29).
+RedirectMatch 301 ^/Sandbox/exploring-notation-systems(/.*)?$  /TestCases/notationsystems$1
+
 # buffer-shuffler was a duplicate stub in TestCases — canonical lives at
 # /web-instruments/buffer-shuffler/. Replaces an HTML meta-refresh stub.
 RedirectMatch 301 ^/TestCases/buffer-shuffler(/.*)?$       /web-instruments/buffer-shuffler$1
