@@ -11,27 +11,40 @@
 <style>
   :root { color-scheme: dark; }
   html, body { touch-action: manipulation; overscroll-behavior:contain; }   /* iPad + iPhone: kill double-tap zoom */
-  body { margin:0; font-family:-apple-system, system-ui, sans-serif; background:#15171c; color:#e6e8ec; padding:14px 22px;
+  body { margin:0; font-family:-apple-system, system-ui, sans-serif; background:#15171c; color:#e6e8ec;
+         padding: 22px 26px;                                            /* base border so the iPad camera mount doesn't cover content */
          -webkit-touch-callout:none; -webkit-tap-highlight-color:transparent; }
+  @supports (padding: env(safe-area-inset-top)) {
+    body { padding-top: max(22px, env(safe-area-inset-top));
+           padding-right: max(26px, env(safe-area-inset-right));
+           padding-bottom: max(22px, env(safe-area-inset-bottom));
+           padding-left: max(26px, env(safe-area-inset-left)); }
+  }
   #stage, #answerKey, #inst, .wk, .bk, button, select, input { touch-action: manipulation; }   /* belt-and-suspenders — modern iOS Safari sometimes ignores body-level */
-  .topbar { display:flex; align-items:center; gap:13px; flex-wrap:wrap; margin-bottom:6px; }
-  .topbar2 { margin-bottom:9px; }
+  .topbar { display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:5px; }
+  .titlebar { margin-bottom:6px; } .titlebar .title { font-size:18px; font-weight:600; }
+  .topbar2 { margin-bottom:8px; }
   .topbar2 .who, .topbar2 .cur { font-size:13.5px; }
+  .topbar label { gap:5px; }
+  /* tighter inputs/selects so the line doesn't wrap */
+  .topbar #levelSel { max-width:128px; }
+  .topbar #tempoSel { max-width:118px; }
+  .topbar #notesN { width:42px; }   /* 3-digit max */
   .topbar .title { font-size:18px; font-weight:600; }
   .topbar label { font-size:13px; color:#b6bcc6; display:flex; gap:6px; align-items:center; }
   select, .topbar select { background:#2a2e37; color:#e6e8ec; border:1px solid #3a3f4a; border-radius:6px; font-size:13px; padding:4px 7px; }
   select option:disabled { color:#565b63; }
   .cur { font-size:13px; color:#b6bcc6; } .cur b { color:#e6e8ec; font-variant-numeric:tabular-nums; }
   .who { font-size:13px; color:#9aa1ad; } .who b { color:#cdd3dd; }
-  button { background:#2a2e37; color:#e6e8ec; border:1px solid #3a3f4a; padding:7px 14px; border-radius:8px; font-size:14px; cursor:pointer; }
+  button { background:#2a2e37; color:#e6e8ec; border:1px solid #3a3f4a; padding:6px 11px; border-radius:8px; font-size:13.5px; cursor:pointer; }
   button:hover { background:#343a45; }
   .controls { display:flex; gap:13px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
   .stat { font-size:14px; color:#b6bcc6; font-variant-numeric:tabular-nums; }
   .stat .ok { color:#67d98b; } .stat .no { color:#f0a06a; } .stat .miss { color:#f06a6a; }
 
   .stagewrap { display:flex; gap:12px; align-items:flex-start; }
-  #stage { position:relative; background:#fbfbf8; border-radius:10px; overflow:hidden; height:280px; flex:1 1 auto; min-width:0; cursor:pointer; }
-  #answerKey { position:relative; background:#fbfbf8; border-radius:10px; overflow:hidden; height:280px; flex:0 0 220px; max-width:240px; }
+  #stage { position:relative; background:#fbfbf8; border-radius:10px; overflow:hidden; height:220px; flex:1 1 auto; min-width:0; cursor:pointer; }
+  #answerKey { position:relative; background:#fbfbf8; border-radius:10px; overflow:hidden; height:220px; flex:0 0 220px; max-width:240px; }
   #answerKey::before { content:"notes used"; position:absolute; top:6px; left:10px; font-size:11px; color:#8b909a; z-index:2; pointer-events:none; }
   /* Stats overlay INSIDE the staff — third "line" of the topbar visually */
   #hud { position:absolute; top:6px; right:14px; z-index:3; font-size:13px; color:#5a6170; font-variant-numeric:tabular-nums; pointer-events:none; }
@@ -149,11 +162,11 @@
   <div id="rotate"><div class="ic">📱</div><div class="rt">Rotate to landscape</div>
     <div class="rd">This trainer needs a wider screen — turn your phone sideways to play.</div></div>
   <div class="app" id="app">
+    <div class="titlebar"><span class="title">Sight-Reading Trainer</span></div>
     <div class="topbar topbar1">
-      <span class="title">Sight-Reading Trainer</span>
       <label>Level <select id="levelSel"></select></label>
       <label>Tempo <select id="tempoSel"></select></label>
-      <label>Notes <input type="number" id="notesN" min="4" max="60" value="24" style="width:54px"></label>
+      <label>Notes <input type="number" id="notesN" min="4" max="200" value="24"></label>
       <button id="aboutBtn">About the levels</button>
       <button id="resetAll">Reset</button>
       <button id="fsBtn" title="Toggle fullscreen">⛶</button>
@@ -162,7 +175,7 @@
       <span class="who">Player <b id="who">—</b></span>
       <span class="cur" title="highest level cleared on this device">highest level cleared&nbsp;<b id="hLevel">0</b></span>
       <span class="cur" title="practice-day streak">🔥&nbsp;<b id="streak">0</b></span>
-      <button id="rewardBtn">Reward</button>
+      <button id="rewardBtn">Rewards</button>
       <button id="statsBtn">Player stats</button>
     </div>
 
@@ -299,7 +312,7 @@ let N = 24;
 let runTiming = [], practiceAccum = 0;    // this-run note timing (ms, +late/−early) + active play seconds
 const heldVoices = {};                    // id -> sustaining Synth voice handle (held key)
 const SPACING = 88, FAILX = 120, LEADIN = 4;
-let SVG_H = 280, STAVE_Y = 115;           // taller stage, staff vertically centered (adapts on small/landscape-phone)
+let SVG_H = 220, STAVE_Y = 78;            // tighter stage so staff sits centered + the keyboard fits below on one iPad screen
 const GRACE_SEC = 0.10;                   // late-hit leeway past the downbeat (never need to be early)
 const ONTIME_MS = 80;                     // |error| under this counts as "on time" (not scored yet)
 
@@ -373,8 +386,16 @@ function showTapCta(show, text){ const c = document.getElementById("tapcta"); if
   c.style.display = show ? "flex" : "none"; }
 function pauseGame(){ if (!running) return; running = false; paused = true; if (raf) cancelAnimationFrame(raf); releaseAllHeld(); showTapCta(true, "tap to resume"); }
 function resumeGame(){ if (!paused) return; paused = false; running = true; lastT = Synth.now(); showTapCta(false); raf = requestAnimationFrame(loop); }
-function tryFullscreen(){ if (autoFs || document.fullscreenElement) return; autoFs = true;
-  try { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); } catch(e){} }
+// Vendor-prefixed fullscreen (Safari/iPad uses webkit*). Falls back gracefully on
+// unsupported browsers; the apple-mobile-web-app-capable + Add-to-Home-Screen
+// path is the only way to get true fullscreen on iPhone Safari.
+function fsElement(){ return document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement; }
+function fsEnter(){ const e = document.documentElement;
+  const fn = e.requestFullscreen || e.webkitRequestFullscreen || e.mozRequestFullScreen || e.msRequestFullscreen;
+  if (!fn) return false; try { const r = fn.call(e); if (r && r.catch) r.catch(()=>{}); } catch(e){} return true; }
+function fsExit(){ const fn = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
+  if (fn) try { const r = fn.call(document); if (r && r.catch) r.catch(()=>{}); } catch(e){} }
+function tryFullscreen(){ if (autoFs || fsElement()) return; autoFs = true; fsEnter(); }
 // Notes fall from above into the staff during the count-in. The FIRST note
 // starts (and lands) first; each later note begins after an index-proportional
 // delay (with small jitter for variety). Acceleration curve, no decel — feels
@@ -675,10 +696,7 @@ function showPanel(which){
 document.getElementById("statsBtn").onclick = () => showPanel("stats");
 document.getElementById("aboutBtn").onclick = () => showPanel("about");
 document.getElementById("rewardBtn").onclick = () => showPanel("reward");
-document.getElementById("fsBtn").onclick = () => {
-  if (document.fullscreenElement) { document.exitFullscreen && document.exitFullscreen(); }
-  else { try { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); } catch(e){} }
-};
+document.getElementById("fsBtn").onclick = () => { autoFs = true; if (fsElement()) fsExit(); else if (!fsEnter()) alert("Fullscreen isn't available in this browser. On iPhone, use Safari's \"Add to Home Screen\" instead."); };
 // Tap the staff to start, pause, or resume. (No more Play button — the staff IS the button.)
 stage.addEventListener("click", () => {
   tryFullscreen();                              // first user gesture is allowed to enter fullscreen
@@ -736,7 +754,7 @@ function buildReward(){
   ];
   const critC = 2 * Math.sqrt(REWARD.spring * REWARD.mass);
   const tag = REWARD.damping < critC * 0.9 ? `<span style="color:#67d98b">under-damped (springy)</span>` : REWARD.damping > critC * 1.1 ? `<span style="color:#f0a06a">over-damped (sluggish)</span>` : `<span style="color:#dfb24a">near-critical (snappy, no bounce)</span>`;
-  el.innerHTML = `<h3>Reward — Marge physics</h3>
+  el.innerHTML = `<h3>Rewards — Marge physics</h3>
     <div class="pmeta">Mass-spring-damper. Tap within the engage radius and she springs toward your finger; the finger is the end of the spring. Let go and she coasts to a stop.</div>
     ${fields.map(f => `<div class="rfield">
       <label><span class="rl">${f.label}</span><input type="range" id="rw_${f.k}" min="${f.min}" max="${f.max}" step="${f.step}" value="${REWARD[f.k]}"><b id="rwv_${f.k}">${REWARD[f.k]}</b></label>
@@ -932,7 +950,7 @@ function stopFinale() {
 // ── responsive layout (short / landscape-phone screens) ──────────────────────
 function layout() {
   const compact = innerHeight < 560 || innerWidth < 600;
-  SVG_H = compact ? 200 : 280; STAVE_Y = compact ? 85 : 115;
+  SVG_H = compact ? 168 : 220; STAVE_Y = compact ? 56 : 78;     // tighter top margin; below has more room for bass ledger notes
   stage.style.height = SVG_H + "px";
   const ak = document.getElementById("answerKey"); if (ak) ak.style.height = SVG_H + "px";  // match stage height
   renderStaff(); if (notes.length) renderNotes();
