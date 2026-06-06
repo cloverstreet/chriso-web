@@ -30,30 +30,43 @@
   }
   #wordmark .t { font-style:italic; letter-spacing:.42em; font-size:clamp(13px,1.5vw,19px);
     color:rgba(237,227,200,0.55); text-transform:lowercase; }
-  #wordmark .s { display:block; margin-top:5px; font-size:.6rem; letter-spacing:.26em;
-    color:rgba(237,227,200,0.4); text-transform:lowercase; }
+
+  /* Vertical "the harmonic series" sidebar label on the left edge */
+  #series-label {
+    position:fixed; left:12px; top:50%; transform:translateY(-50%);
+    z-index:8; pointer-events:none; writing-mode:vertical-rl;
+    font-style:italic; font-size:clamp(11px,1vw,14px); letter-spacing:.32em;
+    color:rgba(237,227,200,0.55); text-transform:lowercase; white-space:nowrap;
+  }
 
   #hint {
-    position:fixed; bottom:64px; left:50%; transform:translateX(-50%); z-index:8;
-    font-size:.62rem; letter-spacing:.2em; color:rgba(237,227,200,0.4);
+    position:fixed; bottom:74px; left:50%; transform:translateX(-50%); z-index:8;
+    font-size:.62rem; letter-spacing:.2em; color:rgba(237,227,200,0.42);
     text-transform:lowercase; pointer-events:none; transition:opacity 1.2s; white-space:nowrap;
   }
   #hint.faded { opacity:0; }
 
   #lesson-links {
-    position:fixed; bottom:26px; left:50%; transform:translateX(-50%); z-index:10;
-    display:flex; gap:28px; align-items:baseline; flex-wrap:wrap; justify-content:center; max-width:90vw;
+    position:fixed; bottom:30px; left:50%; transform:translateX(-50%); z-index:10;
+    display:flex; gap:34px; align-items:baseline; flex-wrap:wrap; justify-content:center; max-width:78vw;
   }
   #lesson-links a {
-    color:#b09a78; text-decoration:none;
-    font-size:clamp(13px,1.5vw,17px); letter-spacing:.14em; text-transform:lowercase;
+    color:#a89373; text-decoration:none;
+    font-size:clamp(14px,1.7vw,18px); letter-spacing:.16em; text-transform:lowercase;
     transition:color .3s, text-shadow .3s; white-space:nowrap;
+    animation: link-pulse 3.6s ease-in-out infinite;
   }
-  #lesson-links a:hover { color:#f0e0c0; text-shadow:0 0 14px rgba(220,200,160,0.5); }
+  /* Stagger the two links so they pulse out of phase — "alive" feel */
+  #lesson-links a:nth-child(2) { animation-delay: -1.8s; }
+  #lesson-links a:hover { color:#f5e4b8; text-shadow:0 0 18px rgba(220,200,160,0.65); animation:none; }
+  @keyframes link-pulse {
+    0%, 100% { color:#a89373; text-shadow: 0 0 12px rgba(220,200,160,0.18); }
+    50%      { color:#d9c79a; text-shadow: 0 0 22px rgba(220,200,160,0.55); }
+  }
 
   /* ── Synth params panel ───────────────────────────────────────────── */
   #synth-btn {
-    position:fixed; right:22px; bottom:22px; z-index:11;
+    position:fixed; right:22px; bottom:30px; z-index:11;
     appearance:none; border:1px solid rgba(220,200,160,0.18); background:rgba(0,0,0,0.4);
     color:#8a7c64; font-family:'Courier New',monospace; font-size:11px; letter-spacing:.18em;
     text-transform:lowercase; padding:6px 16px; border-radius:16px; cursor:pointer;
@@ -62,7 +75,7 @@
   #synth-btn:hover { color:#c8b894; }
   #synth-btn.active { color:#f0e0c0; background:rgba(220,200,160,0.18); border-color:rgba(220,200,160,0.32); }
   #synth-panel {
-    position:fixed; right:22px; bottom:60px; z-index:11; display:none;
+    position:fixed; right:22px; bottom:68px; z-index:11; display:none;
     width:248px; padding:16px 16px 14px; border-radius:14px;
     background:rgba(8,16,16,0.86); border:1px solid rgba(220,200,160,0.16);
     backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
@@ -81,13 +94,19 @@
 
   /* ── Recommended shows teaser — owned by the calendar Claude; preserved ── */
   #rec-teaser {
-    position:fixed; top:24px; right:28px;
-    max-width: 320px;
+    position:fixed; top:22px; right:22px;
+    max-width: 300px;
     font-size:.72rem; letter-spacing:.1em; line-height:1.55;
-    color: rgba(237,227,200,0.55);
+    color: rgba(237,227,200,0.78);
     text-align:right;
     z-index:5;
     pointer-events:auto;
+    background: rgba(8,16,16,0.55);
+    border: 1px solid rgba(220,200,160,0.12);
+    border-radius: 10px;
+    padding: 12px 14px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
   }
   #rec-teaser .heading { color:#e07394; letter-spacing:.18em; text-transform:lowercase; font-weight:700; font-size:.66rem; margin-bottom:10px; }
   #rec-teaser a { display:block; color:rgba(237,227,200,0.75); text-decoration:none; margin-bottom:10px; transition:color .25s; }
@@ -107,12 +126,13 @@
 <body>
 <canvas id="strings"></canvas>
 <a id="back" href="/glitchpage/">← chriso.org</a>
-<div id="wordmark"><span class="t">lessons</span><span class="s">the harmonic series · pluck the modes</span></div>
-<div id="hint">pluck a string · drag down the column to glissando · string n vibrates in n parts</div>
+<div id="wordmark"><span class="t">lessons</span></div>
+<div id="series-label">the harmonic series</div>
+<div id="hint">tap = pluck · drag = glissando · hold + move = bow (sustain · faster motion = louder)</div>
 
 <div id="lesson-links">
-  <a href="/TestCases/notationsystems/sight-reader-01/">note reader →</a>
-  <a href="/TestCases/notationsystems/poly-cells-01/">phasing note cells →</a>
+  <a href="/TestCases/notationsystems/sight-reader-01/">note reader</a>
+  <a href="/TestCases/notationsystems/poly-cells-01/">phasing note cells</a>
 </div>
 
 <button id="synth-btn">synth</button>
@@ -178,7 +198,7 @@ let bandTop, bandBottom, xStart, xEnd;
 function layout() {
   bandTop    = Math.max(120, H * 0.16);
   bandBottom = H - Math.max(86, H * 0.13);
-  xStart = Math.min(120, W * 0.16);
+  xStart = Math.min(140, W * 0.20);   // leaves room on the left for the vertical "the harmonic series" label + per-string number/note labels
   xEnd   = W - 26;
   for (let i = 0; i < NH; i++) {
     // harmonic 1 at the bottom (low), harmonic 16 at the top (high)
@@ -272,35 +292,99 @@ const hintEl = document.getElementById('hint');
 let hintFaded = false;
 function fadeHint() { if (!hintFaded) { hintFaded = true; hintEl.classList.add('faded'); } }
 
-// Per-pointer state so each finger is independent. (Previously one global
-// lastY shared across all pointers → on multi-touch, the apparent "movement"
-// from finger A to finger B would sweep every string between them. Now each
-// pointerId tracks itself; string-crossing only happens within ONE pointer's
-// own motion, so two fingers pluck only what they touch.)
-const pointerState = new Map();   // pointerId → { x, y, t }
+// Per-pointer state — each finger is independent (pointerId-keyed) AND
+// each may carry a "bow voice": a continuous tone that lives while the
+// finger is held. Movement injects energy → the voice gets louder; idle
+// → energy decays in bowTick → voice fades to silence. Same model as a
+// violin bow: you have to keep moving for the string to keep sounding.
+const pointerState = new Map();   // pointerId → { x, y, t, energy, voice }
 function nearestString(y) {
   let best = strings[0], bd = 1e9;
   for (const s of strings) { const d = Math.abs(s.y - y); if (d < bd) { bd = d; best = s; } }
   return best;
 }
+
+// ── Bow voice (continuous, no feedback) ───────────────────────────────
+function startBow(s) {
+  if (!actx) return null;
+  const lp = actx.createBiquadFilter();
+  lp.type = 'lowpass'; lp.Q.value = 0.7;
+  lp.frequency.value = pBright * 0.6;
+  const amp = actx.createGain();
+  amp.gain.value = 0;
+  lp.connect(amp); amp.connect(busLimiter);
+  const oscs = [];
+  for (const [mult, gain, det] of [[1, 1.0, -2], [1, 0.7, 2], [2, 0.18, 0]]) {
+    const o = actx.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = s.freq * mult;
+    o.detune.value = det;
+    const g = actx.createGain(); g.gain.value = (mult > 1) ? gain * pTimbre : gain;
+    o.connect(g); g.connect(lp);
+    o.start();
+    oscs.push(o);
+  }
+  return { oscs, lp, amp, s };
+}
+function stopBow(voice) {
+  if (!voice || !actx) return;
+  const t = actx.currentTime;
+  voice.amp.gain.cancelScheduledValues(t);
+  voice.amp.gain.setValueAtTime(voice.amp.gain.value, t);
+  voice.amp.gain.linearRampToValueAtTime(0.0001, t + 0.12);
+  for (const o of voice.oscs) o.stop(t + 0.15);
+}
+function setBowEnergy(voice, energy) {
+  if (!voice || !actx) return;
+  const target = Math.min(0.30, energy * 0.55);
+  voice.amp.gain.setTargetAtTime(target, actx.currentTime, 0.06);
+  // Faster bowing also opens the filter — louder + brighter, like rosin scrape
+  voice.lp.frequency.setTargetAtTime(pBright * (0.55 + Math.min(1, energy) * 0.55), actx.currentTime, 0.08);
+}
+// Idle decay: silence requires no movement (a stopped bow stops the note)
+setInterval(() => {
+  if (!actx) return;
+  for (const st of pointerState.values()) {
+    if (!st.voice) continue;
+    st.energy = (st.energy || 0) * 0.86;
+    setBowEnergy(st.voice, st.energy);
+  }
+}, 50);
+
 function handlePointerMove(ev) {
   const id = ev.pointerId;
   const prev = pointerState.get(id);
   const now = performance.now();
   if (prev) {
     const dt = Math.max(1, now - prev.t);
-    const vel = Math.min(1, Math.hypot(ev.clientX - prev.x, ev.clientY - prev.y) / dt * 0.7 + 0.1);
+    const dist = Math.hypot(ev.clientX - prev.x, ev.clientY - prev.y);
+    const speed = dist / dt;                              // px / ms
+    const vel = Math.min(1, speed * 0.7 + 0.1);
+    let crossedTo = null;
     if (ev.clientX > xStart - 40 && ev.clientX < xEnd + 40) {
       for (const s of strings) {
         const crossed = (prev.y < s.y && ev.clientY >= s.y) || (prev.y > s.y && ev.clientY <= s.y);
-        if (crossed) pluck(s, vel);
+        if (crossed) { pluck(s, vel); crossedTo = s; }
       }
     }
+    // Movement injects bow energy (more motion → louder bow)
+    prev.energy = Math.min(1, Math.max(prev.energy || 0, speed * 1.6));
+    // Hand the bow off if the finger crossed onto a different string
+    if (prev.voice && crossedTo && prev.voice.s !== crossedTo) {
+      stopBow(prev.voice);
+      prev.voice = startBow(crossedTo);
+    }
+    prev.x = ev.clientX; prev.y = ev.clientY; prev.t = now;
+  } else {
+    pointerState.set(id, { x: ev.clientX, y: ev.clientY, t: now, energy: 0, voice: null });
   }
-  pointerState.set(id, { x: ev.clientX, y: ev.clientY, t: now });
   fadeHint();
 }
-function endPointer(ev) { pointerState.delete(ev.pointerId); }
+function endPointer(ev) {
+  const st = pointerState.get(ev.pointerId);
+  if (st && st.voice) stopBow(st.voice);
+  pointerState.delete(ev.pointerId);
+}
 
 // ── Render: 16 standing waves with n antinodes + labels ─────────────────
 function draw() {
@@ -324,10 +408,10 @@ function draw() {
     ctx.font = '600 12px "Courier New",monospace';
     ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
     ctx.fillStyle = `rgba(${r|0},${g|0},${b|0},${0.45 + lit * 0.5})`;
-    ctx.fillText(String(s.n).padStart(2, ' '), 12, s.y);
+    ctx.fillText(String(s.n).padStart(2, ' '), 32, s.y);   // x bumped to clear the vertical side label
     ctx.font = '11px "Courier New",monospace';
     ctx.fillStyle = `rgba(${r|0},${g|0},${b|0},${0.35 + lit * 0.5})`;
-    ctx.fillText(s.label, 42, s.y);
+    ctx.fillText(s.label, 62, s.y);
 
     // the string itself — standing wave with n antinodes
     ctx.lineWidth = 1 + lit * 1.6;
@@ -353,11 +437,17 @@ document.addEventListener('pointermove', e => { startAudioOnce(); handlePointerM
 document.addEventListener('pointerdown', e => {
   startAudioOnce();
   if (e.target.closest('a') || e.target.closest('#synth-panel') || e.target.closest('#synth-btn')) return;
-  // Pluck the string this finger lands on. Each finger is tracked
-  // independently by pointerId — no "in-between" strings get plucked when a
-  // second finger touches down somewhere else.
-  if (e.clientY > bandTop - 30 && e.clientY < bandBottom + 30) pluck(nearestString(e.clientY), 0.85);
-  pointerState.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now() });
+  // Tap = pluck (instant). If the finger then holds + moves, the bow voice
+  // started here sustains the note as long as there's motion.
+  const inBand = e.clientY > bandTop - 30 && e.clientY < bandBottom + 30;
+  if (inBand) {
+    const s = nearestString(e.clientY);
+    pluck(s, 0.85);
+    const voice = startBow(s);
+    pointerState.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now(), energy: 0.35, voice });
+  } else {
+    pointerState.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now(), energy: 0, voice: null });
+  }
 });
 document.addEventListener('pointerup',     endPointer);
 document.addEventListener('pointercancel', endPointer);
