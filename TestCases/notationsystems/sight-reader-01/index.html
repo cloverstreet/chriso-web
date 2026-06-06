@@ -10,9 +10,13 @@
 <script src="./tunings.js?v=3"></script>
 <style>
   :root { color-scheme: dark; }
-  body { margin:0; font-family:-apple-system, system-ui, sans-serif; background:#15171c; color:#e6e8ec; padding:18px 22px;
-         touch-action: manipulation; -webkit-touch-callout:none; -webkit-tap-highlight-color:transparent; }   /* iPad: kill double-tap zoom + long-press menu */
-  .topbar { display:flex; align-items:center; gap:13px; flex-wrap:wrap; margin-bottom:9px; }
+  html, body { touch-action: manipulation; overscroll-behavior:contain; }   /* iPad + iPhone: kill double-tap zoom */
+  body { margin:0; font-family:-apple-system, system-ui, sans-serif; background:#15171c; color:#e6e8ec; padding:14px 22px;
+         -webkit-touch-callout:none; -webkit-tap-highlight-color:transparent; }
+  #stage, #answerKey, #inst, .wk, .bk, button, select, input { touch-action: manipulation; }   /* belt-and-suspenders — modern iOS Safari sometimes ignores body-level */
+  .topbar { display:flex; align-items:center; gap:13px; flex-wrap:wrap; margin-bottom:6px; }
+  .topbar2 { margin-bottom:9px; }
+  .topbar2 .who, .topbar2 .cur { font-size:13.5px; }
   .topbar .title { font-size:18px; font-weight:600; }
   .topbar label { font-size:13px; color:#b6bcc6; display:flex; gap:6px; align-items:center; }
   select, .topbar select { background:#2a2e37; color:#e6e8ec; border:1px solid #3a3f4a; border-radius:6px; font-size:13px; padding:4px 7px; }
@@ -26,10 +30,16 @@
   .stat .ok { color:#67d98b; } .stat .no { color:#f0a06a; } .stat .miss { color:#f06a6a; }
 
   .stagewrap { display:flex; gap:12px; align-items:flex-start; }
-  #stage { position:relative; background:#fbfbf8; border-radius:10px; overflow:hidden; height:230px; flex:1 1 auto; min-width:0; }
-  #answerKey { position:relative; background:#fbfbf8; border-radius:10px; overflow:hidden; height:230px; flex:0 0 220px; max-width:240px; }
+  #stage { position:relative; background:#fbfbf8; border-radius:10px; overflow:hidden; height:280px; flex:1 1 auto; min-width:0; cursor:pointer; }
+  #answerKey { position:relative; background:#fbfbf8; border-radius:10px; overflow:hidden; height:280px; flex:0 0 220px; max-width:240px; }
   #answerKey::before { content:"notes used"; position:absolute; top:6px; left:10px; font-size:11px; color:#8b909a; z-index:2; pointer-events:none; }
-  @media (max-width: 760px) { .stagewrap { flex-direction:column; } #answerKey { width:100%; max-width:none; height:130px; flex:0 0 130px; } }
+  /* Stats overlay INSIDE the staff — third "line" of the topbar visually */
+  #hud { position:absolute; top:6px; right:14px; z-index:3; font-size:13px; color:#5a6170; font-variant-numeric:tabular-nums; pointer-events:none; }
+  #hud .ok{color:#3a9f55;} #hud .no{color:#c97045;} #hud .miss{color:#c14e4e;} #hud .tim{color:#8b909a; margin-left:8px;}
+  /* "tap to play" prompt on the empty staff */
+  #tapcta { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:4;
+            font-size:30px; font-weight:600; color:rgba(85,95,110,0.48); pointer-events:none; -webkit-user-select:none; user-select:none; text-align:center; padding:0 16px; }
+  @media (max-width: 760px) { .stagewrap { flex-direction:column; } #answerKey { width:100%; max-width:none; height:160px; flex:0 0 160px; } #tapcta { font-size:24px; } }
   #staff { position:absolute; inset:0; z-index:1; }
   #clip  { position:absolute; top:0; bottom:0; right:0; overflow:hidden; z-index:2; }
   #track { position:absolute; top:0; left:0; will-change:transform; }
@@ -139,23 +149,21 @@
   <div id="rotate"><div class="ic">📱</div><div class="rt">Rotate to landscape</div>
     <div class="rd">This trainer needs a wider screen — turn your phone sideways to play.</div></div>
   <div class="app" id="app">
-    <div class="topbar">
+    <div class="topbar topbar1">
       <span class="title">Sight-Reading Trainer</span>
       <label>Level <select id="levelSel"></select></label>
       <label>Tempo <select id="tempoSel"></select></label>
-      <span class="cur">to&nbsp;beat <b id="curLevel">1</b></span>
-      <span class="cur" title="practice-day streak">🔥&nbsp;<b id="streak">0</b></span>
-      <span class="who">player <b id="who">—</b></span>
-      <button id="statsBtn">Player stats</button>
-      <button id="aboutBtn">About the levels</button>
-      <button id="rewardBtn">Reward</button>
-      <button id="resetAll">Reset</button>
-    </div>
-    <div class="controls">
-      <button id="start">Play</button>
-      <span class="stat"><span class="ok" id="cOk">0</span> correct · <span class="no" id="cNo">0</span> wrong · <span class="miss" id="cMi">0</span> missed &nbsp;·&nbsp; <span id="prog">0 / 0</span> &nbsp;·&nbsp; <span class="tim" id="tim"></span></span>
       <label>Notes <input type="number" id="notesN" min="4" max="60" value="24" style="width:54px"></label>
-      <button id="modebtn">Keys: piano</button>
+      <button id="aboutBtn">About the levels</button>
+      <button id="resetAll">Reset</button>
+      <button id="fsBtn" title="Toggle fullscreen">⛶</button>
+    </div>
+    <div class="topbar topbar2">
+      <span class="who">Player <b id="who">—</b></span>
+      <span class="cur" title="highest level cleared on this device">highest level cleared&nbsp;<b id="hLevel">0</b></span>
+      <span class="cur" title="practice-day streak">🔥&nbsp;<b id="streak">0</b></span>
+      <button id="rewardBtn">Reward</button>
+      <button id="statsBtn">Player stats</button>
     </div>
 
     <div class="stagewrap">
@@ -163,14 +171,16 @@
         <div id="staff"></div>
         <div id="clip"><div id="track"><div id="fb"></div><div id="notes"></div></div></div>
         <div id="failline"></div>
+        <div id="hud"><span class="ok" id="cOk">0</span> correct · <span class="no" id="cNo">0</span> wrong · <span class="miss" id="cMi">0</span> missed &nbsp;·&nbsp; <span id="prog">0 / 0</span>&nbsp;&nbsp;<span class="tim" id="tim"></span></div>
+        <div id="tapcta">tap to play</div>
         <div id="count"></div>
         <div id="msg"></div>
       </div>
       <div id="answerKey" aria-label="notes used in this level"></div>
     </div>
 
-    <div id="instbar"><label>Sound <select id="soundSel"></select></label></div>
     <div id="inst"></div>
+    <div id="instbar"><label>Sound <select id="soundSel"></select></label></div>
     <div id="stats"></div>
     <div id="about"></div>
     <div id="reward"></div>
@@ -191,7 +201,15 @@ function idxOf(k){ const [L,o]=k.split("/"); return LADDER.indexOf(L)+7*(+o); }
 function fromIdx(i){ return LADDER[((i%7)+7)%7]+"/"+Math.floor(i/7); }
 function stepKey(k,n){ return fromIdx(idxOf(k)+n); }
 function range(lo,hi){ const a=idxOf(lo),b=idxOf(hi),out=[]; for(let i=a;i<=b;i++) out.push(fromIdx(i)); return out; }
-const PIANO = { a:"c/4", w:"c#/4", s:"d/4", e:"d#/4", d:"e/4", r:"f/4", f:"f/4", t:"f#/4", g:"g/4", y:"g#/4", h:"a/4", u:"a#/4", j:"b/4", i:"c/5", k:"c/5", o:"c#/5", l:"d/5", p:"d#/5", ";":"e/5" };
+// QWERTY → pitch mapping for the chromatic piano (now spans F3..F5).
+// Lower octave (F3..B3) on the bottom row whites; black keys F♯3..A♯3 are
+// tap-only (kids almost always tap the on-screen piano on iPad).
+const PIANO = {
+  z:"f/3", x:"g/3", c:"a/3", v:"b/3",
+  a:"c/4", w:"c#/4", s:"d/4", e:"d#/4", d:"e/4",
+  f:"f/4", t:"f#/4", g:"g/4", y:"g#/4", h:"a/4", u:"a#/4", j:"b/4",
+  k:"c/5", o:"c#/5", l:"d/5", p:"d#/5", ";":"e/5", "'":"f/5"
+};
 function pcOf(k){ const m=/^([a-g])(#|b)?\//.exec(k); const base={c:0,d:2,e:4,f:5,g:7,a:9,b:11}[m[1]]; return ((base+(m[2]==="#"?1:m[2]==="b"?-1:0))%12+12)%12; }
 function notePc(n){ const base={c:0,d:2,e:4,f:5,g:7,a:9,b:11}[n.letter]; return ((base+(n.acc==="#"?1:n.acc==="b"?-1:0))%12+12)%12; }
 function noteFreqAcc(n){ let f=Tunings.noteFreq(n.key.replace("/","")); if(n.acc==="#")f*=Math.pow(2,1/12); else if(n.acc==="b")f/=Math.pow(2,1/12); return f; }
@@ -252,7 +270,8 @@ function playerSummary(nm){ const p = players[nm]; const plays = Object.values(p
     avgAtt: cleared.length ? cleared.reduce((a,x)=>a+(x.firstPass||0),0)/cleared.length : 0,
     tm: p.timing || { n:0, sumMs:0, sumAbsMs:0, early:0, late:0, onTime:0, recent:[] } }; }
 
-let activeLevel = 1, tempoBpm = TSLOW, notesN = 24, mode = "piano";
+let activeLevel = 1, tempoBpm = TSLOW, notesN = 24;
+let paused = false, autoFs = false;          // tap-to-play/pause + auto-fullscreen-on-first-gesture
 
 // ── instrument voices (ONE synth, distinct colors via waveform + ADSR) ──
 // struck (sustain 0) ring down even if held; pads (sustain>0) hold until release.
@@ -280,7 +299,7 @@ let N = 24;
 let runTiming = [], practiceAccum = 0;    // this-run note timing (ms, +late/−early) + active play seconds
 const heldVoices = {};                    // id -> sustaining Synth voice handle (held key)
 const SPACING = 88, FAILX = 120, LEADIN = 4;
-let SVG_H = 230, STAVE_Y = 92;            // adapt on small/landscape-phone screens
+let SVG_H = 280, STAVE_Y = 115;           // taller stage, staff vertically centered (adapts on small/landscape-phone)
 const GRACE_SEC = 0.10;                   // late-hit leeway past the downbeat (never need to be early)
 const ONTIME_MS = 80;                     // |error| under this counts as "on time" (not scored yet)
 
@@ -348,33 +367,44 @@ function renderNotes() {
 }
 function placeDot(i){ const n = notes[i]; if (!n.dot){ n.dot = document.createElement("div"); fbEl.appendChild(n.dot); }
   n.dot.className = "dot " + n.state; n.dot.style.left = n.xRel + "px"; n.dot.style.top = n.y + "px"; }
-function clearStage(){ notesEl.innerHTML = ""; fbEl.querySelectorAll(".dot").forEach(d => d.remove()); ringEl.style.display = "none"; notes = []; activeIdx = 0; }
-// Notes fall from above into their staff positions during the count-in. Each
-// note picks a random delay + fall duration so they arrive at different times,
-// and the easing is a strong ACCELERATING curve (no slow-down at landing — feels
-// like gravity). All notes land well before the count-in ends.
+function clearStage(){ notesEl.innerHTML = ""; fbEl.querySelectorAll(".dot").forEach(d => d.remove()); ringEl.style.display = "none"; notes = []; activeIdx = 0; showTapCta(true); }
+function showTapCta(show, text){ const c = document.getElementById("tapcta"); if (!c) return;
+  if (text != null) c.textContent = text; else c.textContent = "tap to play";
+  c.style.display = show ? "flex" : "none"; }
+function pauseGame(){ if (!running) return; running = false; paused = true; if (raf) cancelAnimationFrame(raf); releaseAllHeld(); showTapCta(true, "tap to resume"); }
+function resumeGame(){ if (!paused) return; paused = false; running = true; lastT = Synth.now(); showTapCta(false); raf = requestAnimationFrame(loop); }
+function tryFullscreen(){ if (autoFs || document.fullscreenElement) return; autoFs = true;
+  try { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); } catch(e){} }
+// Notes fall from above into the staff during the count-in. The FIRST note
+// starts (and lands) first; each later note begins after an index-proportional
+// delay (with small jitter for variety). Acceleration curve, no decel — feels
+// like gravity. All notes land well before count-in ends.
 function dropFall(){
   const groups = notesEl.querySelectorAll(".vf-stavenote"); if (!groups.length) return;
   const fallDur = LEADIN * 60 / tempoBpm;                       // total count-in seconds
-  const maxDelay = fallDur * 0.30;                              // last note starts no later than 30% in
-  const minDur = fallDur * 0.18, durRange = fallDur * 0.27;     // each note falls in 18–45% of count-in
+  const startMax = fallDur * 0.45;                              // last note starts ≤ 45% in
+  const minDur = fallDur * 0.14, durRange = fallDur * 0.20;     // 14–34% of count-in per note
+  const jitter = fallDur * 0.05;
+  const N = groups.length;
   groups.forEach(g => { g.style.transition = "none"; g.style.transform = "translateY(-380px)"; g.style.opacity = "0"; });
   let armed = false;
   const arm = () => { if (armed) return; armed = true;
-    groups.forEach((g) => {
-      const delay = Math.random() * maxDelay;
-      const dur = minDur + Math.random() * durRange;            // varied per note
-      g.style.transition = `transform ${dur}s cubic-bezier(.55,.05,.85,.4) ${delay}s, opacity ${Math.min(dur, 0.25)}s ease-in ${delay}s`;
+    groups.forEach((g, i) => {
+      const baseDelay = (N > 1 ? i / (N - 1) : 0) * startMax;
+      const delay = Math.max(0, baseDelay + (Math.random() - 0.5) * jitter);   // small bidirectional jitter — order preserved
+      const dur = minDur + Math.random() * durRange;
+      g.style.transition = `transform ${dur}s cubic-bezier(.55,.05,.85,.4) ${delay}s, opacity ${Math.min(dur, 0.22)}s ease-in ${delay}s`;
       g.style.transform = "translateY(0)"; g.style.opacity = "1";
     });
   };
   requestAnimationFrame(() => requestAnimationFrame(arm));
-  setTimeout(arm, 40);                            // fallback if RAFs are throttled (background tab, low-power mode)
+  setTimeout(arm, 40);
 }
 function paint(){
   trackEl.style.transform = `translateX(${baseOffset() - beatPos * SPACING - FAILX}px)`;
-  if (activeIdx < N && notes[activeIdx].state === "pending") { ringEl.style.display = "block";
-    ringEl.style.left = notes[activeIdx].xRel + "px"; ringEl.style.top = notes[activeIdx].y + "px"; } else ringEl.style.display = "none";
+  const n = notes[activeIdx];                  // may be undefined between runs (notes cleared, N stale)
+  if (n && activeIdx < N && n.state === "pending") { ringEl.style.display = "block";
+    ringEl.style.left = n.xRel + "px"; ringEl.style.top = n.y + "px"; } else ringEl.style.display = "none";
 }
 function updateStats(){ document.getElementById("cOk").textContent = cOk; document.getElementById("cNo").textContent = cNo;
   document.getElementById("cMi").textContent = cMi; document.getElementById("prog").textContent = Math.min(activeIdx, N) + " / " + N;
@@ -393,7 +423,7 @@ function startNote(id, pitchKey) {
   const freq = Tunings.noteFreq(pitchKey.replace("/", "")); const s = curSound();
   if (running && activeIdx < N) {
     const n = notes[activeIdx];
-    const correct = (mode === "letters") ? (pitchKey[0] === n.letter) : (pcOf(pitchKey) === notePc(n));
+    const correct = (pcOf(pitchKey) === notePc(n));         // octave-agnostic pitch-class match
     if (correct) {
       recordTiming(); n.state = "correct"; placeDot(activeIdx);
       heldVoices[id] = Synth.noteOn(noteFreqAcc(n), voiceOpts(s));
@@ -410,34 +440,48 @@ function stopNote(id){ const v = heldVoices[id]; if (v) { Synth.noteOff(v); dele
 function releaseAllHeld(){ for (const id in heldVoices) { try{ Synth.noteOff(heldVoices[id]); }catch(e){} delete heldVoices[id]; } }
 function buildInstrument() {
   const el = document.getElementById("inst"); el.innerHTML = "";
-  document.getElementById("modebtn").textContent = "Keys: " + mode;
-  const compact = innerHeight < 560 || innerWidth < 600;
-  if (mode === "piano") {
-    // 10 whites; size to fit available width so phones/tablets get touch-friendly keys.
-    const avail = Math.min(innerWidth - 44, 980);
-    const WK = Math.max(60, Math.min(96, Math.floor(avail / 10)));
-    const WH = Math.max(150, Math.round(WK * 2.15)); const BK = Math.round(WK * 0.58); const BH = Math.round(WH * 0.62);
-    const wbFs = Math.round(WK * 0.30), wsFs = Math.round(WK * 0.17), bbFs = Math.round(BK * 0.42), bsFs = Math.round(BK * 0.30);
-    // each white key shows the NOTE NAME big, with its computer-key small below
-    const whites = [["a","C"],["s","D"],["d","E"],["f","F"],["g","G"],["h","A"],["j","B"],["k","C"],["l","D"],[";","E"]];
-    const blacks = [{ after:0,k:"w",n:"C♯" },{ after:1,k:"e",n:"D♯" },{ after:3,k:"t",n:"F♯" },{ after:4,k:"y",n:"G♯" },{ after:5,k:"u",n:"A♯" },{ after:7,k:"o",n:"C♯" },{ after:8,k:"p",n:"D♯" }];
-    const p = document.createElement("div"); p.className = "piano"; p.style.cssText = `width:${whites.length*WK}px;height:${WH}px`;
-    whites.forEach((w,i)=>{ const d=document.createElement("div"); d.className="wk"; d.style.cssText=`left:${i*WK}px;width:${WK}px;height:${WH}px;padding-bottom:${Math.round(WH*0.06)}px`;
-      d.dataset.k=w[0]; d.innerHTML=`<b style="font-size:${wbFs}px">${w[1]}</b><span style="font-size:${wsFs}px">${w[0].toUpperCase()}</span>`; p.appendChild(d); });
-    blacks.forEach(b=>{ const d=document.createElement("div"); d.className="bk"; d.style.cssText=`left:${(b.after+1)*WK-BK/2}px;width:${BK}px;height:${BH}px;padding-bottom:${Math.round(BH*0.07)}px`;
-      d.dataset.k=b.k; d.innerHTML=`<b style="font-size:${bbFs}px">${b.n}</b><span style="font-size:${bsFs}px">${b.k.toUpperCase()}</span>`; p.appendChild(d); });
-    el.appendChild(p);
-  } else {
-    const row = document.createElement("div"); row.className = "letrow";
-    ["a","b","c","d","e","f","g"].forEach(L=>{ const d=document.createElement("div"); d.className="lk"; d.dataset.letter=L;
-      d.innerHTML=`<b>${L.toUpperCase()}</b><span>key ${L.toUpperCase()}</span>`; row.appendChild(d); });
-    el.appendChild(row);
-  }
-  el.querySelectorAll("[data-k],[data-letter]").forEach(key=>{
-    const pk = () => key.dataset.letter ? key.dataset.letter + "/4" : PIANO[key.dataset.k];
-    key.addEventListener("pointerdown", (ev)=>{ ev.preventDefault(); try{ key.setPointerCapture(ev.pointerId); }catch(e){}
-      key.classList.add("lit"); startNote("p:" + ev.pointerId, pk()); });
-    const up = (ev)=>{ key.classList.remove("lit"); stopNote("p:" + ev.pointerId); };
+  // F3..F5: 15 white keys + 10 black keys, full-width so it's touchable on iPad/phone.
+  const avail = Math.min(innerWidth - 30, 1400);
+  const WK = Math.max(42, Math.min(96, Math.floor(avail / 15)));
+  const WH = Math.max(140, Math.round(WK * 2.35)); const BK = Math.round(WK * 0.58); const BH = Math.round(WH * 0.62);
+  const wbFs = Math.round(WK * 0.30), wsFs = Math.round(WK * 0.17), bbFs = Math.round(BK * 0.40), bsFs = Math.round(BK * 0.28);
+  // each white key: [QWERTY key, displayed note name, vexflow pitch]
+  const whites = [
+    ["z","F3","f/3"], ["x","G3","g/3"], ["c","A3","a/3"], ["v","B3","b/3"],
+    ["a","C4","c/4"], ["s","D4","d/4"], ["d","E4","e/4"],
+    ["f","F4","f/4"], ["g","G4","g/4"], ["h","A4","a/4"], ["j","B4","b/4"],
+    ["k","C5","c/5"], ["l","D5","d/5"], [";","E5","e/5"], ["'","F5","f/5"]
+  ];
+  // blacks: lower-octave (F♯3..A♯3) have no QWERTY key — still tappable.
+  const blacks = [
+    { after:0,  k:null, n:"F♯3", pitch:"f#/3" },
+    { after:1,  k:null, n:"G♯3", pitch:"g#/3" },
+    { after:2,  k:null, n:"A♯3", pitch:"a#/3" },
+    { after:4,  k:"w",  n:"C♯4", pitch:"c#/4" },
+    { after:5,  k:"e",  n:"D♯4", pitch:"d#/4" },
+    { after:7,  k:"t",  n:"F♯4", pitch:"f#/4" },
+    { after:8,  k:"y",  n:"G♯4", pitch:"g#/4" },
+    { after:9,  k:"u",  n:"A♯4", pitch:"a#/4" },
+    { after:11, k:"o",  n:"C♯5", pitch:"c#/5" },
+    { after:12, k:"p",  n:"D♯5", pitch:"d#/5" }
+  ];
+  const p = document.createElement("div"); p.className = "piano"; p.style.cssText = `width:${whites.length*WK}px;height:${WH}px;margin:0 auto`;
+  whites.forEach((w, i) => { const d = document.createElement("div"); d.className = "wk";
+    d.style.cssText = `left:${i*WK}px;width:${WK}px;height:${WH}px;padding-bottom:${Math.round(WH*0.05)}px`;
+    d.dataset.k = w[0]; d.dataset.pitch = w[2];
+    d.innerHTML = `<b style="font-size:${wbFs}px">${w[1]}</b><span style="font-size:${wsFs}px">${w[0].toUpperCase()}</span>`;
+    p.appendChild(d); });
+  blacks.forEach(b => { const d = document.createElement("div"); d.className = "bk";
+    d.style.cssText = `left:${(b.after+1)*WK - BK/2}px;width:${BK}px;height:${BH}px;padding-bottom:${Math.round(BH*0.06)}px`;
+    d.dataset.pitch = b.pitch; if (b.k) d.dataset.k = b.k;
+    d.innerHTML = `<b style="font-size:${bbFs}px">${b.n}</b>${b.k ? `<span style="font-size:${bsFs}px">${b.k.toUpperCase()}</span>` : ""}`;
+    p.appendChild(d); });
+  el.appendChild(p);
+  el.querySelectorAll("[data-pitch]").forEach(key => {
+    const getPk = () => key.dataset.pitch;
+    key.addEventListener("pointerdown", (ev) => { ev.preventDefault(); try { key.setPointerCapture(ev.pointerId); } catch(e){}
+      key.classList.add("lit"); startNote("p:" + ev.pointerId, getPk()); });
+    const up = (ev) => { key.classList.remove("lit"); stopNote("p:" + ev.pointerId); };
     key.addEventListener("pointerup", up); key.addEventListener("pointercancel", up);
   });
 }
@@ -464,7 +508,7 @@ function loop() {
 }
 function start() {
   Synth.ensure(); commitRun();                  // bank practice/timing from any prior (aborted) run
-  stopFinale(); elMsg.style.display = "none";
+  stopFinale(); elMsg.style.display = "none"; paused = false; showTapCta(false);
   fbEl.querySelectorAll(".dot").forEach(d => d.remove());
   genSequence(); renderStaff(); renderNotes(); notes.forEach(n => n.dot = null);
   dropFall();                                  // notes fall in from above during the count-in
@@ -509,7 +553,7 @@ function finish() {
     if (advanced && currentLevel() > activeLevel) { activeLevel = currentLevel(); tempoBpm = LEVELS[activeLevel - 1].bpm; }  // next Play starts the next level
     buildLevelMenu(); buildTempoMenu(); updateCur();
     runFinale();      // celebrate with the just-played notes (notes[] left intact)
-  } else { savePlayers(); elMsg.textContent = `missed ${cMi} — try again`; elMsg.style.display = "flex"; }
+  } else { savePlayers(); elMsg.textContent = `missed ${cMi} — try again`; elMsg.style.display = "flex"; showTapCta(true, "tap to retry"); }
 }
 
 document.addEventListener("keydown", (e) => {
@@ -517,11 +561,10 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && e.target && e.target.id === "fxhint") { stopFinale(); return; }
   if (/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
   if (e.repeat) { e.preventDefault(); return; }    // ignore OS auto-repeat → holding sustains, no machine-gun
-  const k = e.key.toLowerCase(); let pk = null;
-  if (mode === "letters") { if (!/^[a-g]$/.test(k)) return; pk = k + "/4"; }
-  else { pk = PIANO[k]; if (!pk) return; }
+  const k = e.key.toLowerCase();
+  const pk = PIANO[k]; if (!pk) return;
   e.preventDefault();
-  const ke = document.querySelector(`#inst [data-k="${k}"], #inst [data-letter="${k}"]`);
+  const ke = document.querySelector(`#inst [data-k="${CSS.escape(k)}"]`);
   if (ke) ke.classList.add("lit");
   startNote("k:" + k, pk);
 });
@@ -547,7 +590,8 @@ function buildSoundMenu() {
   const sel = document.getElementById("soundSel"); sel.innerHTML = "";
   SOUNDS.forEach((s, i) => { const o = document.createElement("option"); o.value = i; o.textContent = s.name; o.selected = (i === soundIdx); sel.appendChild(o); });
 }
-function updateCur(){ document.getElementById("curLevel").textContent = currentLevel(); document.getElementById("who").textContent = player;
+function updateCur(){ document.getElementById("who").textContent = player;
+  const h = document.getElementById("hLevel"); if (h) h.textContent = beaten();
   const s = document.getElementById("streak"); if (s) s.textContent = (players[player] && players[player].streak) || 0; }
 function selectLevel(i){ activeLevel = i; tempoBpm = LEVELS[i-1].bpm; buildTempoMenu();
   renderStaff(); clearStage(); buildAnswerKey(); updateStats();   // empty staff (correct clef) until Play is pressed; answer-key sidebar reflects this level's pool
@@ -614,7 +658,6 @@ function buildAbout() {
   if (editable) document.getElementById("aboutnotes").addEventListener("input", e => localStorage.setItem("sr.aboutnotes", e.target.value));
 }
 
-document.getElementById("start").onclick = start;
 stage.addEventListener("pointerdown", () => { if (!running) start(); });   // click the staff to (re)start
 document.getElementById("soundSel").onchange = e => { soundIdx = +e.target.value; localStorage.setItem("sr.sound", curSound().name);
   e.target.blur();                                            // return focus so the keyboard plays right away
@@ -622,7 +665,6 @@ document.getElementById("soundSel").onchange = e => { soundIdx = +e.target.value
 document.getElementById("levelSel").onchange = e => selectLevel(+e.target.value);
 document.getElementById("tempoSel").onchange = e => { tempoBpm = +e.target.value; };
 document.getElementById("notesN").onchange = e => { notesN = Math.max(4, Math.min(60, +e.target.value || 24)); selectLevel(activeLevel); };
-document.getElementById("modebtn").onclick = () => { mode = mode === "piano" ? "letters" : "piano"; buildInstrument(); };
 function showPanel(which){
   const panels = { stats: buildStats, about: buildAbout, reward: buildReward };
   const els = { stats: document.getElementById("stats"), about: document.getElementById("about"), reward: document.getElementById("reward") };
@@ -633,6 +675,15 @@ function showPanel(which){
 document.getElementById("statsBtn").onclick = () => showPanel("stats");
 document.getElementById("aboutBtn").onclick = () => showPanel("about");
 document.getElementById("rewardBtn").onclick = () => showPanel("reward");
+document.getElementById("fsBtn").onclick = () => {
+  if (document.fullscreenElement) { document.exitFullscreen && document.exitFullscreen(); }
+  else { try { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); } catch(e){} }
+};
+// Tap the staff to start, pause, or resume. (No more Play button — the staff IS the button.)
+stage.addEventListener("click", () => {
+  tryFullscreen();                              // first user gesture is allowed to enter fullscreen
+  if (running) pauseGame(); else if (paused) resumeGame(); else start();
+});
 document.getElementById("resetAll").onclick = () => { if (!confirm("Reset " + player + "'s progress?")) return;
   players[player] = { level:0, plays:{}, practiceMs:0 }; savePlayers(); activeLevel = 1; buildLevelMenu(); updateCur(); selectLevel(1);
   if (document.getElementById("stats").style.display === "block") buildStats(); };
@@ -881,8 +932,9 @@ function stopFinale() {
 // ── responsive layout (short / landscape-phone screens) ──────────────────────
 function layout() {
   const compact = innerHeight < 560 || innerWidth < 600;
-  SVG_H = compact ? 156 : 230; STAVE_Y = compact ? 70 : 92;
+  SVG_H = compact ? 200 : 280; STAVE_Y = compact ? 85 : 115;
   stage.style.height = SVG_H + "px";
+  const ak = document.getElementById("answerKey"); if (ak) ak.style.height = SVG_H + "px";  // match stage height
   renderStaff(); if (notes.length) renderNotes();
   notes.forEach(n => { if (n.dot) { n.dot.style.left = n.xRel + "px"; n.dot.style.top = n.y + "px"; } });
   paint();
