@@ -4,6 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Sight Reader" />
 <title>Sight-Reading Trainer · notation test case 01</title>
 <script src="https://cdn.jsdelivr.net/npm/vexflow@4.2.2/build/cjs/vexflow.js"></script>
 <script src="./synth.js?v=3"></script>
@@ -21,6 +23,9 @@
            padding-left: max(26px, env(safe-area-inset-left)); }
   }
   #stage, #answerKey, #inst, .wk, .bk, button, select, input { touch-action: manipulation; }   /* belt-and-suspenders — modern iOS Safari sometimes ignores body-level */
+  /* iOS auto-zooms the page when focusing a control whose font-size < 16px — and
+     never zooms back out. 16px on touch devices kills that whole zoom class. */
+  @media (pointer: coarse) { select, input, .topbar select { font-size:16px; } }
   .topbar { display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:5px; }
   .titlebar { margin-bottom:6px; } .titlebar .title { font-size:18px; font-weight:600; }
   .topbar2 { margin-bottom:8px; }
@@ -154,7 +159,13 @@
   @keyframes rothint { 0%,55%{transform:rotate(0)} 80%,100%{transform:rotate(-90deg)} }
   @media (orientation:portrait) and (max-width:820px) { #rotate { display:flex; } }
   @media (max-height:560px) {
-    body { padding:8px 13px; }
+    /* keep the safe-area floor here too — this later rule was OVERRIDING the
+       safe-area paddings above, which is why the front camera sat on the clef */
+    body { padding:8px 13px;
+           padding-top: max(8px, env(safe-area-inset-top));
+           padding-right: max(13px, env(safe-area-inset-right));
+           padding-bottom: max(8px, env(safe-area-inset-bottom));
+           padding-left: max(13px, env(safe-area-inset-left)); }
     .titlebar { display:none; }                 /* phone landscape: every vertical px counts */
     .topbar { gap:9px; margin-bottom:5px; } .topbar .title { font-size:16px; }
     .controls { gap:10px; margin-bottom:6px; } #instbar { margin-top:7px; }
@@ -358,9 +369,12 @@ function buildAnswerKey(){
   }
   pool.sort((a,b) => idxOf(a) - idxOf(b));
   el.innerHTML = "";
-  const w = el.clientWidth || 220, h = 230;
-  const r = new VF.Renderer(el, VF.Renderer.Backends.SVG); r.resize(w, h);
-  const ctx = r.getContext(); const stave = new VF.Stave(2, STAVE_Y, w - 4);
+  // Render at a FIXED logical size, then scale-to-fit the panel via viewBox —
+  // otherwise extreme pools (bass ledger C2 / treble ledger C6 + letters) clip
+  // when the panel is short (the compact/phone layout).
+  const w = el.clientWidth || 220, logicalH = 230, panelH = el.clientHeight || 220;
+  const r = new VF.Renderer(el, VF.Renderer.Backends.SVG); r.resize(w, logicalH);
+  const ctx = r.getContext(); const stave = new VF.Stave(2, 88, w - 4);
   stave.addClef(L.clef).setContext(ctx).draw();
   const sn = pool.map(p => { const s = new VF.StaveNote({ keys:[p], duration:"w", clef:L.clef });
     s.addModifier(new VF.Annotation(p[0].toUpperCase()).setFont("Arial", 14, "bold").setVerticalJustification(VF.Annotation.VerticalJustify.BOTTOM), 0);
@@ -368,6 +382,9 @@ function buildAnswerKey(){
   const voice = new VF.Voice({ num_beats: pool.length, beat_value: 1 }).setStrict(false); voice.addTickables(sn);
   new VF.Formatter().joinVoices([voice]).format([voice], Math.max(60, w - 60));
   voice.draw(ctx, stave);
+  const svg = el.querySelector("svg");
+  if (svg) { svg.setAttribute("viewBox", `0 0 ${w} ${logicalH}`); svg.setAttribute("width", w); svg.setAttribute("height", panelH);
+    svg.style.width = w + "px"; svg.style.height = panelH + "px"; }   // VexFlow also sets inline styles, which override the attrs
 }
 function renderNotes() {
   notesEl.innerHTML = ""; const width = N * SPACING + 140;
@@ -470,7 +487,7 @@ function buildInstrument() {
   const short = innerHeight < 480;             // phone landscape: shallower keys so staff+keyboard share the screen
   const WH = short ? Math.max(104, Math.round(WK * 1.8)) : Math.max(140, Math.round(WK * 2.35));
   const BK = Math.round(WK * 0.58); const BH = Math.round(WH * 0.62);
-  const wbFs = Math.round(WK * 0.30), wsFs = Math.round(WK * 0.17), bbFs = Math.round(BK * 0.40), bsFs = Math.round(BK * 0.28);
+  const wbFs = Math.round(WK * 0.30), wsFs = Math.round(WK * 0.17), bsFs = Math.round(BK * 0.28);
   // each white key: [QWERTY key, displayed note name, vexflow pitch]
   const whites = [
     ["z","F3","f/3"], ["x","G3","g/3"], ["c","A3","a/3"], ["v","B3","b/3"],
@@ -500,7 +517,8 @@ function buildInstrument() {
   blacks.forEach(b => { const d = document.createElement("div"); d.className = "bk";
     d.style.cssText = `left:${(b.after+1)*WK - BK/2}px;width:${BK}px;height:${BH}px;padding-bottom:${Math.round(BH*0.06)}px`;
     d.dataset.pitch = b.pitch; if (b.k) d.dataset.k = b.k;
-    d.innerHTML = `<b style="font-size:${bbFs}px">${b.n}</b>${b.k ? `<span style="font-size:${bsFs}px">${b.k.toUpperCase()}</span>` : ""}`;
+    // no note-name labels on blacks — visually clean; just the small QWERTY hint where one exists
+    d.innerHTML = b.k ? `<span style="font-size:${bsFs}px">${b.k.toUpperCase()}</span>` : "";
     p.appendChild(d); });
   el.appendChild(p);
   el.querySelectorAll("[data-pitch]").forEach(key => {
@@ -700,7 +718,14 @@ function showPanel(which){
 document.getElementById("statsBtn").onclick = () => showPanel("stats");
 document.getElementById("aboutBtn").onclick = () => showPanel("about");
 document.getElementById("rewardBtn").onclick = () => showPanel("reward");
-document.getElementById("fsBtn").onclick = () => { if (fsElement()) fsExit(); else if (!fsEnter()) alert("Fullscreen isn't available in this browser. On iPhone, use Safari's \"Add to Home Screen\" instead."); };
+// iPhone Safari has NO fullscreen API at all (iPad does). The real path to a
+// chromeless app there is Add to Home Screen — this page is tagged for standalone
+// mode, so launched from the home screen it runs with no tabs/URL bar.
+if (navigator.standalone) document.getElementById("fsBtn").style.display = "none";   // already chromeless
+document.getElementById("fsBtn").onclick = () => {
+  if (fsElement()) { fsExit(); return; }
+  if (!fsEnter()) alert("This browser has no fullscreen mode.\n\nFor a no-browser-bars, app-like version: tap Share (the square-with-arrow), then \"Add to Home Screen\", and launch it from the icon.");
+};
 // Tap the staff to start, pause, or resume. (No Play button — the staff IS the button.)
 // Debounced: ghost clicks / accidental double-taps within 400ms don't double-toggle.
 // Fullscreen is NOT auto-triggered here — entering fullscreen mid-tap resizes the
@@ -714,16 +739,21 @@ stage.addEventListener("click", () => {
 });
 
 // iOS Safari has IGNORED user-scalable=no since iOS 10 — the meta tag alone never
-// stops double-tap/pinch zoom. Block them at the event level instead:
-// pinch = gesturestart/gesturechange; double-tap = swallow the 2nd touchend
-// within 350ms. Piano keys play on pointerdown, so rapid repeated notes still work.
+// stops double-tap/pinch zoom. Block at the event level. The double-tap recognizer
+// keys off the second tap's TOUCHSTART (and its window is ~500ms), so suppressing
+// touchend alone wasn't enough — kill both. Piano keys play on pointerdown, which
+// fires BEFORE touchstart's default is cancelled, so fast repeated notes still work.
 document.addEventListener("gesturestart",  e => e.preventDefault());
 document.addEventListener("gesturechange", e => e.preventDefault());
-let lastTouchEnd = 0;
+let lastTapT = 0;
+document.addEventListener("touchstart", e => {
+  const now = Date.now();
+  if (e.touches.length === 1 && now - lastTapT <= 500 && e.cancelable) e.preventDefault();
+}, { passive: false });
 document.addEventListener("touchend", e => {
   const now = Date.now();
-  if (now - lastTouchEnd <= 350) e.preventDefault();
-  lastTouchEnd = now;
+  if (now - lastTapT <= 500 && e.cancelable) e.preventDefault();
+  lastTapT = now;
 }, { passive: false });
 document.getElementById("resetAll").onclick = () => { if (!confirm("Reset " + player + "'s progress?")) return;
   players[player] = { level:0, plays:{}, practiceMs:0 }; savePlayers(); activeLevel = 1; buildLevelMenu(); updateCur(); selectLevel(1);
