@@ -25,35 +25,60 @@
   #stage, #answerKey, #inst, .wk, .bk, button, select, input { touch-action: manipulation; }   /* belt-and-suspenders — modern iOS Safari sometimes ignores body-level */
   /* iOS auto-zooms the page when focusing a control whose font-size < 16px — and
      never zooms back out. 16px on touch devices kills that whole zoom class. */
-  @media (pointer: coarse) { select, input, .topbar select { font-size:16px; } }
-  .topbar { display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:5px; }
-  .titlebar { margin-bottom:6px; } .titlebar .title { font-size:18px; font-weight:600; }
-  .topbar2 { margin-bottom:8px; }
-  .topbar2 .who, .topbar2 .cur { font-size:13.5px; }
-  .topbar label { gap:5px; }
-  /* tighter inputs/selects so the line doesn't wrap */
-  .topbar #levelSel { max-width:128px; }
-  .topbar #tempoSel { max-width:118px; }
-  .topbar #notesN { width:42px; }   /* 3-digit max */
-  .topbar .title { font-size:18px; font-weight:600; }
-  .topbar label { font-size:13px; color:#b6bcc6; display:flex; gap:6px; align-items:center; }
-  select, .topbar select { background:#2a2e37; color:#e6e8ec; border:1px solid #3a3f4a; border-radius:6px; font-size:13px; padding:4px 7px; }
+  @media (pointer: coarse) { select, input { font-size:16px; } }
+  select { background:#2a2e37; color:#e6e8ec; border:1px solid #3a3f4a; border-radius:6px; font-size:13px; padding:4px 7px; }
   select option:disabled { color:#565b63; }
-  .cur { font-size:13px; color:#b6bcc6; } .cur b { color:#e6e8ec; font-variant-numeric:tabular-nums; }
-  .who { font-size:13px; color:#9aa1ad; } .who b { color:#cdd3dd; }
   button { background:#2a2e37; color:#e6e8ec; border:1px solid #3a3f4a; padding:6px 11px; border-radius:8px; font-size:13.5px; cursor:pointer; }
   button:hover { background:#343a45; }
-  .controls { display:flex; gap:13px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
-  .stat { font-size:14px; color:#b6bcc6; font-variant-numeric:tabular-nums; }
-  .stat .ok { color:#67d98b; } .stat .no { color:#f0a06a; } .stat .miss { color:#f06a6a; }
+
+  /* ── HUD: ONE thin row of chips; everything else lives behind overlays ── */
+  .hud { display:flex; align-items:center; gap:7px; margin-bottom:8px; flex-wrap:nowrap; min-height:36px; }
+  .chip { border-radius:999px; padding:6px 13px; font-size:13.5px; white-space:nowrap; font-variant-numeric:tabular-nums;
+          background:#22262e; border:1px solid #353b46; }
+  .chip:active { background:#343a45; }
+  .chip.icon { padding:6px 10px; font-size:16px; line-height:1; }
+  #levelChip { background:#26303f; border-color:#3a4d68; color:#cfe1f7; font-weight:600; }
+  .hspace { flex:1 1 0; min-width:4px; }
+  .hudstats { display:flex; gap:9px; align-items:baseline; font-size:13.5px; color:#8b909a;
+              font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; }
+  .hudstats .ok { color:#67d98b; } .hudstats .no { color:#f0a06a; } .hudstats .miss { color:#f06a6a; }
+  .hudstats .prg { color:#b6bcc6; } .hudstats .tim { color:#8b909a; }
+  .hudstats b { font-weight:700; }
+  @media (max-width: 980px) { #playerChip .pcname { display:none; } }   /* phone: avatar only */
+
+  /* ── overlays (level picker / player / settings) ── */
+  .ovl { position:fixed; inset:0; z-index:80; display:none; align-items:center; justify-content:center;
+         background:rgba(8,9,12,0.62); backdrop-filter:blur(2px); -webkit-backdrop-filter:blur(2px); }
+  .ovl.open { display:flex; }
+  .ovl .card { background:#1b1e24; border:1px solid #343a46; border-radius:16px; padding:14px 18px 18px;
+               width:min(620px, calc(100vw - 40px)); max-height:min(86vh, calc(100vh - 30px)); overflow-y:auto;
+               box-shadow:0 18px 50px rgba(0,0,0,0.5); }
+  .ovlhead { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .ovlhead b { font-size:16px; color:#e6e8ec; }
+  .ovlhead .x { border-radius:999px; padding:4px 11px; font-size:15px; }
+  /* level-picker grid */
+  #lvGrid .blk { margin:13px 0 4px; font-size:12px; color:#8b909a; font-weight:600; text-transform:uppercase; letter-spacing:0.4px; }
+  #lvGrid .gr { display:grid; grid-template-columns:repeat(auto-fill, minmax(64px, 1fr)); gap:7px; }
+  .lvchip { position:relative; border-radius:10px; padding:7px 4px 6px; text-align:center; cursor:pointer;
+            background:#23262d; border:1px solid #353b46; }
+  .lvchip .n { font-size:16px; font-weight:700; color:#e6e8ec; }
+  .lvchip .s { font-size:10px; color:#8b909a; margin-top:1px; }
+  .lvchip.done { background:#1d2b22; border-color:#2f5a3d; } .lvchip.done .n { color:#7fdf9a; }
+  .lvchip.now { outline:2px solid #5a8cd8; outline-offset:1px; }
+  .lvchip.lock { opacity:0.38; cursor:default; }
+  .lvchip .pw { position:absolute; top:2px; right:4px; font-size:10px; }
+  /* settings rows */
+  .setrow { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 0;
+            border-bottom:1px solid #262b33; font-size:14px; color:#cdd3dd; }
+  .setrow input[type=number] { width:64px; background:#2a2e37; color:#e6e8ec; border:1px solid #3a3f4a; border-radius:6px; padding:4px 7px; }
+  .setfoot { margin-top:13px; font-size:11.5px; color:#5a6170; text-align:center; }
+  #setOvl details { border-bottom:1px solid #262b33; padding:9px 0; }
+  #setOvl summary { cursor:pointer; font-size:14px; color:#cdd3dd; -webkit-user-select:none; user-select:none; }
 
   .stagewrap { display:flex; gap:12px; align-items:flex-start; }
   #stage { position:relative; background:#fbfbf8; border-radius:10px; overflow:hidden; height:220px; flex:1 1 auto; min-width:0; cursor:pointer; }
   #answerKey { position:relative; background:#fbfbf8; border-radius:10px; overflow:hidden; height:220px; flex:0 0 220px; max-width:240px; }
   #answerKey::before { content:"notes used"; position:absolute; top:6px; left:10px; font-size:11px; color:#8b909a; z-index:2; pointer-events:none; }
-  /* Stats overlay INSIDE the staff — third "line" of the topbar visually */
-  #hud { position:absolute; top:6px; right:14px; z-index:3; font-size:13px; color:#5a6170; font-variant-numeric:tabular-nums; pointer-events:none; }
-  #hud .ok{color:#3a9f55;} #hud .no{color:#c97045;} #hud .miss{color:#c14e4e;} #hud .tim{color:#8b909a; margin-left:8px;}
   /* "tap to play" prompt on the empty staff */
   #tapcta { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:4;
             font-size:30px; font-weight:600; color:rgba(85,95,110,0.48); pointer-events:none; -webkit-user-select:none; user-select:none; text-align:center; padding:0 16px; }
@@ -72,9 +97,7 @@
   #msg { position:absolute; inset:0; display:none; align-items:center; justify-content:center; font-size:22px; font-weight:600; color:#15171c; z-index:6; pointer-events:none; }
 
   /* always-on instrument */
-  #instbar { margin-top:12px; }
-  #instbar label { font-size:13px; color:#b6bcc6; display:inline-flex; gap:6px; align-items:center; }
-  #inst { margin-top:7px; user-select:none; -webkit-user-select:none; touch-action:manipulation; }
+  #inst { margin-top:9px; user-select:none; -webkit-user-select:none; touch-action:manipulation; }
   .piano { position:relative; height:120px; }
   .wk { position:absolute; top:0; background:#f4f4ef; border:1px solid #999; border-radius:0 0 6px 6px; box-sizing:border-box;
         display:flex; flex-direction:column; justify-content:flex-end; align-items:center; padding-bottom:6px; cursor:pointer; }
@@ -89,8 +112,8 @@
         align-items:center; justify-content:center; cursor:pointer; }
   .lk:active, .lk.lit { background:#39414f; } .lk b { font-size:18px; } .lk span { font-size:10px; color:#8b909a; }
 
-  /* about / stats drawer */
-  #about { display:none; margin-top:16px; max-width:760px; color:#b6bcc6; font-size:13px; line-height:1.55; }
+  /* about (inside the settings sheet) */
+  #about { margin-top:10px; color:#b6bcc6; font-size:13px; line-height:1.55; }
   #about h3 { font-size:14px; color:#e6e8ec; margin:14px 0 4px; }
   #about .lvls div { padding:1px 0; color:#9aa1ad; } #about .lvls b { color:#cdd3dd; }
   #about table { border-collapse:collapse; margin-top:4px; font-size:12.5px; }
@@ -120,9 +143,8 @@
   #rankings .rcol { font-size:13px; color:#b6bcc6; line-height:1.6; } #rankings .rcol b { color:#e6e8ec; }
   #rankings .rsub { margin-top:16px; color:#7a7f88; font-size:12px; }
 
-  /* ── player stats tab (profile card + tiles + timing + standings) ── */
-  .stat .tim { color:#8b909a; }
-  #stats { display:none; margin-top:16px; max-width:680px; color:#b6bcc6; font-size:13px; }
+  /* ── player stats (inside the player sheet) ── */
+  #stats { color:#b6bcc6; font-size:13px; }
   #stats h3 { font-size:14px; color:#e6e8ec; margin:15px 0 6px; }
   #stats .pmeta { color:#9aa1ad; font-size:12px; }
   .profcard { display:flex; align-items:center; gap:16px; background:#1c1f26; border:1px solid #2f343d; border-radius:12px; padding:14px 16px; }
@@ -139,8 +161,8 @@
   #stats th { color:#8b909a; font-weight:600; }
   #stats tr.me td { background:#222630; color:#e6e8ec; font-weight:600; }
 
-  /* ── reward (Marge) physics settings ── */
-  #reward { display:none; margin-top:16px; max-width:560px; color:#b6bcc6; font-size:13px; }
+  /* ── reward (Marge) physics settings (inside the settings sheet) ── */
+  #reward { margin-top:10px; color:#b6bcc6; font-size:13px; }
   #reward h3 { font-size:14px; color:#e6e8ec; margin:0 0 6px; }
   #reward .pmeta { color:#9aa1ad; font-size:12px; line-height:1.5; }
   #reward .rfield { margin-top:11px; }
@@ -166,9 +188,8 @@
            padding-right: max(13px, env(safe-area-inset-right));
            padding-bottom: max(8px, env(safe-area-inset-bottom));
            padding-left: max(13px, env(safe-area-inset-left)); }
-    .titlebar { display:none; }                 /* phone landscape: every vertical px counts */
-    .topbar { gap:9px; margin-bottom:5px; } .topbar .title { font-size:16px; }
-    .controls { gap:10px; margin-bottom:6px; } #instbar { margin-top:7px; }
+    .hud { margin-bottom:5px; min-height:32px; }
+    .chip { padding:4px 10px; font-size:12.5px; }
     #count { font-size:62px; }
   }
 </style>
@@ -177,21 +198,19 @@
   <div id="rotate"><div class="ic">📱</div><div class="rt">Rotate to landscape</div>
     <div class="rd">This trainer needs a wider screen — turn your phone sideways to play.</div></div>
   <div class="app" id="app">
-    <div class="titlebar"><span class="title">Sight-Reading Trainer</span></div>
-    <div class="topbar topbar1">
-      <label>Level <select id="levelSel"></select></label>
-      <label>Tempo <select id="tempoSel"></select></label>
-      <label>Notes <input type="number" id="notesN" min="4" max="200" value="24"></label>
-      <button id="aboutBtn">About the levels</button>
-      <button id="resetAll">Reset</button>
-      <button id="fsBtn" title="Toggle fullscreen">⛶</button>
-    </div>
-    <div class="topbar topbar2">
-      <span class="who">Player <b id="who">—</b></span>
-      <span class="cur" title="highest level cleared on this device">highest level cleared&nbsp;<b id="hLevel">0</b></span>
-      <span class="cur" title="practice-day streak">🔥&nbsp;<b id="streak">0</b></span>
-      <button id="rewardBtn">Rewards</button>
-      <button id="statsBtn">Player stats</button>
+    <div class="hud">
+      <button class="chip" id="levelChip" title="Choose level">Level 1</button>
+      <button class="chip" id="tempoChip" title="Tap to change tempo">Largo · 45</button>
+      <span class="hudstats">
+        <span class="ok" title="correct"><b id="cOk">0</b>✓</span>
+        <span class="no" title="wrong"><b id="cNo">0</b>✗</span>
+        <span class="miss" title="missed"><b id="cMi">0</b>⊘</span>
+        <span class="prg" id="prog">0 / 0</span>
+        <span class="tim" id="tim"></span>
+      </span>
+      <span class="hspace"></span>
+      <button class="chip" id="playerChip" title="Player stats &amp; standings">👤 <span class="pcname">—</span></button>
+      <button class="chip icon" id="gearBtn" title="Settings">⚙</button>
     </div>
 
     <div class="stagewrap">
@@ -199,7 +218,6 @@
         <div id="staff"></div>
         <div id="clip"><div id="track"><div id="fb"></div><div id="notes"></div></div></div>
         <div id="failline"></div>
-        <div id="hud"><span class="ok" id="cOk">0</span> correct · <span class="no" id="cNo">0</span> wrong · <span class="miss" id="cMi">0</span> missed &nbsp;·&nbsp; <span id="prog">0 / 0</span>&nbsp;&nbsp;<span class="tim" id="tim"></span></div>
         <div id="tapcta">tap to play</div>
         <div id="count"></div>
         <div id="msg"></div>
@@ -208,11 +226,30 @@
     </div>
 
     <div id="inst"></div>
-    <div id="instbar"><label>Sound <select id="soundSel"></select></label></div>
-    <div id="stats"></div>
-    <div id="about"></div>
-    <div id="reward"></div>
   </div>
+
+  <!-- ── overlays: level picker / player sheet / settings sheet ── -->
+  <div class="ovl" id="pickerOvl"><div class="card">
+    <div class="ovlhead"><b>Choose a level</b><button class="x" data-close>✕</button></div>
+    <div id="lvGrid"></div>
+  </div></div>
+
+  <div class="ovl" id="playerOvl"><div class="card">
+    <div class="ovlhead"><b>Player</b><button class="x" data-close>✕</button></div>
+    <div id="stats"></div>
+  </div></div>
+
+  <div class="ovl" id="setOvl"><div class="card">
+    <div class="ovlhead"><b>Settings</b><button class="x" data-close>✕</button></div>
+    <div class="setrow"><span>Sound</span><select id="soundSel"></select></div>
+    <div class="setrow"><span>Notes per level</span><input type="number" id="notesN" min="4" max="60" value="24"></div>
+    <div class="setrow"><span>Fullscreen</span><button id="fsBtn" title="Toggle fullscreen">⛶ Toggle</button></div>
+    <div class="setrow"><span>Player</span><button id="switchBtn">Switch player</button></div>
+    <details><summary>About the levels</summary><div id="about"></div></details>
+    <details><summary>Rewards — Marge physics</summary><div id="reward"></div></details>
+    <div class="setrow"><span>Progress</span><button id="resetAll">Reset this player</button></div>
+    <div class="setfoot">Sight-Reading Trainer · chriso.org notation experiments</div>
+  </div></div>
 
   <div id="rankings"></div>
   <canvas id="fx"></canvas>
@@ -601,7 +638,7 @@ function finish() {
 }
 
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") { stopFinale(); return; }
+  if (e.key === "Escape") { if (document.querySelector(".ovl.open")) closeOvl(); else stopFinale(); return; }
   if (e.key === "Enter" && e.target && e.target.id === "fxhint") { stopFinale(); return; }
   if (/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
   if (e.repeat) { e.preventDefault(); return; }    // ignore OS auto-repeat → holding sustains, no machine-gun
@@ -619,24 +656,55 @@ document.addEventListener("keyup", (e) => {
   stopNote("k:" + k);
 });
 
-// ── menus / about / leaderboard ──────────────────────────────────────────────
+// ── HUD chips + level picker (the old <select> menus, game-ified) ────────────
+// Function names kept (buildLevelMenu / buildTempoMenu / updateCur) so every
+// existing call site — finish(), selectLevel(), reset, boot — works unchanged.
 function clefLabel(c){ return ({ "baritone-f":"Baritone" })[c] || (c[0].toUpperCase()+c.slice(1)); }
 function buildLevelMenu() {
-  const sel = document.getElementById("levelSel"), cur = currentLevel(); sel.innerHTML = "";
-  for (let i = 1; i <= NLEVELS; i++) { const o = document.createElement("option"); o.value = i;
-    o.textContent = i + " · " + clefLabel(LEVELS[i-1].clef); if (i > cur) o.disabled = true; o.selected = (i === activeLevel); sel.appendChild(o); }
+  const L = LEVELS[activeLevel-1];
+  document.getElementById("levelChip").textContent = `Level ${activeLevel} · ${clefLabel(L.clef)}${L.accid ? " ♯♭" : ""}`;
 }
 function buildTempoMenu() {
-  const sel = document.getElementById("tempoSel"); sel.innerHTML = "";
-  TEMPOS.forEach(v => { const o = document.createElement("option"); o.value = v; o.textContent = tempoName(v) + " · " + v; o.selected = (v === tempoBpm); sel.appendChild(o); });
+  document.getElementById("tempoChip").textContent = `${tempoName(tempoBpm)} · ${tempoBpm}`;
 }
 function buildSoundMenu() {
   const sel = document.getElementById("soundSel"); sel.innerHTML = "";
   SOUNDS.forEach((s, i) => { const o = document.createElement("option"); o.value = i; o.textContent = s.name; o.selected = (i === soundIdx); sel.appendChild(o); });
 }
-function updateCur(){ document.getElementById("who").textContent = player;
-  const h = document.getElementById("hLevel"); if (h) h.textContent = beaten();
-  const s = document.getElementById("streak"); if (s) s.textContent = (players[player] && players[player].streak) || 0; }
+function updateCur(){
+  const nm = document.querySelector("#playerChip .pcname");
+  if (nm) nm.textContent = player + ((players[player] && players[player].streak) ? ` 🔥${players[player].streak}` : "");
+}
+// Level picker: one tappable grid chip per level, grouped by clef block.
+// ✓ cleared · outlined = next to beat · 🔒 locked · ⚡ = grants a powerup.
+const LV_BLOCKS = [
+  { name: "Grand staff — bass & treble", from: 1,  to: 24 },
+  { name: "Soprano clef",                from: 25, to: 36 },
+  { name: "Alto clef",                   from: 37, to: 48 },
+  { name: "Tenor clef",                  from: 49, to: 60 },
+  { name: "Baritone clef",               from: 61, to: 72 },
+];
+function buildPicker() {
+  const grid = document.getElementById("lvGrid"); grid.innerHTML = "";
+  const cur = currentLevel(), pl = players[player];
+  LV_BLOCKS.forEach(blk => {
+    if (blk.from > NLEVELS) return;
+    const h = document.createElement("div"); h.className = "blk"; h.textContent = blk.name; grid.appendChild(h);
+    const g = document.createElement("div"); g.className = "gr"; grid.appendChild(g);
+    for (let i = blk.from; i <= Math.min(blk.to, NLEVELS); i++) {
+      const L = LEVELS[i-1];
+      const done = i <= beaten() || ((pl.plays[i] || {}).passes > 0);
+      const locked = i > cur;
+      const d = document.createElement("div");
+      d.className = "lvchip" + (done ? " done" : "") + (i === cur ? " now" : "") + (locked ? " lock" : "");
+      d.innerHTML = `<div class="n">${done ? "✓ " : ""}${i}</div><div class="s">${clefLabel(L.clef)}${L.accid ? " ♯♭" : ""}</div>`
+                  + (POWER_LEVELS.includes(i) ? `<span class="pw">⚡</span>` : "");
+      d.title = levelDesc(i).replace(/<[^>]+>/g, "");
+      if (!locked) d.onclick = () => { selectLevel(i); buildLevelMenu(); closeOvl(); };
+      g.appendChild(d);
+    }
+  });
+}
 function selectLevel(i){ activeLevel = i; tempoBpm = LEVELS[i-1].bpm; buildTempoMenu();
   renderStaff(); clearStage(); buildAnswerKey(); updateStats();   // empty staff (correct clef) until Play is pressed; answer-key sidebar reflects this level's pool
 }
@@ -705,19 +773,30 @@ function buildAbout() {
 document.getElementById("soundSel").onchange = e => { soundIdx = +e.target.value; localStorage.setItem("sr.sound", curSound().name);
   e.target.blur();                                            // return focus so the keyboard plays right away
   const v = Synth.noteOn(Tunings.noteFreq("c4"), voiceOpts(curSound())); setTimeout(()=>Synth.noteOff(v), 600); };  // preview
-document.getElementById("levelSel").onchange = e => selectLevel(+e.target.value);
-document.getElementById("tempoSel").onchange = e => { tempoBpm = +e.target.value; };
 document.getElementById("notesN").onchange = e => { notesN = Math.max(4, Math.min(60, +e.target.value || 24)); selectLevel(activeLevel); };
-function showPanel(which){
-  const panels = { stats: buildStats, about: buildAbout, reward: buildReward };
-  const els = { stats: document.getElementById("stats"), about: document.getElementById("about"), reward: document.getElementById("reward") };
-  const willOpen = which in panels && els[which].style.display !== "block";
-  Object.values(els).forEach(e => e.style.display = "none");
-  if (willOpen) { panels[which](); els[which].style.display = "block"; }
-}
-document.getElementById("statsBtn").onclick = () => showPanel("stats");
-document.getElementById("aboutBtn").onclick = () => showPanel("about");
-document.getElementById("rewardBtn").onclick = () => showPanel("reward");
+
+// ── overlay plumbing: opening any sheet pauses the game ──────────────────────
+function openOvl(id){ if (running) pauseGame(); document.querySelectorAll(".ovl.open").forEach(o => o.classList.remove("open"));
+  document.getElementById(id).classList.add("open"); }
+function closeOvl(){ document.querySelectorAll(".ovl.open").forEach(o => o.classList.remove("open")); }
+document.querySelectorAll(".ovl").forEach(o => {
+  o.addEventListener("click", e => { if (e.target === o || e.target.hasAttribute("data-close")) closeOvl(); });
+});
+document.getElementById("levelChip").onclick = () => { buildPicker(); openOvl("pickerOvl"); };
+document.getElementById("tempoChip").onclick = () => {           // tap = cycle the three tempo tiers
+  const i = TEMPOS.indexOf(tempoBpm);
+  tempoBpm = TEMPOS[(i + 1 + (i < 0 ? 1 : 0)) % TEMPOS.length];
+  buildTempoMenu();
+};
+document.getElementById("playerChip").onclick = () => { buildStats(); openOvl("playerOvl"); };
+document.getElementById("gearBtn").onclick = () => { buildAbout(); buildReward(); openOvl("setOvl"); };
+document.getElementById("switchBtn").onclick = () => {
+  const nm = (prompt("Player name? (new or existing — each keeps their own progress)") || "").trim();
+  if (!nm) return;
+  player = nm; localStorage.setItem("sr.player", player); ensurePlayer();
+  updateCur(); activeLevel = currentLevel(); tempoBpm = LEVELS[activeLevel-1].bpm;
+  buildLevelMenu(); buildTempoMenu(); selectLevel(activeLevel); closeOvl();
+};
 // iPhone Safari has NO fullscreen API at all (iPad does). The real path to a
 // chromeless app there is Add to Home Screen — this page is tagged for standalone
 // mode, so launched from the home screen it runs with no tabs/URL bar.
@@ -756,8 +835,8 @@ document.addEventListener("touchend", e => {
   lastTapT = now;
 }, { passive: false });
 document.getElementById("resetAll").onclick = () => { if (!confirm("Reset " + player + "'s progress?")) return;
-  players[player] = { level:0, plays:{}, practiceMs:0 }; savePlayers(); activeLevel = 1; buildLevelMenu(); updateCur(); selectLevel(1);
-  if (document.getElementById("stats").style.display === "block") buildStats(); };
+  players[player] = { level:0, plays:{}, practiceMs:0 }; savePlayers(); activeLevel = 1;
+  tempoBpm = LEVELS[0].bpm; buildLevelMenu(); buildTempoMenu(); updateCur(); selectLevel(1); closeOvl(); };
 
 /* ───────────────── 100% finale — the note-eater playground (Marge) ──────────── */
 let fx = null, hideTimer = null, transTimer = null;
