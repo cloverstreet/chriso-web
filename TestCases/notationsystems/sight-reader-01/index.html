@@ -235,8 +235,14 @@
   </div></div>
 
   <div class="ovl" id="playerOvl"><div class="card">
-    <div class="ovlhead"><b>Player</b><button class="x" data-close>✕</button></div>
+    <div class="ovlhead"><b>Player</b><span><button id="swapBtn" style="margin-right:8px">Switch player</button><button class="x" data-close>✕</button></span></div>
     <div id="stats"></div>
+  </div></div>
+
+  <div class="ovl" id="userOvl"><div class="card">
+    <div class="ovlhead"><b>Who's playing?</b><button class="x" data-close>✕</button></div>
+    <div id="userList"></div>
+    <div class="setrow" style="border-bottom:none"><span></span><button id="newUserBtn">+ New player</button></div>
   </div></div>
 
   <div class="ovl" id="setOvl"><div class="card">
@@ -244,7 +250,8 @@
     <div class="setrow"><span>Sound</span><select id="soundSel"></select></div>
     <div class="setrow"><span>Notes per level</span><input type="number" id="notesN" min="4" max="60" value="24"></div>
     <div class="setrow"><span>Fullscreen</span><button id="fsBtn" title="Toggle fullscreen">⛶ Toggle</button></div>
-    <div class="setrow"><span>Player</span><button id="switchBtn">Switch player</button></div>
+    <div class="setrow"><span>Players</span><button id="switchBtn">Switch / new player</button></div>
+    <div class="setrow"><span>Admin password <span style="color:#5a6170;font-size:11.5px">(unlocks any player's PIN)</span></span><button id="adminBtn">Set / change</button></div>
     <details><summary>About the levels</summary><div id="about"></div></details>
     <details><summary>Rewards — Marge physics</summary><div id="reward"></div></details>
     <div class="setrow"><span>Progress</span><button id="resetAll">Reset this player</button></div>
@@ -365,7 +372,7 @@ let runTiming = [], practiceAccum = 0;    // this-run note timing (ms, +late/−
 const heldVoices = {};                    // id -> sustaining Synth voice handle (held key)
 const SPACING = 88, FAILX = 120, LEADIN = 4;
 let SVG_H = 220, STAVE_Y = 78;            // tighter stage so staff sits centered + the keyboard fits below on one iPad screen
-const GRACE_SEC = 0.10;                   // late-hit leeway past the downbeat (never need to be early)
+const GRACE_SEC = 0.15;                   // late-hit leeway past the downbeat (never need to be early; was 100ms — kids needed a bit more)
 const ONTIME_MS = 80;                     // |error| under this counts as "on time" (not scored yet)
 
 const stage = document.getElementById("stage"), staffEl = document.getElementById("staff");
@@ -516,35 +523,44 @@ function startNote(id, pitchKey) {
 }
 function stopNote(id){ const v = heldVoices[id]; if (v) { Synth.noteOff(v); delete heldVoices[id]; } }
 function releaseAllHeld(){ for (const id in heldVoices) { try{ Synth.noteOff(heldVoices[id]); }catch(e){} delete heldVoices[id]; } }
+// 22 chromatic notes F3..F5 as one ordered list; the on-screen keyboard shows a
+// 14-white window of it picked by the current level's clef. (When grand-staff
+// combined modes land, this windowing is where a bigger rethink goes.)
+const KEY_NOTES = [
+  { w:1, k:"z", n:"F3", pitch:"f/3" }, { w:0, k:null, pitch:"f#/3" },
+  { w:1, k:"x", n:"G3", pitch:"g/3" }, { w:0, k:null, pitch:"g#/3" },
+  { w:1, k:"c", n:"A3", pitch:"a/3" }, { w:0, k:null, pitch:"a#/3" },
+  { w:1, k:"v", n:"B3", pitch:"b/3" },
+  { w:1, k:"a", n:"C4", pitch:"c/4" }, { w:0, k:"w", pitch:"c#/4" },
+  { w:1, k:"s", n:"D4", pitch:"d/4" }, { w:0, k:"e", pitch:"d#/4" },
+  { w:1, k:"d", n:"E4", pitch:"e/4" },
+  { w:1, k:"f", n:"F4", pitch:"f/4" }, { w:0, k:"t", pitch:"f#/4" },
+  { w:1, k:"g", n:"G4", pitch:"g/4" }, { w:0, k:"y", pitch:"g#/4" },
+  { w:1, k:"h", n:"A4", pitch:"a/4" }, { w:0, k:"u", pitch:"a#/4" },
+  { w:1, k:"j", n:"B4", pitch:"b/4" },
+  { w:1, k:"k", n:"C5", pitch:"c/5" }, { w:0, k:"o", pitch:"c#/5" },
+  { w:1, k:"l", n:"D5", pitch:"d/5" }, { w:0, k:"p", pitch:"d#/5" },
+  { w:1, k:";", n:"E5", pitch:"e/5" },
+  { w:1, k:"'", n:"F5", pitch:"f/5" }
+];
 function buildInstrument() {
   const el = document.getElementById("inst"); el.innerHTML = "";
-  // F3..F5: 15 white keys + 10 black keys, full-width so it's touchable on iPad/phone.
+  // 14 whites, clef-windowed: treble/soprano levels drop the LOW F (G3..F5);
+  // everything else (bass, alto, tenor, baritone) drops the HIGH F (F3..E5).
+  const highSet = /^(treble|soprano)$/.test(LEVELS[activeLevel-1].clef);
+  const span = highSet ? KEY_NOTES.slice(2) : KEY_NOTES.slice(0, KEY_NOTES.length - 1);
   const avail = Math.min(innerWidth - 30, 1400);
-  const WK = Math.max(42, Math.min(96, Math.floor(avail / 15)));
+  const NW = span.filter(x => x.w).length;     // 14
+  const WK = Math.max(42, Math.min(102, Math.floor(avail / NW)));
   const short = innerHeight < 480;             // phone landscape: shallower keys so staff+keyboard share the screen
   const WH = short ? Math.max(104, Math.round(WK * 1.8)) : Math.max(140, Math.round(WK * 2.35));
-  const BK = Math.round(WK * 0.58); const BH = Math.round(WH * 0.62);
+  const BK = Math.round(WK * 0.50);            // skinnier blacks → more reachable white surface
+  const BH = Math.round(WH * 0.55);            //  …and ~10% shorter
   const wbFs = Math.round(WK * 0.30), wsFs = Math.round(WK * 0.17), bsFs = Math.round(BK * 0.28);
-  // each white key: [QWERTY key, displayed note name, vexflow pitch]
-  const whites = [
-    ["z","F3","f/3"], ["x","G3","g/3"], ["c","A3","a/3"], ["v","B3","b/3"],
-    ["a","C4","c/4"], ["s","D4","d/4"], ["d","E4","e/4"],
-    ["f","F4","f/4"], ["g","G4","g/4"], ["h","A4","a/4"], ["j","B4","b/4"],
-    ["k","C5","c/5"], ["l","D5","d/5"], [";","E5","e/5"], ["'","F5","f/5"]
-  ];
-  // blacks: lower-octave (F♯3..A♯3) have no QWERTY key — still tappable.
-  const blacks = [
-    { after:0,  k:null, n:"F♯3", pitch:"f#/3" },
-    { after:1,  k:null, n:"G♯3", pitch:"g#/3" },
-    { after:2,  k:null, n:"A♯3", pitch:"a#/3" },
-    { after:4,  k:"w",  n:"C♯4", pitch:"c#/4" },
-    { after:5,  k:"e",  n:"D♯4", pitch:"d#/4" },
-    { after:7,  k:"t",  n:"F♯4", pitch:"f#/4" },
-    { after:8,  k:"y",  n:"G♯4", pitch:"g#/4" },
-    { after:9,  k:"u",  n:"A♯4", pitch:"a#/4" },
-    { after:11, k:"o",  n:"C♯5", pitch:"c#/5" },
-    { after:12, k:"p",  n:"D♯5", pitch:"d#/5" }
-  ];
+  // derive whites + blacks (black sits after the white that precedes it in the span)
+  const whites = [], blacks = [];
+  let wi = -1;
+  for (const nt of span) { if (nt.w) { wi++; whites.push([nt.k, nt.n, nt.pitch]); } else blacks.push({ after: wi, k: nt.k, pitch: nt.pitch }); }
   const p = document.createElement("div"); p.className = "piano"; p.style.cssText = `width:${whites.length*WK}px;height:${WH}px;margin:0 auto`;
   whites.forEach((w, i) => { const d = document.createElement("div"); d.className = "wk";
     d.style.cssText = `left:${i*WK}px;width:${WK}px;height:${WH}px;padding-bottom:${Math.round(WH*0.05)}px`;
@@ -705,8 +721,8 @@ function buildPicker() {
     }
   });
 }
-function selectLevel(i){ activeLevel = i; tempoBpm = LEVELS[i-1].bpm; buildTempoMenu();
-  renderStaff(); clearStage(); buildAnswerKey(); updateStats();   // empty staff (correct clef) until Play is pressed; answer-key sidebar reflects this level's pool
+function selectLevel(i){ activeLevel = i; tempoBpm = LEVELS[i-1].bpm; buildLevelMenu(); buildTempoMenu();
+  renderStaff(); clearStage(); buildAnswerKey(); buildInstrument(); updateStats();   // empty staff until Play; chip, answer key + keyboard window follow this level's clef
 }
 
 function levelDesc(i){ const L = LEVELS[i-1]; const acc = L.accid ? " + sharps/flats" : "";
@@ -790,12 +806,57 @@ document.getElementById("tempoChip").onclick = () => {           // tap = cycle 
 };
 document.getElementById("playerChip").onclick = () => { buildStats(); openOvl("playerOvl"); };
 document.getElementById("gearBtn").onclick = () => { buildAbout(); buildReward(); openOvl("setOvl"); };
-document.getElementById("switchBtn").onclick = () => {
-  const nm = (prompt("Player name? (new or existing — each keeps their own progress)") || "").trim();
-  if (!nm) return;
+// ── players: per-device accounts, optional PIN, admin override ───────────────
+// All client-side (localStorage) — the PIN is sibling-proofing, not security.
+// Admin password (set once by ChristopherO per device) opens/deletes any player.
+function adminPw(){ return localStorage.getItem("sr.adminpw") || ""; }
+function pinOk(rec, label){
+  if (!rec || !rec.pin) return true;
+  const e = prompt(`PIN for ${label}? (or admin password)`);
+  if (e == null) return false;
+  if (e === rec.pin || (adminPw() && e === adminPw())) return true;
+  alert("Wrong PIN."); return false;
+}
+function switchTo(nm){
+  if (players[nm] && !pinOk(players[nm], nm)) return;
   player = nm; localStorage.setItem("sr.player", player); ensurePlayer();
   updateCur(); activeLevel = currentLevel(); tempoBpm = LEVELS[activeLevel-1].bpm;
   buildLevelMenu(); buildTempoMenu(); selectLevel(activeLevel); closeOvl();
+}
+function newPlayer(){
+  const nm = (prompt("New player's name?") || "").trim(); if (!nm) return;
+  if (players[nm]) { switchTo(nm); return; }                  // name exists → just log in
+  const pin = (prompt("Optional PIN to protect this player — leave blank for none:") || "").trim();
+  players[nm] = { level:0, plays:{}, practiceMs:0 }; if (pin) players[nm].pin = pin;
+  savePlayers(); switchTo(nm);
+}
+function buildUsers(){
+  const el = document.getElementById("userList"); el.innerHTML = "";
+  Object.keys(players).sort((a,b)=>a.localeCompare(b)).forEach(nm => {
+    const p = players[nm];
+    const row = document.createElement("div"); row.className = "setrow";
+    row.innerHTML = `<span style="cursor:pointer">${nm === player ? "▶ " : ""}<b>${esc(nm)}</b>`
+      + ` <span style="color:#8b909a">· level ${p.level||0}${p.pin ? " · 🔑" : ""}</span></span><button class="del">✕</button>`;
+    row.querySelector("span").onclick = () => switchTo(nm);
+    row.querySelector(".del").onclick = () => {                // delete needs that player's PIN or admin
+      if (!pinOk(p, nm)) return;
+      if (!confirm(`Delete ${nm} and all their progress?`)) return;
+      delete players[nm]; savePlayers();
+      if (nm === player) { const rest = Object.keys(players); if (rest.length) switchTo(rest[0]); else { player = ""; localStorage.removeItem("sr.player"); ensurePlayer(); updateCur(); selectLevel(1); } }
+      buildUsers();
+    };
+    el.appendChild(row);
+  });
+}
+function openUsers(){ buildUsers(); openOvl("userOvl"); }
+document.getElementById("switchBtn").onclick = openUsers;
+document.getElementById("swapBtn").onclick = openUsers;
+document.getElementById("newUserBtn").onclick = newPlayer;
+document.getElementById("adminBtn").onclick = () => {
+  if (adminPw()) { const cur = prompt("Current admin password?"); if (cur !== adminPw()) { alert("Nope."); return; } }
+  const nw = (prompt("New admin password (blank to remove):") || "").trim();
+  if (nw) localStorage.setItem("sr.adminpw", nw); else localStorage.removeItem("sr.adminpw");
+  alert(nw ? "Admin password set." : "Admin password removed.");
 };
 // iPhone Safari has NO fullscreen API at all (iPad does). The real path to a
 // chromeless app there is Add to Home Screen — this page is tagged for standalone
@@ -835,7 +896,9 @@ document.addEventListener("touchend", e => {
   lastTapT = now;
 }, { passive: false });
 document.getElementById("resetAll").onclick = () => { if (!confirm("Reset " + player + "'s progress?")) return;
-  players[player] = { level:0, plays:{}, practiceMs:0 }; savePlayers(); activeLevel = 1;
+  const pin = players[player] && players[player].pin;                       // keep their PIN through a reset
+  players[player] = { level:0, plays:{}, practiceMs:0 }; if (pin) players[player].pin = pin;
+  savePlayers(); activeLevel = 1;
   tempoBpm = LEVELS[0].bpm; buildLevelMenu(); buildTempoMenu(); updateCur(); selectLevel(1); closeOvl(); };
 
 /* ───────────────── 100% finale — the note-eater playground (Marge) ──────────── */
