@@ -318,7 +318,7 @@
 
 <!-- Settings tabs (top-right) -->
 <div class="tabs">
-  <button class="tab" id="viewTab">view: 3rd</button>
+  <button class="tab" id="viewTab">view: 2nd</button>
   <button class="tab" id="audioTab">audio</button>
 </div>
 
@@ -390,6 +390,12 @@ let speakHeadFn = null;                    // assigned by audio IIFE; called by 
 let salonActive = false;                   // true once real pre-rendered Salon audio is playing;
                                            // scene loop then drives mouths from real amplitude and
                                            // stops the random gibberish fallback.
+// Sypvefafvy — a hidden character positioned OUTSIDE the room (a few seconds'
+// travel past the back wall). Shared so the scene builds the visual and the
+// audio builds the granular drone at the same spot. At default binaural
+// settings the distance makes them nearly inaudible — you have to seek them
+// out (walk toward them, or widen ref/max distance in the audio tab).
+const SVPH_POS = { x: -1.6, y: 2.4, z: -22 };
 
 // Live-tunable PannerNode parameters. Applied to every panner in lockstep
 // whenever the user moves a slider or loads a preset. The default values
@@ -645,21 +651,8 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
     dancers.push(d);
   }
 
-  // ── Bar figure (the surprise) ────────────────────────
-  const figure = new THREE.Group();
-  const body = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.CylinderGeometry(0.22, 0.20, 1.55, 10)), matBright
-  );
-  body.position.y = 0.78; figure.add(body);
-  const fHead = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.SphereGeometry(0.18, 12, 8)), matBright
-  );
-  fHead.position.y = 1.72; fHead.rotation.z = -0.1; figure.add(fHead);
-  const shoulders = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.BoxGeometry(0.55, 0.06, 0.18)), matMid
-  );
-  shoulders.position.y = 1.45; figure.add(shoulders);
-  trackGroup(figure, 3.7, 0, -1, -Math.PI / 2);
+  // (The lone bar figure — sphere-on-pedestal — was removed; the
+  // characters now carry the room's presence via their expressive bodies.)
 
   // ── TENSEGRITY HELPERS ───────────────────────────────
   // A strut is a 1-unit cylinder rendered as edges, scaled+oriented per
@@ -811,39 +804,181 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
 
   const tensegrities = [plantPrism, treeS1, treeS2, treeS3];
 
-  // ── FLOATING HEADS — 3 placeholders for binaural voice positions ────
-  // Each head: wireframe sphere, two eye dots, one mouth ring (scaleable
-  // during speech). Position is fixed; rotation tweens toward random
-  // look-targets. The audio side reads each head's `position` for its
-  // PannerNode, and the mouth scale + a spawned ring visualize speech.
-  const headPositions = [
-    new THREE.Vector3(4.5,  2.55, -1),    // above the bar
-    new THREE.Vector3(-5.5, 2.45, -3),    // above the corner couch
-    new THREE.Vector3( 0.4, 2.65,  1.4),  // mid-room, slightly forward
+  // ── CHARACTERS — head + expressive algorithmic body per voice ───────
+  // idx → persona is FIXED (the salon-audio.json manifest routes clips by
+  // head index): 0 = ChatGPT, 1 = Claude, 2 = ChristopherO. Positions are
+  // now seated at the corner couch, all heads LEVEL. Each character has a
+  // distinct color and a distinct procedurally-animated body; the mouth ring
+  // is deliberately small/subtle — the BODY carries the expression, driven
+  // by speech amplitude + a continuous idle choreography unique to each.
+  const SEAT_Y = 1.55;   // head height — level for all
+  const CHARS = [
+    { idx: 0, name: 'ChatGPT',      color: 0xff8a6a, body: 'burst',
+      pos: new THREE.Vector3(-2.8, SEAT_Y, -5.0) },   // end of couch short arm
+    { idx: 1, name: 'Claude',       color: 0x6ec6ff, body: 'gyro',
+      pos: new THREE.Vector3(-6.5, SEAT_Y, -1.2) },   // end of couch long arm
+    { idx: 2, name: 'ChristopherO', color: 0xc4d878, body: 'spine',
+      pos: new THREE.Vector3(-3.2, SEAT_Y, -1.7) },   // in front, completing the triangle
   ];
   const ringPool = [];
 
-  function makeHead(pos, idx) {
+  // ── Expressive body builder ──────────────────────────
+  // Each returns { group, update(t, amp) }. amp 0..1 is the speaker's live
+  // loudness. Bodies sit at (x,0,z); the head floats at SEAT_Y above them,
+  // joined by a thin neck. All choreography is continuous (alive even when
+  // silent) and intensifies with amp. Compact element counts keep CPU low.
+  function makeBody(type, color, pos) {
+    const grp = new THREE.Group();
+    grp.position.set(pos.x, 0, pos.z);
+    const matA = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.7 });
+    const matB = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.4 });
+    let update;
+
+    if (type === 'gyro') {
+      // CLAUDE — a stack of rings on independent gimbals, slowly precessing.
+      const rings = [];
+      const N = 6;
+      for (let i = 0; i < N; i++) {
+        const r = 0.18 + i * 0.05;
+        const ring = new THREE.LineSegments(
+          new THREE.EdgesGeometry(new THREE.TorusGeometry(r, 0.012, 4, 20)),
+          i % 2 ? matB : matA
+        );
+        ring.position.y = 0.25 + i * 0.2;
+        ring.userData.ax = [Math.random(), Math.random(), Math.random()];
+        rings.push(ring); grp.add(ring);
+      }
+      update = (t, amp) => {
+        for (let i = 0; i < rings.length; i++) {
+          const r = rings[i], a = r.userData.ax;
+          const sp = 0.4 + i * 0.12 + amp * 2.0;
+          r.rotation.x = t * sp * a[0];
+          r.rotation.z = t * sp * a[2] + Math.sin(t * 0.6 + i) * 0.3;
+          r.position.y = (0.25 + i * 0.2) + Math.sin(t * 1.1 + i * 0.5) * (0.02 + amp * 0.08);
+          const s = 1 + amp * 0.5 * Math.sin(t * 3 + i);
+          r.scale.set(s, s, s);
+        }
+        grp.rotation.y = Math.sin(t * 0.3) * 0.2 + amp * Math.sin(t * 5) * 0.15;
+      };
+
+    } else if (type === 'burst') {
+      // CHATGPT — a sea-urchin of spokes whose lengths ripple in a wave.
+      const N = 30;
+      const dirs = [], baseLen = [];
+      const geo = new THREE.BufferGeometry();
+      const arr = new Float32Array(N * 6);     // N segments, 2 verts each
+      for (let i = 0; i < N; i++) {
+        // even-ish sphere distribution
+        const y = 1 - (i / (N - 1)) * 2;
+        const rr = Math.sqrt(1 - y * y);
+        const ph = i * 2.399963;               // golden angle
+        dirs.push(new THREE.Vector3(Math.cos(ph) * rr, y, Math.sin(ph) * rr));
+        baseLen.push(0.18 + Math.random() * 0.12);
+      }
+      geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+      const seg = new THREE.LineSegments(geo, matA);
+      seg.position.y = 0.9; grp.add(seg);
+      const core = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.OctahedronGeometry(0.12)), matB);
+      core.position.y = 0.9; grp.add(core);
+      update = (t, amp) => {
+        const p = geo.attributes.position.array;
+        for (let i = 0; i < N; i++) {
+          const wave = 0.5 + 0.5 * Math.sin(t * 2.4 + i * 0.5);
+          const len = baseLen[i] * (1 + wave * (0.4 + amp * 2.2));
+          const d = dirs[i];
+          p[i*6]   = 0; p[i*6+1] = 0; p[i*6+2] = 0;
+          p[i*6+3] = d.x * len; p[i*6+4] = d.y * len; p[i*6+5] = d.z * len;
+        }
+        geo.attributes.position.needsUpdate = true;
+        seg.rotation.y = t * 0.4; core.rotation.y = -t * 0.8;
+        const s = 1 + amp * 0.6; seg.scale.setScalar(s);
+        seg.position.y = core.position.y = 0.9 + Math.sin(t * 1.3) * 0.05;
+      };
+
+    } else { // 'spine'
+      // CHRISTOPHERO — an articulated marionette spine that sways + two
+      // dangling arm lines that swing; the whole thing dances loosely.
+      const segs = [];
+      const M = 6;
+      for (let i = 0; i < M; i++) {
+        const b = new THREE.LineSegments(
+          new THREE.EdgesGeometry(new THREE.BoxGeometry(0.16 - i * 0.012, 0.16, 0.1)),
+          i % 2 ? matA : matB
+        );
+        segs.push(b); grp.add(b);
+      }
+      const armGeo = () => {
+        const g2 = new THREE.BufferGeometry();
+        g2.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+        return g2;
+      };
+      const armLg = armGeo(), armRg = armGeo();
+      const armL = new THREE.Line(armLg, matB), armR = new THREE.Line(armRg, matB);
+      grp.add(armL); grp.add(armR);
+      update = (t, amp) => {
+        let x = 0, z = 0;
+        const sway = 0.05 + amp * 0.22;
+        let topX = 0, topY = 0;
+        for (let i = 0; i < M; i++) {
+          const y = 0.2 + i * 0.22;
+          x += Math.sin(t * 1.6 + i * 0.7) * sway * (i / M);
+          z += Math.cos(t * 1.2 + i * 0.5) * sway * 0.6 * (i / M);
+          segs[i].position.set(x, y, z);
+          segs[i].rotation.z = Math.sin(t * 1.6 + i * 0.7) * (0.2 + amp);
+          segs[i].rotation.y = t * 0.2 + i * 0.1;
+          if (i === M - 1) { topX = x; topY = y; }
+        }
+        // arms hang from a mid segment and swing
+        const sx = segs[3].position.x, sy = segs[3].position.y, sz = segs[3].position.z;
+        const swA = 0.25 + amp * 0.5;
+        const setArm = (g2, side) => {
+          const p = g2.attributes.position.array;
+          p[0] = sx; p[1] = sy; p[2] = sz;
+          p[3] = sx + side * (0.18 + Math.sin(t * 2.3) * swA);
+          p[4] = sy - 0.3 - Math.abs(Math.cos(t * 2.0)) * swA;
+          p[5] = sz + Math.sin(t * 1.7 + side) * swA * 0.5;
+          g2.attributes.position.needsUpdate = true;
+        };
+        setArm(armLg, -1); setArm(armRg, +1);
+      };
+    }
+
+    scene.add(grp);
+    grp.userData.origPos = grp.position.clone();
+    allLines.push(grp);
+    return { group: grp, update };
+  }
+
+  function makeHead(spec) {
+    const { pos, idx, color } = spec;
+    const matC = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.82 });
     const g = new THREE.Group();
-    // Sphere
+    // Smaller, sharper head sphere
     const sphereLines = new THREE.LineSegments(
-      new THREE.EdgesGeometry(new THREE.SphereGeometry(0.32, 14, 10)), matHead
+      new THREE.EdgesGeometry(new THREE.SphereGeometry(0.27, 12, 9)), matC
     );
     g.add(sphereLines);
-    // Eyes — two small circles offset
-    const eyeMat = new THREE.LineBasicMaterial({ color: 0xe4d4a8, transparent: true, opacity: 0.85 });
-    const eyeGeo = new THREE.EdgesGeometry(new THREE.CircleGeometry(0.04, 12));
+    // Eyes
+    const eyeMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.95 });
+    const eyeGeo = new THREE.EdgesGeometry(new THREE.CircleGeometry(0.035, 10));
     const eyeL = new THREE.LineSegments(eyeGeo, eyeMat);
     const eyeR = new THREE.LineSegments(eyeGeo, eyeMat);
-    eyeL.position.set(-0.10, 0.05, 0.30);
-    eyeR.position.set( 0.10, 0.05, 0.30);
+    eyeL.position.set(-0.09, 0.05, 0.25);
+    eyeR.position.set( 0.09, 0.05, 0.25);
     g.add(eyeL); g.add(eyeR);
-    // Mouth — a small ring on the front face
+    // Mouth — deliberately small + subtle now; the body carries expression.
     const mouth = new THREE.LineSegments(
-      new THREE.EdgesGeometry(new THREE.CircleGeometry(0.07, 16)), matHead
+      new THREE.EdgesGeometry(new THREE.CircleGeometry(0.045, 12)),
+      new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.5 })
     );
-    mouth.position.set(0, -0.10, 0.30);
+    mouth.position.set(0, -0.11, 0.25);
     g.add(mouth);
+    // Thin neck down toward the body
+    const neckG = new THREE.BufferGeometry();
+    neckG.setAttribute('position', new THREE.BufferAttribute(
+      new Float32Array([0, -0.27, 0, 0, -0.55, 0]), 3));
+    g.add(new THREE.Line(neckG, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.3 })));
 
     g.position.copy(pos);
     g.userData.origPos = pos.clone();
@@ -851,26 +986,72 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
     scene.add(g);
     allLines.push(g);
 
+    const body = makeBody(spec.body, color, pos);
+
     return {
-      group: g,
-      mouth,
-      pos,
-      idx,
-      curRotY: 0,
-      curRotX: 0,
-      targetRotY: Math.random() * Math.PI * 2,
-      targetRotX: 0,
+      group: g, mouth, pos, idx, color, body,
+      curRotY: 0, curRotX: 0,
+      targetRotY: Math.random() * Math.PI * 2, targetRotX: 0,
       nextLookAt: 2 + Math.random() * 4,
-      nextSpeak: 6 + Math.random() * 12,   // first speak between 6–18s
-      mouthOpen: 0,                        // 0..1
-      mouthDecay: 0,
+      nextSpeak: 6 + Math.random() * 12,
+      mouthOpen: 0, mouthDecay: 0,
       bobPhase: Math.random() * Math.PI * 2,
+      ringCooldown: 0,
     };
   }
 
-  for (let i = 0; i < headPositions.length; i++) {
-    heads.push(makeHead(headPositions[i], i));
+  for (const spec of CHARS) {
+    heads.push(makeHead(spec));
   }
+
+  // ── Sypvefafvy — the hidden one, outside the room ────
+  // A constantly-morphing Lissajous point-cloud with a faint head, in an
+  // otherworldly violet. Visually + sonically subtle; you discover them by
+  // travelling out past the back wall. Animated by svph.update(t).
+  const svph = (() => {
+    const violet = 0xb060e0;
+    const grp = new THREE.Group();
+    grp.position.set(SVPH_POS.x, SVPH_POS.y, SVPH_POS.z);
+    // faint head
+    const head = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.SphereGeometry(0.34, 10, 7)),
+      new THREE.LineBasicMaterial({ color: violet, transparent: true, opacity: 0.45 })
+    );
+    grp.add(head);
+    // morphing cloud
+    const N = 90;
+    const geo = new THREE.BufferGeometry();
+    const arr = new Float32Array(N * 3);
+    geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+    const pts = new THREE.Points(geo, new THREE.PointsMaterial({
+      color: violet, size: 0.05, transparent: true, opacity: 0.5, sizeAttenuation: true,
+    }));
+    grp.add(pts);
+    scene.add(grp);
+    grp.userData.origPos = grp.position.clone();
+    allLines.push(grp);
+    // Lissajous params that drift over time → never repeats the same shape.
+    const P = { ax: 3, ay: 2, az: 4, px: 0, py: 1.7, pz: 0.5 };
+    return {
+      update(t) {
+        const p = geo.attributes.position.array;
+        const A = 0.9 + Math.sin(t * 0.13) * 0.4;
+        const ax = P.ax + Math.sin(t * 0.05) * 1.5;
+        const ay = P.ay + Math.cos(t * 0.037) * 1.5;
+        const az = P.az + Math.sin(t * 0.041) * 1.5;
+        for (let i = 0; i < N; i++) {
+          const u = (i / N) * Math.PI * 2 + t * 0.05;
+          p[i*3]   = Math.sin(ax * u + P.px + t * 0.2) * A;
+          p[i*3+1] = Math.sin(ay * u + P.py) * A * 0.8;
+          p[i*3+2] = Math.sin(az * u + P.pz - t * 0.15) * A;
+        }
+        geo.attributes.position.needsUpdate = true;
+        head.rotation.y = t * 0.2;
+        head.rotation.x = Math.sin(t * 0.5) * 0.3;
+        grp.position.y = SVPH_POS.y + Math.sin(t * 0.6) * 0.3;  // drifts up/down
+      }
+    };
+  })();
 
   // Spawn an expanding ring visual at a head's mouth — the visual sound burst.
   function spawnSoundRing(headObj) {
@@ -942,7 +1123,7 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
 
   const VIEW_MODES  = ['third', 'over', 'first'];
   const VIEW_LABELS = { third: '3rd', over: '2nd', first: '1st' };
-  let viewModeIdx = 0;          // entrance = 3rd person
+  let viewModeIdx = 1;          // entrance = 2nd person (over-the-shoulder)
   // UNIFIED GAZE — for now we're always a 1st-person listener: the ears
   // stay attached to the avatar (body model) and the gaze (lookYaw/lookPitch)
   // drives the avatar head rotation, the listener orientation, AND the
@@ -1153,11 +1334,9 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
     // After a few idle seconds, auto-rotate gradually re-engages: the orbit
     // drifts in 3rd person, the gaze drifts in over/first. Interaction snaps
     // autoBlend back to 0 (full manual).
-    if (idleSec > IDLE_BEFORE_AUTO) autoBlend = Math.min(1, autoBlend + dt * 0.2);
-    // Idle auto-motion: in 3rd person the third-party observer camera orbits
-    // (you watch yourself from shifting angles, gaze held); in 1st/2nd the
-    // gaze itself slowly pans. Eases back in after a few idle seconds.
-    if (autoBlend > 0) lookYaw += dt * 0.07 * autoBlend;
+    // Idle auto-pan disabled for now (per Christophero — "we'll have
+    // something like it again later"). The view holds where you leave it.
+    // autoBlend stays 0; the IDLE_BEFORE_AUTO ramp is intentionally not run.
 
     // ── Movement (WASD + joystick), relative to the gaze ───
     let mvF = 0, mvR = 0, mvU = 0;
@@ -1284,10 +1463,12 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
         }
         const target = Math.min(1, peak * 4.5);
         h.mouthOpen += (target - h.mouthOpen) * 0.4;   // fast attack, smoothed
+        // Sound rings made rarer + fainter — the BODY is the main expression
+        // now, so the mouth bursts shouldn't dominate.
         h.ringCooldown = (h.ringCooldown || 0) - 0.016;
-        if (h.mouthOpen > 0.28 && h.ringCooldown <= 0) {
+        if (h.mouthOpen > 0.42 && h.ringCooldown <= 0) {
           spawnSoundRing(h);
-          h.ringCooldown = 0.16 + Math.random() * 0.12;
+          h.ringCooldown = 0.45 + Math.random() * 0.4;
         }
       } else {
         // Fallback: random gibberish scheduling (only when the Salon audio
@@ -1305,9 +1486,16 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
           h.mouthOpen = Math.max(0, 1 - h.mouthDecay);
         }
       }
-      const sc = 1 + h.mouthOpen * 1.1 + Math.sin(t * 36) * h.mouthOpen * 0.3;
+      // Mouth: small + subtle now (the body carries expression).
+      const sc = 1 + h.mouthOpen * 0.55;
       h.mouth.scale.set(sc, sc, sc);
+
+      // Expressive body — continuous choreography, intensified by amplitude.
+      if (h.body) h.body.update(t, h.mouthOpen);
     }
+
+    // Sypvefafvy keeps morphing whether or not you've found them.
+    svph.update(t);
 
     // Sound rings — expand + fade
     for (let i = ringPool.length - 1; i >= 0; i--) {
@@ -1355,12 +1543,6 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
         }
       }
     }
-    if (e > 0.15) {
-      figure.rotation.y = figure.userData.origRotY + (Math.random() - 0.5) * e * 0.18;
-    } else {
-      figure.rotation.y = figure.userData.origRotY;
-    }
-
     // FOV wobble — subtle. Was e*14 + e*4; now e*3 + e*1.
     camera.fov = baseFov + Math.sin(t * 7) * e * 3 + (Math.random() - 0.5) * e * 1;
     camera.updateProjectionMatrix();
@@ -1406,6 +1588,29 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
     master.gain.setTargetAtTime(MASTER_LEVEL, now, 6);
     master.connect(audioCtx.destination);
 
+    // ── Room acoustics — a little reflection ────────────
+    // A convolution reverb on a parallel send: every panner feeds it (wet),
+    // so voices + the granular hidden character pick up the room. Synthetic
+    // stereo IR, exponential decay — representational, not measured. Modest
+    // return so it reads as "the room has walls," not a cathedral. (Will
+    // become a binaural / per-zone reverb when the FX engine grows.)
+    function makeIR(dur, decay) {
+      const len = Math.floor(dur * audioCtx.sampleRate);
+      const buf = audioCtx.createBuffer(2, len, audioCtx.sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const d = buf.getChannelData(ch);
+        for (let i = 0; i < len; i++) {
+          d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+        }
+      }
+      return buf;
+    }
+    const reverb = audioCtx.createConvolver();
+    reverb.buffer = makeIR(1.9, 2.4);
+    const reverbReturn = audioCtx.createGain(); reverbReturn.gain.value = 0.16;
+    const reverbSend = audioCtx.createGain(); reverbSend.gain.value = 1.0;
+    reverbSend.connect(reverb); reverb.connect(reverbReturn); reverbReturn.connect(master);
+
     // ── Fade + suspend when this "frontpage" goes to the background ──────
     // Standard for ambient frontpages (NOT instruments / not TelloFoam):
     // when the tab is hidden, fade the master to silence and suspend the
@@ -1442,7 +1647,8 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
       p.maxDistance   = binauralParams.maxDistance;
       p.coneInnerAngle = 360;
       p.setPosition(x, y, z);
-      p.connect(master);
+      p.connect(master);        // dry
+      p.connect(reverbSend);    // wet — room reflection
       allPanners.push(p);
       return p;
     }
@@ -1670,6 +1876,56 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
       // A beat after entering, the room begins speaking its own theory.
       salonTimer = setTimeout(playNextSalon, 2000);
     }
+
+    // ── Sypvefafvy — granular drone from outside the room ───────────────
+    // A constantly-evolving, beautiful-but-strange texture positioned at
+    // SVPH_POS (far past the back wall). Routed through the binaural engine
+    // at that distance it's nearly inaudible by default — travel toward them
+    // (or widen ref/max distance in the audio tab) and it blooms into the
+    // mix as a drony, granular "memory." Mixes UNDER the conversation.
+    (function svphAudio() {
+      const pan = makePanner(SVPH_POS.x, SVPH_POS.y, SVPH_POS.z);
+      const lp = audioCtx.createBiquadFilter();
+      lp.type = 'lowpass'; lp.frequency.value = 900; lp.Q.value = 3; lp.connect(pan);
+
+      // Drone bed — three detuned voices with slow independent tremolo.
+      const base = 70;
+      [0, 0.5, 7.01].forEach((semi, i) => {
+        const o = audioCtx.createOscillator();
+        o.type = i === 2 ? 'triangle' : 'sine';
+        o.frequency.value = base * Math.pow(2, semi / 12);
+        const g = audioCtx.createGain(); g.gain.value = 0.12;
+        const trem = audioCtx.createOscillator(); trem.type = 'sine';
+        trem.frequency.value = 0.06 + i * 0.03;
+        const tg = audioCtx.createGain(); tg.gain.value = 0.08;
+        trem.connect(tg).connect(g.gain);
+        o.connect(g).connect(lp);
+        o.start(now); trem.start(now);
+      });
+
+      // Granular "memory" shards — short tone grains at drifting pitches,
+      // fired at irregular intervals so it never settles into a rhythm.
+      const grainBuf = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate * 0.4), audioCtx.sampleRate);
+      const gd = grainBuf.getChannelData(0);
+      for (let i = 0; i < gd.length; i++) {
+        const env = Math.sin(Math.PI * i / gd.length);   // Hann window
+        gd[i] = Math.sin(i * 0.08) * env * 0.5;
+      }
+      function shard() {
+        if (!audioCtx) return;
+        const s = audioCtx.createBufferSource(); s.buffer = grainBuf;
+        s.playbackRate.value = 0.4 + Math.random() * 2.6;
+        const g = audioCtx.createGain();
+        const t0 = audioCtx.currentTime, dur = 0.2 + Math.random() * 0.5;
+        g.gain.setValueAtTime(0, t0);
+        g.gain.linearRampToValueAtTime(0.16 + Math.random() * 0.14, t0 + 0.05);
+        g.gain.linearRampToValueAtTime(0, t0 + dur);
+        s.connect(g).connect(lp);
+        s.start(t0); s.stop(t0 + dur + 0.05);
+        setTimeout(shard, 400 + Math.random() * 2200);
+      }
+      setTimeout(shard, 1000 + Math.random() * 2000);
+    })();
 
     if (audioCtx.state === 'suspended') audioCtx.resume();
 
