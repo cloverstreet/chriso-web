@@ -372,7 +372,10 @@ let runTiming = [], practiceAccum = 0;    // this-run note timing (ms, +late/−
 const heldVoices = {};                    // id -> sustaining Synth voice handle (held key)
 const SPACING = 88, FAILX = 120, LEADIN = 4;
 let SVG_H = 220, STAVE_Y = 78;            // tighter stage so staff sits centered + the keyboard fits below on one iPad screen
-const GRACE_SEC = 0.15;                   // late-hit leeway past the downbeat (never need to be early; was 100ms — kids needed a bit more)
+const GRACE_SEC = 0.15;                   // max late-hit leeway past the downbeat (never need to be early)
+const GRACE_FRAC = 0.20;                  // …but never more than this fraction of one beat — so it auto-tightens at fast tempo
+// effective late grace in seconds: generous at slow tempo, tight when notes come fast
+function graceSec(){ return Math.min(GRACE_SEC, (60 / tempoBpm) * GRACE_FRAC); }
 const ONTIME_MS = 80;                     // |error| under this counts as "on time" (not scored yet)
 
 const stage = document.getElementById("stage"), staffEl = document.getElementById("staff");
@@ -596,7 +599,7 @@ function loop() {
   else countEl.style.display = "none";
   // a note is only "missed" once it scrolls GRACE_SEC *past* the downbeat —
   // so playing a touch late is fine; you never have to be early.
-  const lateGrace = SPACING * (tempoBpm / 60) * GRACE_SEC;
+  const lateGrace = SPACING * (tempoBpm / 60) * graceSec();
   while (activeIdx < N && notes[activeIdx].state === "pending" && screenX(activeIdx) < FAILX - lateGrace) {
     notes[activeIdx].state = "missed"; placeDot(activeIdx); cMi++; activeIdx++;
   }
@@ -964,14 +967,18 @@ function buildReward(){
 }
 const EAT_DIST = 0.05, CATCH_VMAX = 0.6, DIGEST = 0.22, EJECT_VEL = 1.6;
 const SEP_R = 0.12, SEP_K = 6.0, VACUUM_R = 0.45, VACUUM_PULL = 5.0;
+const LOOP_SLOT = 0.36;                   // seconds per slot in the reward melody loop
+// clean reward-loop voice (music-box / triangle — deliberately NOT the muddy detuned gamelan)
+function playClean(midi, gain, whenOff){ const hz = 440 * Math.pow(2, (midi - 69) / 12);
+  Synth.playFreq(hz, { timbre:"musicbox", wave:"triangle", decay:0.5, gain:gain||0.1, when:Synth.now()+0.001+(whenOff||0) }); }
 function midiToName(m){ const N=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]; m=Math.round(m); return N[((m%12)+12)%12]+(Math.floor(m/12)-1); }
 
 const POWERS = [
   { id:"transpose", name:"Pitch Transposer", impl:true,  on:false, interval:3, blurb:"Digested notes come out shifted by an interval." },
   { id:"vacuum",    name:"Vacuum Mode",       impl:true,  on:false, blurb:"Marge's mouth attracts notes." },
   { id:"homing",    name:"Homing Beak",       impl:true,  on:false, blurb:"Auto-find — flies straight to notes, fast." },
-  { id:"repeat",    name:"Note Repeater",     impl:false, on:false, blurb:"Each note repeats N times." },
-  { id:"swing",     name:"Swing",             impl:false, on:false, blurb:"Swing feel." },
+  { id:"repeat",    name:"Note Repeater",     impl:true,  on:false, blurb:"Found notes echo on the off-beat." },
+  { id:"swing",     name:"Swing",             impl:true,  on:false, blurb:"The loop plays with a swing feel." },
   { id:"chord",     name:"Chord Swallow",     impl:false, on:false, blurb:"Eat overlapping notes as a chord." },
   { id:"warp",      name:"Time Warp",         impl:false, on:false, blurb:"Speed up/down." },
   { id:"fx",        name:"FX Processor",      impl:false, on:false, blurb:"Effects on digested notes." },
@@ -1004,12 +1011,12 @@ function renderPowers() {
 const FRAG = `
 precision highp float;
 uniform vec2 uRes; uniform float uTime;
-uniform int uCount; uniform vec2 uPos[32]; uniform float uPitch[32]; uniform float uScale[32];
+uniform int uCount; uniform vec2 uPos[48]; uniform float uPitch[48]; uniform float uScale[48];
 vec3 hue(float h){ return 0.55 + 0.45*cos(6.2831*(h+vec3(0.0,0.33,0.67))); }
 void main(){
   vec2 uv = gl_FragCoord.xy/uRes; vec2 p = uv; p.x *= uRes.x/uRes.y;
   float field = 0.0; vec3 col = vec3(0.0);
-  for(int i=0;i<32;i++){
+  for(int i=0;i<48;i++){
     if(i>=uCount) break;
     if(uScale[i] < 0.01) continue;
     vec2 c = uPos[i]; c.x *= uRes.x/uRes.y;
@@ -1033,19 +1040,37 @@ function startPlayground() {
   clearTimeout(hideTimer);
   cv.style.display = "block"; gc.style.display = "block"; hint.style.display = "block"; pw.style.display = "block";
   void cv.offsetWidth; cv.style.opacity = "1";
-  const mids = notes.map(n => midiOf(n.key)); const lo = Math.min(...mids), hi = Math.max(...mids);
-  const blobs = notes.map((n, i) => ({ x: 0.12 + 0.76 * (i / Math.max(1, notes.length - 1)) + (Math.random() - 0.5) * 0.04,
-    y: 0.25 + 0.5 * ((mids[i] - lo) / Math.max(1, hi - lo)), vx:0, vy:0, midi:mids[i], pitch:(mids[i]-lo)/Math.max(1,hi-lo), scale:1, state:"free", tEat:0 }));
-  const guy = { x:0.5, y:0.5, vx:0, vy:0, cruise:CRUISE, mouth:0, face:0, head:1, butt:1 }; const parts = [];
+
+  // ── build the looping melody from the level's notes (in their melodic order) ──
+  let baseMids = notes.map(n => midiOf(n.key));
+  if (baseMids.length > 32) baseMids = baseMids.slice(0, 32);       // keep the loop a musical length
+  const seq = baseMids.map(m => ({ midi:m, found:false, kind:"base", blob:null }));
+  // Transpose power: spawn transposed BONUS notes (a harmony layer you can also collect)
+  if (powOn("transpose")) {
+    const iv = pow("transpose").interval || 3;
+    const extra = Math.min(14, Math.max(2, Math.round(baseMids.length * 0.4)));
+    for (let k = 0; k < extra; k++) seq.push({ midi: baseMids[(k * 3) % baseMids.length] + iv, found:false, kind:"xpose", blob:null });
+  }
+  const totalSlots = seq.length;
+  const lo = Math.min(...seq.map(s => s.midi)), hi = Math.max(...seq.map(s => s.midi));
+  const blobs = seq.map((s, i) => { const b = {
+    x: 0.10 + 0.80 * (i / Math.max(1, totalSlots - 1)) + (Math.random() - 0.5) * 0.05,
+    y: 0.34 + 0.46 * ((s.midi - lo) / Math.max(1, hi - lo)), vx:0, vy:0, midi:s.midi,
+    pitch:(s.midi - lo) / Math.max(1, hi - lo), scale:1, state:"free", slot:i, kind:s.kind, pulse:0 };
+    s.blob = b; return b; });
+
+  const guy = { x:0.5, y:0.62, vx:0, vy:0, cruise:CRUISE, mouth:0, face:0, head:1, butt:1 }; const parts = [];
+  let score = 0, combo = 0, found = 0, comboFlash = 0, target = 0;
+  const recomputeTarget = () => { target = seq.findIndex(s => !s.found); };
+
   function size(){ cv.width = gc.width = innerWidth; cv.height = gc.height = innerHeight; gl.viewport(0,0,cv.width,cv.height); } size();
   window.addEventListener("resize", size);
-  // Drag-with-mass-spring-damper. Tap within REWARD.sensPx of Marge to grab;
-  // her position is the mass, your finger is the end of the spring.
+  // Drag-with-mass-spring-damper. Tap within REWARD.sensPx of Marge to grab.
   const drag = { active:false, pid:-1, tx:0.5, ty:0.5 };
   const ptToNorm = (ev) => { const r = gc.getBoundingClientRect(); return { x:(ev.clientX - r.left)/r.width, y: 1 - (ev.clientY - r.top)/r.height }; };
   const onPD = (ev) => { const p = ptToNorm(ev);
     const dpx = Math.hypot((p.x - guy.x) * gc.width, (p.y - guy.y) * gc.height);
-    if (dpx > REWARD.sensPx) return;                      // out of range — reserved for future gestures (shoot, etc.)
+    if (dpx > REWARD.sensPx) return;                      // out of range — reserved for future gestures
     drag.active = true; drag.pid = ev.pointerId; drag.tx = p.x; drag.ty = p.y;
     try { gc.setPointerCapture(ev.pointerId); } catch(e){} ev.preventDefault(); };
   const onPM = (ev) => { if (!drag.active || ev.pointerId !== drag.pid) return; const p = ptToNorm(ev); drag.tx = p.x; drag.ty = p.y; };
@@ -1057,77 +1082,102 @@ function startPlayground() {
   const prog=gl.createProgram(); gl.attachShader(prog,sh(gl.VERTEX_SHADER,VERT)); gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,FRAG)); gl.linkProgram(prog); gl.useProgram(prog);
   const buf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,buf); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
   const la=gl.getAttribLocation(prog,"a"); gl.enableVertexAttribArray(la); gl.vertexAttribPointer(la,2,gl.FLOAT,false,0,0);
-  const U=n=>gl.getUniformLocation(prog,n); const pit=new Float32Array(32); gl.uniform1i(U("uCount"),Math.min(blobs.length,32));
-  function eat(b){ b.state="inside"; b.tEat=(performance.now()-t0)/1000;
-    const wild=Math.min(1,guy.cruise/CRUISE_HOMING); const oct=(Math.random()<0.25*wild)?(Math.random()<0.5?-12:12):0;
-    const cents=(Math.random()-0.5)*(8+50*wild); const hz=440*Math.pow(2,(b.midi+oct-69)/12+cents/1200);
-    Synth.playFreq(hz,{timbre:["gamelan","mallet","sine"][(Math.random()*3)|0],decay:0.5+Math.random()*1.1,gain:0.1,when:Synth.now()+0.001});
-    guy.mouth=0.55; guy.head=1.8; }
+  const U=n=>gl.getUniformLocation(prog,n); const pit=new Float32Array(48); gl.uniform1i(U("uCount"),Math.min(blobs.length,48));
+
+  // collect a note: it's marked found (stops being eatable, becomes a small pulsing orb),
+  // scores, and joins the loop. In-melodic-order collection earns an escalating combo bonus.
+  function eat(b){ if (b.state !== "free") return; const s = seq[b.slot]; if (s.found) return;
+    s.found = true; b.state = "found"; b.scale = 0.32; b.pulse = 1;
+    playClean(s.midi, 0.14);
+    score += 1;
+    if (b.slot === target) { combo++; score += combo; comboFlash = 1; } else combo = 0;
+    recomputeTarget();
+    guy.mouth = 0.55; guy.head = 1.8; guy.butt = 1.7;
+    found++; if (found >= totalSlots && !doneAt) doneAt = (performance.now() - t0) / 1000;
+  }
+
+  // loop transport: onset times for one cycle (swing skews the off-beats)
+  let lastSlot = -1, loopT = 0;
+  function onsets(){ const sw = powOn("swing"); const on = []; let t = 0;
+    for (let i = 0; i < totalSlots; i++){ on.push(t); t += sw ? (i % 2 === 0 ? LOOP_SLOT * 1.34 : LOOP_SLOT * 0.66) : LOOP_SLOT; }
+    return { on, len: t }; }
+
   let t0=performance.now(), prevT=t0, alive=true, doneAt=0;
   function frame(){
     if(!alive) return; const now=performance.now(); let dt=(now-prevT)/1000; prevT=now; if(dt>0.05)dt=0.05; const tt=(now-t0)/1000;
-    const homing=powOn("homing"), vacuum=powOn("vacuum");
+    const vacuum=powOn("vacuum");
     const mx=guy.x+Math.cos(guy.face)*0.02, my=guy.y+Math.sin(guy.face)*0.02;
+
+    // ── advance the loop; play only FOUND slots (clean) ──
+    loopT += dt; const { on, len } = onsets(); const lp = loopT % len;
+    let curSlot = 0; for (let i = totalSlots - 1; i >= 0; i--){ if (lp >= on[i]) { curSlot = i; break; } }
+    if (curSlot !== lastSlot) { lastSlot = curSlot; const s = seq[curSlot];
+      if (s && s.found) { playClean(s.midi, 0.10); s.blob.pulse = 1;
+        if (powOn("repeat")) playClean(s.midi, 0.06, LOOP_SLOT * 0.5); } }   // off-beat echo
+
     for(const b of blobs){
-      if(b.state==="inside"){ b.x+=(mx-b.x)*Math.min(1,dt*16); b.y+=(my-b.y)*Math.min(1,dt*16); b.scale+=(0-b.scale)*Math.min(1,dt*16);
-        // Eaten notes stay eaten (game goal = eat them all); a particle puff out the
-        // rear is the only remnant. When the last one goes, start the win sequence.
-        if(tt-b.tEat>DIGEST){ b.state="gone"; b.scale=0; guy.butt=1.9;
-          parts.push({x:guy.x-Math.cos(guy.face)*0.06, y:guy.y-Math.sin(guy.face)*0.06,
-                      vx:-Math.cos(guy.face)*0.5+(Math.random()-0.5)*0.2, vy:-Math.sin(guy.face)*0.5+(Math.random()-0.5)*0.2, life:0.6, hue:b.pitch});
-          if(!doneAt && blobs.every(x=>x.state==="gone")) doneAt=tt; } continue; }
+      if(b.state==="found"){ b.pulse=Math.max(0,b.pulse-dt*3); continue; }
       if(b.state!=="free") continue;
       b.scale+=(1-b.scale)*Math.min(1,dt*7);
       if(vacuum){ const dx=mx-b.x,dy=my-b.y,d=Math.hypot(dx,dy)||1e-3; if(d<VACUUM_R){ const f=(1-d/VACUUM_R)*VACUUM_PULL*dt; b.vx+=dx*f; b.vy+=dy*f; } }
     }
     for(let i=0;i<blobs.length;i++)for(let j=i+1;j<blobs.length;j++){ const a=blobs[i],c=blobs[j]; if(a.state!=="free"||c.state!=="free")continue;
       const dx=c.x-a.x,dy=c.y-a.y,d=Math.hypot(dx,dy)||1e-3; if(d<SEP_R){ const f=(1-d/SEP_R)*SEP_K*dt/d; a.vx-=dx*f;a.vy-=dy*f;c.vx+=dx*f;c.vy+=dy*f; } }
-    for(const b of blobs){ if(b.state!=="free")continue; b.vx*=0.93;b.vy*=0.93;b.x+=b.vx*dt;b.y+=b.vy*dt; b.x=Math.max(0.05,Math.min(0.95,b.x)); b.y=Math.max(0.12,Math.min(0.9,b.y)); }
-    // ── MSD-driven movement (replaces the old autonomous AI seek/wander) ──
-    // While engaged: F = -k·(pos − target) − c·v, a = F/m. Otherwise: damp toward zero.
+    for(const b of blobs){ if(b.state!=="free")continue; b.vx*=0.93;b.vy*=0.93;b.x+=b.vx*dt;b.y+=b.vy*dt; b.x=Math.max(0.05,Math.min(0.95,b.x)); b.y=Math.max(0.30,Math.min(0.92,b.y)); }
+
+    // ── MSD-driven movement: spring toward finger while dragging, else damp out ──
     if (drag.active) {
       const fx = REWARD.spring * (drag.tx - guy.x) - REWARD.damping * guy.vx;
       const fy = REWARD.spring * (drag.ty - guy.y) - REWARD.damping * guy.vy;
       guy.vx += (fx / REWARD.mass) * dt; guy.vy += (fy / REWARD.mass) * dt;
-    } else if (REWARD.damping > 0) {
-      const decay = Math.exp(-REWARD.damping * dt / REWARD.mass);
-      guy.vx *= decay; guy.vy *= decay;
-    }
+    } else if (REWARD.damping > 0) { const decay = Math.exp(-REWARD.damping * dt / REWARD.mass); guy.vx *= decay; guy.vy *= decay; }
     const sp = Math.hypot(guy.vx, guy.vy);
     guy.x += guy.vx * dt; guy.y += guy.vy * dt;
     if (guy.x < 0.04 || guy.x > 0.96) guy.vx *= -0.6;
-    if (guy.y < 0.08 || guy.y > 0.92) guy.vy *= -0.6;
-    guy.x = Math.max(0.04, Math.min(0.96, guy.x));
-    guy.y = Math.max(0.08, Math.min(0.92, guy.y));
+    if (guy.y < 0.10 || guy.y > 0.94) guy.vy *= -0.6;
+    guy.x = Math.max(0.04, Math.min(0.96, guy.x)); guy.y = Math.max(0.10, Math.min(0.94, guy.y));
     if (sp > 1e-3) guy.face = Math.atan2(guy.vy, guy.vx);
     guy.mouth = Math.max(0, guy.mouth - dt);
-    // eat-on-collision (no autonomous seek anymore)
+    // eat-on-collision
     let tgt = null, best = 1e9;
     for (const b of blobs) { if (b.state !== "free") continue; const d = Math.hypot(b.x - guy.x, b.y - guy.y); if (d < best) { best = d; tgt = b; } }
     if (tgt && best < EAT_DIST && Math.hypot(tgt.vx, tgt.vy) < CATCH_VMAX) eat(tgt);
     guy.head+=(1-guy.head)*Math.min(1,dt*4); guy.butt+=(1-guy.butt)*Math.min(1,dt*5);
-    const pos=new Float32Array(64),scl=new Float32Array(32);
-    blobs.forEach((b,i)=>{ if(i<32){ pos[i*2]=b.x; pos[i*2+1]=b.y; scl[i]=b.scale; pit[i]=(b.midi-lo)/Math.max(1,hi-lo); } });
+    comboFlash = Math.max(0, comboFlash - dt * 1.6);
+
+    // ── render metaball field ──
+    const pos=new Float32Array(96),scl=new Float32Array(48);
+    blobs.forEach((b,i)=>{ if(i<48){ pos[i*2]=b.x; pos[i*2+1]=b.y;
+      scl[i] = b.state==="found" ? 0.30 + 0.5*b.pulse : (b.slot===target ? b.scale*(1.12+0.12*Math.sin(tt*6)) : b.scale);
+      pit[i]=(b.kind==="xpose"?0.12:0)+(b.midi-lo)/Math.max(1,hi-lo); } });
     gl.uniform2f(U("uRes"),cv.width,cv.height); gl.uniform1f(U("uTime"),tt); gl.uniform2fv(U("uPos"),pos); gl.uniform1fv(U("uScale"),scl); gl.uniform1fv(U("uPitch"),pit);
     gl.drawArrays(gl.TRIANGLES,0,3);
+
     g2.clearRect(0,0,gc.width,gc.height);
+    // labels on free blobs; gold ring on the illuminated (next-in-order) target
+    g2.font="bold 16px -apple-system,system-ui,sans-serif"; g2.textAlign="center"; g2.textBaseline="middle"; g2.lineWidth=3.5; g2.lineJoin="round";
+    for(const b of blobs){ if(b.state!=="free"||b.scale<0.4)continue; const px=b.x*gc.width,py=(1-b.y)*gc.height,nm=midiToName(b.midi);
+      if(b.slot===target){ g2.beginPath(); g2.arc(px,py,26,0,7); g2.strokeStyle="rgba(255,210,90,0.95)"; g2.lineWidth=3; g2.stroke(); g2.lineWidth=3.5; }
+      g2.strokeStyle="rgba(0,0,0,0.78)"; g2.strokeText(nm,px,py); g2.fillStyle=b.kind==="xpose"?"#ffd9a8":"#fff"; g2.fillText(nm,px,py); }
+
+    drawStaff(g2, gc, seq, target, lp, len, on, lo, hi);
+
+    // particles + guy
     for(let i=parts.length-1;i>=0;i--){ const p=parts[i]; p.x+=p.vx*dt; p.y+=p.vy*dt; p.life-=dt*1.4; if(p.life<=0){parts.splice(i,1);continue;}
       g2.globalAlpha=Math.max(0,p.life); g2.beginPath(); g2.arc(p.x*gc.width,(1-p.y)*gc.height,6,0,7); g2.fillStyle="hsl("+(p.hue*300)+",80%,65%)"; g2.fill(); }
-    g2.globalAlpha=1; g2.font="bold 16px -apple-system,system-ui,sans-serif"; g2.textAlign="center"; g2.textBaseline="middle"; g2.lineWidth=3.5; g2.lineJoin="round";
-    for(const b of blobs){ if(b.state!=="free"||b.scale<0.4)continue; const px=b.x*gc.width,py=(1-b.y)*gc.height,nm=midiToName(b.midi);
-      g2.strokeStyle="rgba(0,0,0,0.78)"; g2.strokeText(nm,px,py); g2.fillStyle="#fff"; g2.fillText(nm,px,py); }
-    // eaten counter (game goal: eat them all)
-    const eaten = blobs.filter(b=>b.state==="gone").length;
-    g2.font="600 15px -apple-system,system-ui,sans-serif"; g2.textAlign="left";
-    g2.strokeStyle="rgba(0,0,0,0.7)"; g2.strokeText(`${eaten} / ${blobs.length} eaten`, 16, gc.height-20);
-    g2.fillStyle="#fff"; g2.fillText(`${eaten} / ${blobs.length} eaten`, 16, gc.height-20);
+    g2.globalAlpha=1;
     drawGuy(g2, guy.x*gc.width, (1-guy.y)*gc.height, guy.face, guy.mouth, sp, guy.head, guy.butt);
-    if(doneAt){ // win: banner, then auto-return to the trainer
-      g2.font="bold 44px -apple-system,system-ui,sans-serif"; g2.textAlign="center"; g2.lineWidth=6;
-      g2.strokeStyle="rgba(0,0,0,0.8)"; g2.strokeText("ALL NOTES EATEN! 🎉", gc.width/2, gc.height*0.4);
-      g2.fillStyle="#ffe27a"; g2.fillText("ALL NOTES EATEN! 🎉", gc.width/2, gc.height*0.4);
-      if(tt-doneAt>2.4){ stopFinale(); return; }
-    }
+
+    // score HUD (top center)
+    g2.font="bold 22px -apple-system,system-ui,sans-serif"; g2.textAlign="center"; g2.lineWidth=4; g2.strokeStyle="rgba(0,0,0,0.7)";
+    const hd=`★ ${score}    ${found}/${totalSlots} notes`; g2.strokeText(hd, gc.width/2, 30); g2.fillStyle="#ffe27a"; g2.fillText(hd, gc.width/2, 30);
+    if(combo>=2 && comboFlash>0){ g2.font="bold 26px -apple-system,system-ui,sans-serif"; g2.globalAlpha=comboFlash;
+      g2.strokeText(`combo ×${combo}!`, gc.width/2, 58); g2.fillStyle="#9fe6ff"; g2.fillText(`combo ×${combo}!`, gc.width/2, 58); g2.globalAlpha=1; }
+
+    if(doneAt){ g2.font="bold 40px -apple-system,system-ui,sans-serif"; g2.textAlign="center"; g2.lineWidth=6;
+      g2.strokeStyle="rgba(0,0,0,0.8)"; g2.strokeText("♪ Melody complete! 🎉", gc.width/2, gc.height*0.36);
+      g2.fillStyle="#ffe27a"; g2.fillText("♪ Melody complete! 🎉", gc.width/2, gc.height*0.36);
+      if(tt-doneAt>4.0){ stopFinale(); return; } }
     fx.r=requestAnimationFrame(frame);
   }
   fx = { stop(){ alive=false; if(fx.r)cancelAnimationFrame(fx.r); window.removeEventListener("resize",size);
@@ -1136,6 +1186,30 @@ function startPlayground() {
     gc.removeEventListener("pointerup",onPU);   gc.removeEventListener("pointercancel",onPU); } };
   frame();
 }
+// The "learning" staff strip at the bottom of the reward: the looping melody as
+// noteheads — hollow = not collected yet, filled = collected (and sounding in the
+// loop), gold = the next note to grab. A playhead sweeps in time with the loop.
+function drawStaff(g2, gc, seq, target, lp, len, on, lo, hi) {
+  const W = gc.width, H = gc.height; const band = Math.min(150, H * 0.22);
+  const top = H - band - 6, padX = 30, innerW = W - padX * 2;
+  g2.fillStyle = "rgba(248,248,244,0.93)"; g2.strokeStyle = "rgba(0,0,0,0)";
+  roundRect(g2, padX - 14, top, innerW + 28, band, 12); g2.fill();
+  const lineGap = (band - 30) / 4, l0 = top + 15;
+  g2.strokeStyle = "rgba(60,66,76,0.55)"; g2.lineWidth = 1;
+  for (let i = 0; i < 5; i++){ const y = l0 + i * lineGap; g2.beginPath(); g2.moveTo(padX, y); g2.lineTo(padX + innerW, y); g2.stroke(); }
+  const yFor = m => (l0 + 4 * lineGap) - ((m - lo) / Math.max(1, hi - lo)) * (4 * lineGap);
+  const xFor = i => padX + (seq.length <= 1 ? innerW / 2 : (i / (seq.length - 1)) * innerW);
+  // playhead
+  const phx = padX + (lp / len) * innerW; g2.strokeStyle = "rgba(220,70,70,0.8)"; g2.lineWidth = 2;
+  g2.beginPath(); g2.moveTo(phx, top + 4); g2.lineTo(phx, top + band - 4); g2.stroke();
+  // noteheads
+  for (let i = 0; i < seq.length; i++){ const s = seq[i], x = xFor(i), y = yFor(s.midi);
+    g2.beginPath(); g2.ellipse(x, y, 6.5, 5, -0.3, 0, 7);
+    if (i === target){ g2.fillStyle = "#e7b53a"; g2.fill(); g2.lineWidth = 2.5; g2.strokeStyle = "#9a7410"; g2.stroke(); }
+    else if (s.found){ g2.fillStyle = s.kind === "xpose" ? "#c98a3a" : "#2a2e37"; g2.fill(); }
+    else { g2.lineWidth = 2; g2.strokeStyle = "rgba(60,66,76,0.6)"; g2.stroke(); } }
+}
+function roundRect(c, x, y, w, h, r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
 function drawGuy(c, x, y, face, mouth, sp, head, butt) {
   head=head||1; butt=butt||1; const wob=Math.sin(performance.now()/120)*0.3, T=performance.now()/1000; const fx=-Math.cos(face), fy=-Math.sin(face);
   c.save(); c.translate(x,y); c.lineCap="round"; c.lineJoin="round";
