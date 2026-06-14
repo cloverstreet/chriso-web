@@ -387,6 +387,9 @@ let panningMode = 'HRTF';                  // or 'equalpower' for stereo
 const allPanners = [];                     // every PannerNode created — toggled in lockstep
 const heads = [];                          // populated in scene IIFE; speakHead() reads
 let speakHeadFn = null;                    // assigned by audio IIFE; called by scene IIFE on schedule
+let salonActive = false;                   // true once real pre-rendered Salon audio is playing;
+                                           // scene loop then drives mouths from real amplitude and
+                                           // stops the random gibberish fallback.
 
 // Live-tunable PannerNode parameters. Applied to every panner in lockstep
 // whenever the user moves a slider or loads a preset. The default values
@@ -1270,20 +1273,37 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
       h.group.rotation.x = h.curRotX;
       h.group.userData.origRotY = h.curRotY;  // rebase so glitch jitters around current
 
-      // Speech scheduling
-      h.nextSpeak -= 0.016;
-      if (h.nextSpeak <= 0 && audioCtx && speakHeadFn) {
-        speakHeadFn(h.idx);
-        spawnSoundRing(h);
-        h.mouthOpen = 1.0;
-        h.mouthDecay = 0;
-        h.nextSpeak = 8 + Math.random() * 14;  // 8–22s
-      }
-
-      // Mouth: open + decay
-      if (h.mouthOpen > 0) {
-        h.mouthDecay += 0.04;
-        h.mouthOpen = Math.max(0, 1 - h.mouthDecay);
+      // Speech — two modes:
+      if (salonActive && h.analyser) {
+        // REAL letters playing: drive the mouth from the clip's live
+        // amplitude (lip-sync), and spawn sound rings on speech peaks.
+        h.analyser.getFloatTimeDomainData(h.ampBuf);
+        let peak = 0;
+        for (let k = 0; k < h.ampBuf.length; k++) {
+          const a = Math.abs(h.ampBuf[k]); if (a > peak) peak = a;
+        }
+        const target = Math.min(1, peak * 4.5);
+        h.mouthOpen += (target - h.mouthOpen) * 0.4;   // fast attack, smoothed
+        h.ringCooldown = (h.ringCooldown || 0) - 0.016;
+        if (h.mouthOpen > 0.28 && h.ringCooldown <= 0) {
+          spawnSoundRing(h);
+          h.ringCooldown = 0.16 + Math.random() * 0.12;
+        }
+      } else {
+        // Fallback: random gibberish scheduling (only when the Salon audio
+        // hasn't taken over).
+        h.nextSpeak -= 0.016;
+        if (h.nextSpeak <= 0 && audioCtx && speakHeadFn) {
+          speakHeadFn(h.idx);
+          spawnSoundRing(h);
+          h.mouthOpen = 1.0;
+          h.mouthDecay = 0;
+          h.nextSpeak = 8 + Math.random() * 14;  // 8–22s
+        }
+        if (h.mouthOpen > 0) {
+          h.mouthDecay += 0.04;
+          h.mouthOpen = Math.max(0, 1 - h.mouthDecay);
+        }
       }
       const sc = 1 + h.mouthOpen * 1.1 + Math.sin(t * 36) * h.mouthOpen * 0.3;
       h.mouth.scale.set(sc, sc, sc);
@@ -1528,6 +1548,19 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
       osc1.start(now); osc2.start(now);
 
       headVoices.push({ osc1, osc2, am, bp, baseFreq: headBaseFreqs[i] });
+
+      // Real-speech playback path for this head: BufferSource → playGain →
+      // (same) panner. An analyser taps playGain so the scene loop can drive
+      // the mouth from real amplitude (lip-sync). Attached onto the shared
+      // head object so the scene IIFE can read it.
+      const playGain = audioCtx.createGain(); playGain.gain.value = 1.0;
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512; analyser.smoothingTimeConstant = 0.0;
+      playGain.connect(analyser);
+      playGain.connect(panner);
+      h.playGain = playGain;
+      h.analyser = analyser;
+      h.ampBuf   = new Float32Array(analyser.fftSize);
     }
 
     // Expose the speak function so the scene loop can trigger it.
@@ -1574,7 +1607,77 @@ function isBuiltin(name) { return Object.prototype.hasOwnProperty.call(BUILTIN_P
       v.osc1.frequency.setValueAtTime(v.baseFreq, t0 + totalDur + 0.05);
     };
 
+    // ── AI Salon — real spoken letters, presence-triggered ──────────────
+    // Loads pre-rendered binaural clips (built by audio/build_salon_audio.py
+    // from the actual AI Salon letters) and plays them as a conversation,
+    // each clip routed through its speaker-head's PannerNode so it's spatial.
+    // No text on screen. If loading fails, the gibberish above stays as the
+    // fallback so the room is never silent.
+    //
+    // PRESENCE TRIGGER: for now the conversation begins shortly after you
+    // ENTER (start audio). The intended model is that *your* presence renders
+    // it — when real login / MQTT presence from the HA box lands, gate
+    // beginSalon() on that signal instead (guests witness; they don't
+    // trigger). Hook point marked below.
+    //
+    // UPGRADE PATH (see audio/build_salon_audio.py header + Notion):
+    //   stage 0 = these macOS-say clips · stage 1 = HA-hosted TTS (swap file
+    //   URLs) · stage 2 = self-hosted LLM improvising new lines → HA TTS.
+    //   The browser only ever consumes the manifest, so each stage drops in.
+    const salonClips = [];     // { head, dur, buffer }
+    let salonIdx = 0, salonPlaying = false, salonTimer = null;
+
+    async function loadSalon() {
+      try {
+        const man = await (await fetch('audio/salon-audio.json')).json();
+        const loaded = await Promise.all(man.utterances.map(async u => {
+          const ab = await (await fetch(u.file)).arrayBuffer();
+          const buffer = await audioCtx.decodeAudioData(ab);
+          return { head: u.head, dur: u.dur, buffer };
+        }));
+        salonClips.push(...loaded);
+        return salonClips.length > 0;
+      } catch (e) {
+        console.warn('[salon] audio load failed — keeping gibberish fallback:', e);
+        return false;
+      }
+    }
+
+    function playNextSalon() {
+      if (!salonClips.length) return;
+      const clip = salonClips[salonIdx % salonClips.length];
+      const h = heads[clip.head] || heads[0];
+      const src = audioCtx.createBufferSource();
+      src.buffer = clip.buffer;
+      src.connect(h.playGain);
+      try { src.start(); } catch (e) {}
+      salonIdx++;
+      // Conversational arrangement: mostly sequential with a breath between
+      // turns; occasionally the next speaker comes in slightly early (overlap)
+      // — "sometimes interrupting or talking at the same time."
+      const overlap = Math.random() < 0.12 ? clip.dur * (0.18 + Math.random() * 0.22) : 0;
+      const gap     = 0.4 + Math.random() * 0.9;
+      const nextIn  = Math.max(0.5, clip.dur - overlap + gap);
+      salonTimer = setTimeout(playNextSalon, nextIn * 1000);
+    }
+
+    async function beginSalon() {
+      if (salonPlaying) return;
+      const ok = await loadSalon();
+      if (!ok) return;                 // gibberish fallback remains
+      salonActive = true;              // scene loop: real-amplitude mouths, stop gibberish
+      salonPlaying = true;
+      // A beat after entering, the room begins speaking its own theory.
+      salonTimer = setTimeout(playNextSalon, 2000);
+    }
+
     if (audioCtx.state === 'suspended') audioCtx.resume();
+
+    // ◆ PRESENCE HOOK ◆ — entering the club triggers the Salon for now.
+    // Replace/gate this with a real presence signal (login / MQTT from HA)
+    // when that lands: only Christophero's presence should start it; guests
+    // are witnesses.
+    beginSalon();
   }
 
   function unlockOnce() {
